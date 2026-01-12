@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="hexGradient512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" fill="url(#hexGradient512)" />
+
+  <!-- Hexagonal shape -->
+  <path
+    d="M256 56 L424 136 L424 376 L256 456 L88 376 L88 136 Z"
+    fill="#10b981"
+    opacity="0.3"
+  />
+
+  <!-- Inner hexagon highlight -->
+  <path
+    d="M256 88 L392 152 L392 360 L256 424 L120 360 L120 152 Z"
+    fill="white"
+    opacity="0.1"
+  />
+
+  <!-- PTM text -->
+  <text
+    x="256"
+    y="230"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="96"
+    font-weight="700"
+    fill="white"
+    text-anchor="middle"
+  >PTM</text>
+
+  <!-- SERI text -->
+  <text
+    x="256"
+    y="330"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="68"
+    font-weight="500"
+    fill="white"
+    text-anchor="middle"
+    opacity="0.9"
+  >SERI</text>
+</svg>

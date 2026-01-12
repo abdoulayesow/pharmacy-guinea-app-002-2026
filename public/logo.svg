@@ -1,0 +1,56 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle with Gradient -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad1)"/>
+
+  <!-- Gradient Definitions -->
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f0fdf4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Mortar and Pestle - Simplified Pharmacy Symbol -->
+  <g id="mortar-pestle">
+    <!-- Mortar Bowl -->
+    <path d="M 200 280 Q 200 320 256 340 Q 312 320 312 280 L 300 220 L 212 220 Z" fill="url(#grad2)" stroke="#059669" stroke-width="6" stroke-linejoin="round"/>
+    <!-- Mortar Base -->
+    <ellipse cx="256" cy="340" rx="60" ry="12" fill="#d1fae5" stroke="#059669" stroke-width="4"/>
+
+    <!-- Pestle -->
+    <g transform="rotate(-25 340 180)">
+      <rect x="320" y="140" width="20" height="90" rx="10" fill="url(#grad2)" stroke="#059669" stroke-width="4"/>
+      <ellipse cx="330" cy="140" rx="14" ry="18" fill="#ffffff" stroke="#059669" stroke-width="4"/>
+    </g>
+
+    <!-- Medical Cross Inside Mortar -->
+    <g id="cross">
+      <!-- Vertical bar -->
+      <rect x="248" y="240" width="16" height="50" rx="3" fill="#10b981"/>
+      <!-- Horizontal bar -->
+      <rect x="238" y="252" width="36" height="16" rx="3" fill="#10b981"/>
+    </g>
+  </g>
+
+  <!-- Decorative West African Pattern Elements (simplified geometric) -->
+  <g id="african-pattern" opacity="0.15">
+    <!-- Top pattern -->
+    <circle cx="180" cy="120" r="8" fill="#ffffff"/>
+    <circle cx="332" cy="120" r="8" fill="#ffffff"/>
+    <circle cx="256" cy="90" r="10" fill="#ffffff"/>
+
+    <!-- Bottom pattern -->
+    <circle cx="150" cy="380" r="6" fill="#ffffff"/>
+    <circle cx="362" cy="380" r="6" fill="#ffffff"/>
+    <circle cx="190" cy="410" r="7" fill="#ffffff"/>
+    <circle cx="322" cy="410" r="7" fill="#ffffff"/>
+  </g>
+
+  <!-- Subtle Ring Around -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.3"/>
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.2"/>
+</svg>

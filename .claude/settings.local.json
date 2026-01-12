@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view:*)",
+      "Skill(summary-generator)",
+      "Skill(summary-generator:*)",
+      "Bash(if not exist \".claude\\\\summaries\\\\01-11-2026\" mkdir \".claude\\\\summaries\\\\01-11-2026\")",
+      "Bash(npm run build:*)",
+      "Skill(frontend-design)",
+      "Skill(frontend-design:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e:*)"
+    ]
+  }
+}

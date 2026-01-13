@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Loader2,
   Calculator,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
@@ -27,6 +28,7 @@ import { formatCurrency } from '@/lib/shared/utils';
 import type { Product, Sale, SaleItem, CartItem, StockMovement } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
+import { CustomerAutocomplete } from '@/components/CustomerAutocomplete';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -275,7 +277,14 @@ export default function NouvelleVentePage() {
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md shadow-blue-500/30 flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-white text-xl font-bold tracking-tight">Nouvelle vente</h2>
+              <h2 className="text-white text-xl font-bold tracking-tight flex-1">Nouvelle vente</h2>
+              <button
+                onClick={() => router.push('/ventes/historique')}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800 hover:border-slate-600 hover:text-white transition-all active:scale-95"
+              >
+                <History className="w-4 h-4" />
+                <span className="text-sm font-medium">Historique</span>
+              </button>
             </div>
 
             {/* Search Bar */}
@@ -614,32 +623,17 @@ export default function NouvelleVentePage() {
             <p className="text-slate-400 text-sm">Optionnel - Vous pouvez passer cette étape</p>
           </div>
 
-          <Card className="p-5 rounded-xl shadow-sm border border-slate-700 bg-slate-900 space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Nom du client
-              </label>
-              <Input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Ex: Mamadou Diallo"
-                className="h-12 bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Téléphone (optionnel)
-              </label>
-              <Input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="Ex: +224 622 12 34 56"
-                className="h-12 bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
-              />
-            </div>
+          <Card className="p-5 rounded-xl shadow-sm border border-slate-700 bg-slate-900">
+            <CustomerAutocomplete
+              customerName={customerName}
+              customerPhone={customerPhone}
+              onCustomerSelect={(name, phone) => {
+                setCustomerName(name);
+                setCustomerPhone(phone);
+              }}
+              onCustomerNameChange={setCustomerName}
+              onCustomerPhoneChange={setCustomerPhone}
+            />
           </Card>
 
           <div className="space-y-3">
@@ -719,19 +713,11 @@ export default function NouvelleVentePage() {
                     : '0 2px 8px rgba(0,0,0,0.2)',
                 }}
               >
-                {/* Paper texture overlay */}
-                <div
-                  className="absolute inset-0 opacity-5 mix-blend-overlay pointer-events-none"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.3'/%3E%3C/svg%3E")`,
-                  }}
-                />
-
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110"
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-800 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110"
                       style={{
-                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4), inset 0 -2px 4px rgba(0,0,0,0.2)',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0,0,0,0.2)',
                       }}
                     >
                       <Banknote className="w-7 h-7 text-white drop-shadow-md" />
@@ -915,42 +901,14 @@ export default function NouvelleVentePage() {
               disabled={isProcessing}
               className="group relative w-full p-5 bg-gradient-to-br from-orange-900/30 to-orange-900/10 border-2 border-orange-700/50 hover:border-orange-500 rounded-xl text-left transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
               style={{
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2), 0 0 0 0 rgba(249, 115, 22, 0)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow = '0 4px 16px rgba(249, 115, 22, 0.3), 0 0 30px rgba(249, 115, 22, 0.1)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2), 0 0 0 0 rgba(249, 115, 22, 0)';
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
               }}
             >
-              {/* Digital grid pattern overlay */}
-              <div
-                className="absolute inset-0 opacity-10 mix-blend-overlay pointer-events-none"
-                style={{
-                  backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(249, 115, 22, 0.5) 2px, rgba(249, 115, 22, 0.5) 3px),
-                    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(249, 115, 22, 0.5) 2px, rgba(249, 115, 22, 0.5) 3px)`,
-                  backgroundSize: '20px 20px',
-                }}
-              />
-
-              {/* Animated signal waves */}
-              <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-                <div
-                  className="absolute top-1/2 left-1/4 w-32 h-32 rounded-full border-2 border-orange-500/20 animate-ping"
-                  style={{ animationDuration: '2s', animationDelay: '0s' }}
-                />
-                <div
-                  className="absolute top-1/2 left-1/4 w-32 h-32 rounded-full border-2 border-orange-500/20 animate-ping"
-                  style={{ animationDuration: '2s', animationDelay: '0.5s' }}
-                />
-              </div>
-
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110 group-hover:rotate-3"
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-700 to-orange-800 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110 group-hover:rotate-3"
                     style={{
-                      boxShadow: '0 4px 14px rgba(249, 115, 22, 0.5), inset 0 -2px 4px rgba(0,0,0,0.2)',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0,0,0,0.2)',
                     }}
                   >
                     {isProcessing && !showCashCalculator ? (
@@ -981,26 +939,14 @@ export default function NouvelleVentePage() {
               disabled={isProcessing}
               className="group relative w-full p-5 bg-gradient-to-br from-amber-900/30 to-amber-900/10 border-2 border-amber-700/50 hover:border-amber-500 rounded-xl text-left transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
               style={{
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
               }}
             >
-              {/* Document texture pattern */}
-              <div
-                className="absolute inset-0 opacity-5 mix-blend-overlay pointer-events-none"
-                style={{
-                  backgroundImage: `repeating-linear-gradient(0deg, rgba(245, 158, 11, 0.1) 0px, transparent 1px, transparent 2px, rgba(245, 158, 11, 0.1) 3px)`,
-                  backgroundSize: '100% 24px',
-                }}
-              />
-
-              {/* Subtle animated border accent */}
-              <div className="absolute -inset-[1px] bg-gradient-to-r from-transparent via-amber-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none" />
-
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="relative w-14 h-14 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110"
+                  <div className="relative w-14 h-14 rounded-xl bg-gradient-to-br from-amber-700 to-amber-800 shadow-lg flex items-center justify-center transform transition-transform group-hover:scale-110"
                     style={{
-                      boxShadow: '0 4px 14px rgba(245, 158, 11, 0.4), inset 0 -2px 4px rgba(0,0,0,0.2)',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0,0,0,0.2)',
                     }}
                   >
                     <Calculator className="w-7 h-7 text-white drop-shadow-md" />

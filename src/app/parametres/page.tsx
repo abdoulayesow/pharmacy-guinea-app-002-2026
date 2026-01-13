@@ -178,146 +178,142 @@ export default function ParametresPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+    <div className="min-h-screen bg-slate-950 text-white pb-20">
       <Header />
 
       <main className="max-w-md mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
         {/* User Profile */}
-        <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
           <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-              <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-500/10 flex items-center justify-center ring-2 ring-blue-500/20">
+              <User className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">Profil utilisateur</h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Informations du compte</p>
+              <h3 className="text-white font-semibold text-base sm:text-lg">Profil utilisateur</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Informations du compte</p>
             </div>
           </div>
 
           <div className="space-y-2 sm:space-y-3">
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-gray-600 dark:text-gray-300 text-sm font-medium">Nom</span>
-              <span className="text-gray-900 dark:text-white font-semibold">{currentUser?.name}</span>
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-sm font-medium">Nom</span>
+              <span className="text-white font-semibold">{currentUser?.name}</span>
             </div>
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-gray-600 dark:text-gray-300 text-sm font-medium">Role</span>
-              <span className="text-gray-900 dark:text-white font-semibold">
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-sm font-medium">Role</span>
+              <span className="text-white font-semibold">
                 {isOwner ? 'Proprietaire' : 'Employe(e)'}
               </span>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Appearance */}
-        <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
           <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-              <Globe className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-purple-500/10 flex items-center justify-center ring-2 ring-purple-500/20">
+              <Globe className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">Apparence</h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Personnaliser l&apos;affichage</p>
+              <h3 className="text-white font-semibold text-base sm:text-lg">Apparence</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Personnaliser l&apos;affichage</p>
             </div>
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
               <div>
-                <span className="text-gray-900 dark:text-white font-medium block">Theme</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Clair ou sombre</span>
+                <span className="text-white font-medium block">Theme</span>
+                <span className="text-xs text-slate-400">Clair ou sombre</span>
               </div>
               <ThemeToggle />
             </div>
 
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
               <div>
-                <span className="text-gray-900 dark:text-white font-medium block">Devise</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Monnaie d&apos;affichage</span>
+                <span className="text-white font-medium block">Devise</span>
+                <span className="text-xs text-slate-400">Monnaie d&apos;affichage</span>
               </div>
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">GNF</span>
+              <span className="text-slate-300 font-semibold">GNF</span>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Notifications */}
-        <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
           <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-              <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-500/10 flex items-center justify-center ring-2 ring-amber-500/20">
+              <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">Notifications</h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Alertes et rappels</p>
+              <h3 className="text-white font-semibold text-base sm:text-lg">Notifications</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Alertes et rappels</p>
             </div>
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+            <label className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors">
               <div>
-                <span className="text-gray-900 dark:text-white font-medium block">Stock faible</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Alertes de reapprovisionnement</span>
+                <span className="text-white font-medium block">Stock faible</span>
+                <span className="text-xs text-slate-400">Alertes de reapprovisionnement</span>
               </div>
               <input
                 type="checkbox"
                 checked={stockAlertEnabled}
                 onChange={(e) => setStockAlertEnabled(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                className="w-5 h-5 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500/50 bg-slate-700"
               />
             </label>
 
-            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+            <label className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors">
               <div>
-                <span className="text-gray-900 dark:text-white font-medium block">Synchronisation</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Etat de la connexion</span>
+                <span className="text-white font-medium block">Synchronisation</span>
+                <span className="text-xs text-slate-400">Etat de la connexion</span>
               </div>
               <input
                 type="checkbox"
                 checked={syncAlertEnabled}
                 onChange={(e) => setSyncAlertEnabled(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                className="w-5 h-5 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500/50 bg-slate-700"
               />
             </label>
           </div>
-        </Card>
+        </div>
 
         {/* Data & Sync */}
-        <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
           <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-              <Database className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20">
+              <Database className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">Donnees</h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Synchronisation et sauvegarde</p>
+              <h3 className="text-white font-semibold text-base sm:text-lg">Donnees</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Synchronisation et sauvegarde</p>
             </div>
           </div>
 
           <div className="space-y-3">
             <div className={cn(
-              'p-4 rounded-lg border',
+              'p-4 rounded-lg border ring-2',
               pendingSyncCount > 0
-                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-                : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                ? 'bg-amber-500/10 border-amber-500/30 ring-amber-500/20'
+                : 'bg-emerald-500/10 border-emerald-500/30 ring-emerald-500/20'
             )}>
               <div className="flex items-center gap-2 mb-2">
                 <div className={cn(
                   'w-2 h-2 rounded-full',
-                  pendingSyncCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+                  pendingSyncCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
                 )} />
                 <span className={cn(
                   'text-sm font-semibold',
-                  pendingSyncCount > 0
-                    ? 'text-amber-700 dark:text-amber-400'
-                    : 'text-emerald-700 dark:text-emerald-400'
+                  pendingSyncCount > 0 ? 'text-amber-400' : 'text-emerald-400'
                 )}>
                   {pendingSyncCount > 0 ? 'En attente' : 'Connecte'}
                 </span>
               </div>
               <p className={cn(
                 'text-sm',
-                pendingSyncCount > 0
-                  ? 'text-amber-600 dark:text-amber-300'
-                  : 'text-emerald-600 dark:text-emerald-300'
+                pendingSyncCount > 0 ? 'text-amber-300' : 'text-emerald-300'
               )}>
                 {pendingSyncCount > 0
                   ? `${pendingSyncCount} operation${pendingSyncCount > 1 ? 's' : ''} en attente de synchronisation`
@@ -325,38 +321,42 @@ export default function ParametresPage() {
               </p>
             </div>
 
-            <button className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+            <button className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]">
               <div className="flex items-center gap-3">
-                <Upload className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center ring-1 ring-blue-500/20">
+                  <Upload className="w-4 h-4 text-blue-400" />
+                </div>
                 <div className="text-left">
-                  <span className="text-gray-900 dark:text-white font-medium block">Forcer la synchronisation</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Synchroniser maintenant</span>
+                  <span className="text-white font-medium block">Forcer la synchronisation</span>
+                  <span className="text-xs text-slate-400">Synchroniser maintenant</span>
                 </div>
               </div>
             </button>
 
-            <button className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+            <button className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]">
               <div className="flex items-center gap-3">
-                <Download className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center ring-1 ring-purple-500/20">
+                  <Download className="w-4 h-4 text-purple-400" />
+                </div>
                 <div className="text-left">
-                  <span className="text-gray-900 dark:text-white font-medium block">Exporter les donnees</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Sauvegarde locale</span>
+                  <span className="text-white font-medium block">Exporter les donnees</span>
+                  <span className="text-xs text-slate-400">Sauvegarde locale</span>
                 </div>
               </div>
             </button>
           </div>
-        </Card>
+        </div>
 
         {/* Security - Owner Only */}
         {isOwner && (
-          <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20">
+                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" />
               </div>
               <div className="flex-1">
-                <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">Securite</h3>
-                <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Gestion des acces</p>
+                <h3 className="text-white font-semibold text-base sm:text-lg">Securite</h3>
+                <p className="text-xs sm:text-sm text-slate-400">Gestion des acces</p>
               </div>
             </div>
 
@@ -365,84 +365,88 @@ export default function ParametresPage() {
                 <button
                   key={user.id}
                   onClick={() => handleOpenPinDialog(user)}
-                  className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                  className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]"
                 >
                   <div className="text-left">
-                    <span className="text-gray-900 dark:text-white font-medium block">
+                    <span className="text-white font-medium block">
                       Modifier le PIN - {user.name}
                     </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-slate-400">
                       {user.role === 'OWNER' ? 'Proprietaire' : 'Employe'}
                     </span>
                   </div>
-                  <Key className="w-5 h-5 text-gray-400" />
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center ring-1 ring-orange-500/20">
+                    <Key className="w-4 h-4 text-orange-400" />
+                  </div>
                 </button>
               ))}
             </div>
-          </Card>
+          </div>
         )}
 
         {/* About */}
-        <Card className="p-4 sm:p-5 rounded-lg shadow-sm">
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
           <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
-              <Info className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-slate-500/10 flex items-center justify-center ring-2 ring-slate-500/20">
+              <Info className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-base sm:text-lg">A propos</h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Informations sur l&apos;application</p>
+              <h3 className="text-white font-semibold text-base sm:text-lg">A propos</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Informations sur l&apos;application</p>
             </div>
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-gray-600 dark:text-gray-300 text-sm font-medium">Version</span>
-              <span className="text-gray-900 dark:text-white font-semibold">1.0.0</span>
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-sm font-medium">Version</span>
+              <span className="text-white font-semibold">1.0.0</span>
             </div>
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-gray-600 dark:text-gray-300 text-sm font-medium">Pharmacie</span>
-              <span className="text-gray-900 dark:text-white font-semibold">Thierno Mamadou</span>
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-sm font-medium">Pharmacie</span>
+              <span className="text-white font-semibold">Thierno Mamadou</span>
             </div>
-            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-gray-600 dark:text-gray-300 text-sm font-medium">Localisation</span>
-              <span className="text-gray-900 dark:text-white font-semibold">Conakry, Guinee</span>
+            <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-sm font-medium">Localisation</span>
+              <span className="text-white font-semibold">Conakry, Guinee</span>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Danger Zone - Owner Only */}
         {isOwner && (
-          <Card className="p-5 rounded-lg shadow-sm bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900">
+          <div className="bg-gradient-to-br from-red-950/50 to-slate-900 rounded-2xl p-5 shadow-xl border-2 border-red-500/30 ring-2 ring-red-500/10">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-lg bg-red-600 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center ring-2 ring-red-500/40">
+                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
               </div>
               <div className="flex-1">
-                <h3 className="text-red-900 dark:text-red-100 font-semibold text-lg">Zone dangereuse</h3>
-                <p className="text-sm text-red-700 dark:text-red-300">Actions irreversibles</p>
+                <h3 className="text-red-300 font-semibold text-lg">Zone dangereuse</h3>
+                <p className="text-sm text-red-400/80">Actions irreversibles</p>
               </div>
             </div>
 
             <div className="space-y-3">
               <button
                 onClick={() => setShowClearDialog(true)}
-                className="w-full flex items-center justify-between p-3 bg-red-100 dark:bg-red-900/30 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                className="w-full flex items-center justify-between p-3 bg-red-500/10 border border-red-500/30 rounded-lg hover:bg-red-500/20 hover:border-red-500/50 transition-colors active:scale-[0.98] ring-1 ring-red-500/20"
               >
                 <div className="flex items-center gap-3">
-                  <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center ring-1 ring-red-500/30">
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </div>
                   <div className="text-left">
-                    <span className="text-red-900 dark:text-red-100 font-medium block">Reinitialiser la base</span>
-                    <span className="text-xs text-red-700 dark:text-red-300">Supprimer toutes les donnees</span>
+                    <span className="text-red-300 font-medium block">Reinitialiser la base</span>
+                    <span className="text-xs text-red-400/70">Supprimer toutes les donnees</span>
                   </div>
                 </div>
               </button>
             </div>
-          </Card>
+          </div>
         )}
 
         {/* Footer Info */}
-        <div className="p-4 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+        <div className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg">
+          <p className="text-xs text-center text-slate-400">
             Seri - Gestion de pharmacie<br />
             Concu pour la Pharmacie Thierno Mamadou
           </p>
@@ -451,20 +455,20 @@ export default function ParametresPage() {
 
       {/* Clear Database Confirmation Dialog */}
       {showClearDialog && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-sm shadow-xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl border border-slate-700 w-full max-w-sm shadow-2xl">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center">
-                  <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center ring-2 ring-red-500/40">
+                  <AlertTriangle className="w-6 h-6 text-red-400" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <h3 className="text-lg font-semibold text-white">
                     Confirmer la reinitialisation
                   </h3>
                 </div>
               </div>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
+              <p className="text-slate-300 mb-6">
                 Toutes les donnees seront supprimees definitivement. Vous serez
                 deconnecte et devrez vous reconnecter.
               </p>
@@ -472,7 +476,7 @@ export default function ParametresPage() {
                 <Button
                   onClick={() => setShowClearDialog(false)}
                   variant="outline"
-                  className="flex-1 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-800 hover:border-slate-500 bg-slate-800/50"
                   disabled={isClearing}
                 >
                   Annuler
@@ -480,7 +484,7 @@ export default function ParametresPage() {
                 <Button
                   onClick={handleClearDatabase}
                   variant="destructive"
-                  className="flex-1 bg-red-600 hover:bg-red-700"
+                  className="flex-1 bg-red-600 hover:bg-red-700 ring-2 ring-red-500/20"
                   disabled={isClearing}
                 >
                   {isClearing ? (
@@ -500,34 +504,34 @@ export default function ParametresPage() {
 
       {/* PIN Change Dialog */}
       {showPinDialog && selectedUserForPin && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 w-full max-w-sm shadow-xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl border border-slate-700 w-full max-w-sm shadow-2xl">
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                    <Key className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20">
+                    <Key className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    <h3 className="text-lg font-semibold text-white">
                       Modifier le PIN
                     </h3>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-xs sm:text-sm text-slate-400">
                       {selectedUserForPin.name}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowPinDialog(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-400" />
+                  <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
 
               {/* New PIN */}
               <div className="mb-4">
-                <label className="text-sm text-gray-500 dark:text-gray-400 mb-2 block">
+                <label className="text-sm text-slate-400 mb-2 block">
                   Nouveau PIN
                 </label>
                 <div className="flex justify-center gap-3 mb-2">
@@ -537,12 +541,12 @@ export default function ParametresPage() {
                       className={cn(
                         'w-12 h-12 rounded-lg border-2 flex items-center justify-center',
                         newPin.length > i
-                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
-                          : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
+                          ? 'border-emerald-500/50 bg-emerald-500/10 ring-2 ring-emerald-500/20'
+                          : 'border-slate-600 bg-slate-800/50'
                       )}
                     >
                       {newPin.length > i && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                       )}
                     </div>
                   ))}
@@ -551,7 +555,7 @@ export default function ParametresPage() {
 
               {/* Confirm PIN */}
               <div className="mb-4">
-                <label className="text-sm text-gray-500 dark:text-gray-400 mb-2 block">
+                <label className="text-sm text-slate-400 mb-2 block">
                   Confirmer le PIN
                 </label>
                 <div className="flex justify-center gap-3 mb-2">
@@ -561,12 +565,12 @@ export default function ParametresPage() {
                       className={cn(
                         'w-12 h-12 rounded-lg border-2 flex items-center justify-center',
                         confirmPin.length > i
-                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
-                          : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
+                          ? 'border-emerald-500/50 bg-emerald-500/10 ring-2 ring-emerald-500/20'
+                          : 'border-slate-600 bg-slate-800/50'
                       )}
                     >
                       {confirmPin.length > i && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                       )}
                     </div>
                   ))}
@@ -575,7 +579,7 @@ export default function ParametresPage() {
 
               {/* Error message */}
               {pinError && (
-                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm text-center ring-2 ring-red-500/20">
                   {pinError}
                 </div>
               )}
@@ -591,7 +595,7 @@ export default function ParametresPage() {
                         newPin.length < 4 ? 'new' : 'confirm'
                       )
                     }
-                    className="h-12 rounded-lg text-lg font-semibold bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-95 transition-all"
+                    className="h-12 rounded-lg text-lg font-semibold bg-slate-800/50 border border-slate-700 text-white hover:bg-slate-800 hover:border-slate-600 active:scale-95 transition-all"
                   >
                     {num}
                   </button>
@@ -600,7 +604,7 @@ export default function ParametresPage() {
                   onClick={() =>
                     handleDeletePin(newPin.length < 4 || confirmPin.length === 0 ? 'new' : 'confirm')
                   }
-                  className="h-12 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 active:scale-95 transition-all text-xl"
+                  className="h-12 rounded-lg font-medium bg-slate-800/50 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:border-slate-600 active:scale-95 transition-all text-xl"
                 >
                   &#8592;
                 </button>
@@ -611,7 +615,7 @@ export default function ParametresPage() {
                       newPin.length < 4 ? 'new' : 'confirm'
                     )
                   }
-                  className="h-12 rounded-lg text-lg font-semibold bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-95 transition-all"
+                  className="h-12 rounded-lg text-lg font-semibold bg-slate-800/50 border border-slate-700 text-white hover:bg-slate-800 hover:border-slate-600 active:scale-95 transition-all"
                 >
                   0
                 </button>
@@ -621,7 +625,7 @@ export default function ParametresPage() {
                     setConfirmPin('');
                     setPinError('');
                   }}
-                  className="h-12 rounded-lg font-medium text-xs bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 active:scale-95 transition-all"
+                  className="h-12 rounded-lg font-medium text-xs bg-slate-800/50 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:border-slate-600 active:scale-95 transition-all"
                 >
                   Effacer
                 </button>
@@ -633,7 +637,7 @@ export default function ParametresPage() {
                 disabled={
                   newPin.length !== 4 || confirmPin.length !== 4 || isSavingPin
                 }
-                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl"
+                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl ring-2 ring-emerald-500/20"
               >
                 {isSavingPin ? (
                   <>

@@ -5,12 +5,13 @@ import { db } from '@/lib/client/db';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
 import { ArrowLeft, Printer, Share2, Banknote, Smartphone, FileText, CheckCircle, Clock, AlertCircle, Plus, Receipt } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, use } from 'react';
 import type { Product, CreditPayment } from '@/lib/shared/types';
 
-export default function SaleDetailPage({ params }: { params: { id: string } }) {
+export default function SaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const saleId = parseInt(params.id);
+  const unwrappedParams = use(params);
+  const saleId = parseInt(unwrappedParams.id);
 
   const [showPaymentForm, setShowPaymentForm] = useState(false);
 

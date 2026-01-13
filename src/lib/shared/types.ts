@@ -82,6 +82,10 @@ export interface Sale {
   due_date?: Date; // Required for CREDIT payment method
   amount_paid: number; // Amount paid so far (= total for CASH/ORANGE_MONEY, can be partial for CREDIT)
   amount_due: number; // Remaining amount to be paid (= 0 for CASH/ORANGE_MONEY)
+  // 🆕 Sale editing tracking (Phase 3)
+  modified_at?: Date; // Last modification timestamp
+  modified_by?: string; // User ID who last modified
+  edit_count?: number; // Number of times this sale was edited
 }
 
 // 🆕 Credit payment tracking - records partial payments on credit sales
@@ -129,6 +133,7 @@ export interface Expense {
 
 export type StockMovementType =
   | 'SALE'
+  | 'SALE_EDIT' // 🆕 Phase 3: Sale correction/editing (audit trail)
   | 'ADJUSTMENT'
   | 'INVENTORY'
   | 'RECEIPT'

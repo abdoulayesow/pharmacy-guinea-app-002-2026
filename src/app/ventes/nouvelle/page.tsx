@@ -1193,7 +1193,7 @@ export default function NouvelleVentePage() {
                     </div>
                     <div>
                       <h3 className="text-white font-black text-2xl tracking-tight mb-1">
-                        Engagement de Crédit
+                        Crédit
                       </h3>
                       <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -1211,8 +1211,9 @@ export default function NouvelleVentePage() {
                   </div>
                 </div>
 
-                {/* Form content */}
-                <div className="relative p-6 space-y-5">
+                {/* Form content - Scrollable */}
+                <div className="relative max-h-[70vh] overflow-y-auto">
+                  <div className="relative p-5 space-y-4">
                   {/* Amount obligation */}
                   <div className="relative bg-gradient-to-br from-amber-950/50 to-amber-900/20 rounded-2xl p-5 border-2 border-amber-700/50"
                     style={{
@@ -1224,7 +1225,7 @@ export default function NouvelleVentePage() {
                         <div className="text-xs font-bold text-amber-400 mb-1 uppercase tracking-widest">
                           Montant Dû
                         </div>
-                        <div className="text-4xl font-black text-amber-400"
+                        <div className="text-3xl font-black text-amber-400"
                           style={{
                             fontVariantNumeric: 'tabular-nums',
                             textShadow: '0 0 20px rgba(245, 158, 11, 0.3)',
@@ -1262,7 +1263,7 @@ export default function NouvelleVentePage() {
                       value={creditDueDate.toISOString().split('T')[0]}
                       onChange={(e) => setCreditDueDate(new Date(e.target.value))}
                       min={new Date().toISOString().split('T')[0]}
-                      className="h-16 bg-slate-950 border-2 border-amber-900/50 focus:border-amber-500 rounded-xl text-lg font-bold text-center text-amber-400"
+                      className="h-14 bg-slate-950 border-2 border-amber-900/50 focus:border-amber-500 rounded-xl text-lg font-bold text-center text-amber-400"
                       style={{
                         fontVariantNumeric: 'tabular-nums',
                       }}
@@ -1336,7 +1337,7 @@ export default function NouvelleVentePage() {
                         setShowCreditDialog(false);
                         setCreditDueDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
                       }}
-                      className="flex-1 h-14 rounded-xl border-2 border-slate-700 hover:border-slate-600 font-bold text-slate-300 hover:text-white transition-all"
+                      className="flex-1 h-12 rounded-xl border-2 border-slate-700 hover:border-slate-600 font-bold text-slate-300 hover:text-white transition-all"
                     >
                       Annuler
                     </Button>
@@ -1346,7 +1347,7 @@ export default function NouvelleVentePage() {
                         handlePayment('CREDIT');
                       }}
                       disabled={isProcessing}
-                      className="relative flex-[2] h-14 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:via-amber-400 hover:to-amber-500 text-white font-black rounded-xl shadow-xl shadow-amber-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-amber-400 overflow-hidden"
+                      className="relative flex-[2] h-12 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:via-amber-400 hover:to-amber-500 text-white font-black rounded-xl shadow-xl shadow-amber-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-amber-400 overflow-hidden"
                       style={{
                         boxShadow: '0 8px 24px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
                       }}
@@ -1354,17 +1355,18 @@ export default function NouvelleVentePage() {
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-6 h-6 mr-2 animate-spin" />
-                          Engagement...
+                          Confirmation...
                         </>
                       ) : (
                         <>
                           <Check className="w-6 h-6 mr-2 drop-shadow-lg" />
-                          <span className="uppercase tracking-wider">Signer L'Engagement</span>
+                          <span className="uppercase tracking-wider">Confirmer</span>
                         </>
                       )}
                       {/* Shine effect */}
                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
                     </Button>
+                  </div>
                   </div>
                 </div>
               </div>

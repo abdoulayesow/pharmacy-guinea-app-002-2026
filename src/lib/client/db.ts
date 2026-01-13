@@ -98,6 +98,21 @@ class SeriDatabase extends Dexie {
       supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
       credit_payments: '++id, serverId, sale_id, payment_date, synced',
     });
+
+    // Version 5: Add sale editing support (Phase 3 - modified_at index)
+    this.version(5).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced', // 🆕 Added modified_at index
+      sale_items: '++id, sale_id, product_id',
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, synced',
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    });
   }
 }
 

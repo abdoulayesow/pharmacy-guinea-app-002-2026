@@ -277,19 +277,19 @@ export default function StocksPage() {
 
       <main className="max-w-md mx-auto px-4 py-6 space-y-4">
         {/* Header Card - Dark Theme */}
-        <div className="relative bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 border border-slate-700">
-          <div className="relative flex items-center justify-between mb-4">
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-4 border border-slate-700">
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center">
-                <Package className="w-6 h-6 text-white" strokeWidth={2} />
+              <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center">
+                <Package className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
               <div>
-                <h2 className="text-white text-xl font-bold">Inventaire</h2>
+                <h2 className="text-white text-lg font-bold">Stock</h2>
               </div>
             </div>
             <Button
               onClick={handleOpenAdd}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-11 px-4 font-semibold text-sm"
+              className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-10 px-3 font-semibold text-xs"
             >
               <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
               Nouveau produit
@@ -304,7 +304,7 @@ export default function StocksPage() {
               placeholder="Rechercher..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 h-12 bg-slate-950 border-slate-700 focus:border-emerald-500 rounded-lg text-white placeholder:text-slate-500"
+              className="pl-11 h-10 bg-slate-950 border-slate-700 focus:border-emerald-500 rounded-lg text-white placeholder:text-slate-500"
             />
           </div>
 
@@ -343,7 +343,7 @@ export default function StocksPage() {
           <button
             onClick={() => setSelectedFilter('all')}
             className={cn(
-              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all',
+              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all',
               selectedFilter === 'all'
                 ? 'bg-slate-700 text-white'
                 : 'bg-slate-900 text-slate-400 border border-slate-700'
@@ -354,7 +354,7 @@ export default function StocksPage() {
           <button
             onClick={() => setSelectedFilter('alerts')}
             className={cn(
-              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2',
               selectedFilter === 'alerts'
                 ? 'bg-slate-700 text-white'
                 : 'bg-slate-900 text-slate-400 border border-slate-700'
@@ -371,7 +371,7 @@ export default function StocksPage() {
           <button
             onClick={() => setSelectedFilter('expiring')}
             className={cn(
-              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2',
               selectedFilter === 'expiring'
                 ? 'bg-slate-700 text-white'
                 : 'bg-slate-900 text-slate-400 border border-slate-700'
@@ -410,7 +410,7 @@ export default function StocksPage() {
               return (
                 <div
                   key={product.id}
-                  className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-4 border border-slate-700"
+                  className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-3 border border-slate-700"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">

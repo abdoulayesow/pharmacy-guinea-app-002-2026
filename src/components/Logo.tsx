@@ -1,84 +1,75 @@
 import { cn } from '@/lib/utils';
 
 interface LogoProps {
+  variant?: 'icon' | 'icon-simple' | 'horizontal' | 'full';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-export function Logo({ size = 'md', className = '' }: LogoProps) {
-  const dimensions = {
+export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProps) {
+  // Icon variant dimensions (square medical cross)
+  const iconDimensions = {
     sm: { width: 40, height: 40 },
     md: { width: 60, height: 60 },
     lg: { width: 100, height: 100 },
   };
 
-  const { width, height } = dimensions[size];
-
-  // Font sizes relative to logo size
-  const fontSizes = {
-    sm: { ptm: 10, seri: 7 },
-    md: { ptm: 14, seri: 10 },
-    lg: { ptm: 22, seri: 16 },
+  // Icon simple variant dimensions (simple medical cross)
+  const iconSimpleDimensions = {
+    sm: { width: 36, height: 36 },
+    md: { width: 56, height: 56 },
+    lg: { width: 90, height: 90 },
   };
 
-  const { ptm: ptmSize, seri: seriSize } = fontSizes[size];
+  // Horizontal variant dimensions (logo + text + location)
+  const horizontalDimensions = {
+    sm: { width: 120, height: 36 },
+    md: { width: 180, height: 54 },
+    lg: { width: 250, height: 75 },
+  };
+
+  // Full variant dimensions (complete branding with logo + pharmacy name + location)
+  const fullDimensions = {
+    sm: { width: 140, height: 42 },
+    md: { width: 200, height: 60 },
+    lg: { width: 280, height: 84 },
+  };
+
+  // Select dimensions based on variant
+  let dimensions;
+  switch (variant) {
+    case 'icon-simple':
+      dimensions = iconSimpleDimensions[size];
+      break;
+    case 'horizontal':
+      dimensions = horizontalDimensions[size];
+      break;
+    case 'full':
+      dimensions = fullDimensions[size];
+      break;
+    default:
+      dimensions = iconDimensions[size];
+  }
+
+  // Select image source based on variant
+  const imageMap = {
+    'icon': '/images/pharmacie-thierno-mamadou-icon.svg',
+    'icon-simple': '/images/pharmacie-thierno-mamadou-icon-simple.svg',
+    'horizontal': '/images/pharmacie-thierno-mamadou-horizontal.svg',
+    'full': '/images/pharmacie-thierno-mamadou-full.svg',
+  };
+  const imageSrc = imageMap[variant];
 
   return (
-    <div className={cn('relative', className)} style={{ width, height }}>
-      <svg
-        width={width}
-        height={height}
-        viewBox="0 0 80 80"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <defs>
-          <linearGradient id="hexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#059669" />
-          </linearGradient>
-        </defs>
-
-        {/* Hexagonal pharmacy shape */}
-        <path
-          d="M40 4 L72 20 L72 60 L40 76 L8 60 L8 20 Z"
-          fill="url(#hexGradient)"
-        />
-
-        {/* Inner glow/highlight */}
-        <path
-          d="M40 12 L64 24 L64 56 L40 68 L16 56 L16 24 Z"
-          fill="#10b981"
-          opacity="0.3"
-        />
-
-        {/* PTM text */}
-        <text
-          x="40"
-          y="38"
-          fontFamily="system-ui, -apple-system, sans-serif"
-          fontSize={ptmSize}
-          fontWeight="700"
-          fill="white"
-          textAnchor="middle"
-        >
-          PTM
-        </text>
-
-        {/* SERI text below */}
-        <text
-          x="40"
-          y="54"
-          fontFamily="system-ui, -apple-system, sans-serif"
-          fontSize={seriSize}
-          fontWeight="500"
-          fill="white"
-          textAnchor="middle"
-          opacity="0.9"
-        >
-          SERI
-        </text>
-      </svg>
+    <div
+      className={cn('relative flex-shrink-0', className)}
+      style={{ width: dimensions.width, height: dimensions.height }}
+    >
+      <img
+        src={imageSrc}
+        alt="Pharmacie Thierno Mamadou"
+        className="w-full h-full object-contain"
+      />
     </div>
   );
 }
@@ -97,7 +88,7 @@ export function LogoWithText({ size = 'md', showSubtitle = false }: LogoWithText
 
   return (
     <div className="flex items-center gap-3">
-      <Logo size={size} />
+      <Logo variant="icon" size={size} />
       <div>
         <h1
           className={cn(

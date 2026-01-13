@@ -9,6 +9,8 @@ interface AuthState {
   isAuthenticated: boolean;
   failedAttempts: number;
   lockedUntil: Date | null;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   login: (user: User) => void;
   logout: () => void;
   incrementFailedAttempts: () => void;
@@ -24,6 +26,11 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       failedAttempts: 0,
       lockedUntil: null,
+      _hasHydrated: false,
+
+      setHasHydrated: (state) => {
+        set({ _hasHydrated: state });
+      },
 
       login: (user) =>
         set({
@@ -82,6 +89,9 @@ export const useAuthStore = create<AuthState>()(
         failedAttempts: state.failedAttempts,
         lockedUntil: state.lockedUntil,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

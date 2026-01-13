@@ -7,9 +7,12 @@ import { Logo } from '@/components/Logo';
 
 export default function HomePage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, _hasHydrated } = useAuthStore();
 
   useEffect(() => {
+    // Wait for store to hydrate from localStorage before redirecting
+    if (!_hasHydrated) return;
+
     // Redirect based on auth status
     const timer = setTimeout(() => {
       if (isAuthenticated) {
@@ -20,7 +23,7 @@ export default function HomePage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, _hasHydrated, router]);
 
   // Show a brief loading screen while redirecting
   return (

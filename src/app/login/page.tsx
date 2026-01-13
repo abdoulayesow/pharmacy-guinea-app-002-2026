@@ -142,17 +142,22 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-800 flex flex-col">
       {/* Header with Logo and Branding */}
-      <div className="relative pt-16 pb-12 px-4">
-        <div className="max-w-md mx-auto text-center">
-          <div className="flex justify-center mb-6">
-            <Logo size="lg" />
+      <div className="relative pt-12 sm:pt-16 pb-8 sm:pb-12 px-4">
+        <div className="max-w-md mx-auto text-center space-y-6 sm:space-y-8">
+          {/* Pharmacy Logo with Full Branding */}
+          <div className="flex justify-center">
+            <Logo variant="full" size="lg" />
           </div>
-          <h1 className="text-5xl mb-3 text-white tracking-tight font-bold">
-            Seri
-          </h1>
-          <p className="text-slate-300 text-lg font-semibold mb-2">
-            Pharmacie Thierno Mamadou
-          </p>
+
+          {/* App Name with Gradient */}
+          <div>
+            <h1 className="text-4xl sm:text-5xl mb-2 sm:mb-3 text-white tracking-tight font-bold">
+              Seri
+            </h1>
+            <p className="text-slate-300 text-base sm:text-lg font-medium">
+              Gestion de pharmacie
+            </p>
+          </div>
         </div>
       </div>
 

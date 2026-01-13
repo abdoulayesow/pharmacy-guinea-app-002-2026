@@ -1,9 +1,10 @@
 /**
  * Client-side authentication utilities
  * Uses bcryptjs for PIN hashing (works in browser)
+ *
+ * IMPORTANT: bcryptjs is dynamically imported to reduce initial bundle size
+ * and speed up compilation. It's only loaded when actually needed.
  */
-
-import { hash, compare } from 'bcryptjs';
 
 /**
  * Hash a PIN for secure storage in IndexedDB
@@ -11,8 +12,10 @@ import { hash, compare } from 'bcryptjs';
  * @returns Promise<string> - bcrypt hash
  */
 export async function hashPin(pin: string): Promise<string> {
+  // Dynamic import - only loads bcryptjs when actually hashing
+  const bcrypt = await import('bcryptjs');
   // Use 10 rounds (balance between security and performance on low-end devices)
-  return await hash(pin, 10);
+  return await bcrypt.hash(pin, 10);
 }
 
 /**
@@ -23,7 +26,9 @@ export async function hashPin(pin: string): Promise<string> {
  */
 export async function verifyPin(pin: string, storedHash: string): Promise<boolean> {
   try {
-    return await compare(pin, storedHash);
+    // Dynamic import - only loads bcryptjs when actually verifying
+    const bcrypt = await import('bcryptjs');
+    return await bcrypt.compare(pin, storedHash);
   } catch (error) {
     console.error('PIN verification error:', error);
     return false;

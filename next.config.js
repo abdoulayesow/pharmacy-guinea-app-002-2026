@@ -75,9 +75,13 @@ const nextConfig = {
   // Production optimizations
   productionBrowserSourceMaps: false,
 
+  // Allow cross-origin requests from local network IPs during development
+  // This enables testing on mobile devices connected to the same network
+  allowedDevOrigins: ['http://192.168.40.145:8888'],
+
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: ['lucide-react', 'dexie-react-hooks'],
+    optimizePackageImports: ['lucide-react'],
   },
 };
 

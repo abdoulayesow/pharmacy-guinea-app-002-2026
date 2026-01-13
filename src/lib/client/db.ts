@@ -53,39 +53,51 @@ export const db = new SeriDatabase();
 // Seed Initial Data
 // ============================================================================
 
+// Mutex to prevent concurrent seeding
+let isSeeding = false;
+let seedingComplete = false;
+
 /**
  * Seed initial users if database is empty
  * These are the demo users for "Pharmacie Thierno Mamadou"
+ * Uses mutex to prevent race conditions when called from multiple pages
  */
 export async function seedInitialData() {
+  // If already seeded or currently seeding, skip
+  if (seedingComplete || isSeeding) {
+    return;
+  }
+
   const userCount = await db.users.count();
 
   if (userCount === 0) {
+    isSeeding = true;
     console.log('[Seri DB] Seeding initial data...');
 
-    // Add demo users
-    // PIN is "1234" for all users (hashed with bcrypt)
-    await db.users.bulkAdd([
-      {
-        id: 'user-owner-mamadou',
-        name: 'Mamadou',
-        role: 'OWNER',
-        pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
-        avatar: 'M',
-        createdAt: new Date(),
-      },
-      {
-        id: 'user-employee-fatoumata',
-        name: 'Fatoumata',
-        role: 'EMPLOYEE',
-        pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
-        avatar: 'F',
-        createdAt: new Date(),
-      },
-    ]);
+    try {
+      // Add demo users
+      // PIN is "1234" for all users (hashed with bcrypt)
+      await db.users.bulkAdd([
+        {
+          id: 'user-owner-oumar',
+          name: 'Oumar',
+          role: 'OWNER',
+          pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
+          avatar: 'O',
+          createdAt: new Date(),
+        },
+        {
+          id: 'user-employee-abdoulaye',
+          name: 'Abdoulaye',
+          role: 'EMPLOYEE',
+          pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
+          avatar: 'A',
+          createdAt: new Date(),
+        },
+      ]);
 
-    // Add demo products
-    await db.products.bulkAdd([
+      // Add demo products
+      await db.products.bulkAdd([
       {
         name: 'Paracetamol 500mg',
         category: 'Antidouleur',
@@ -168,7 +180,23 @@ export async function seedInitialData() {
       },
     ]);
 
-    console.log('[Seri DB] Seed data complete');
+      console.log('[Seri DB] Seed data complete');
+      seedingComplete = true;
+    } catch (error: any) {
+      // Ignore ConstraintError (duplicate key) - data already exists
+      if (error?.name === 'BulkError' && error?.failures?.some((f: any) => f?.name === 'ConstraintError')) {
+        console.log('[Seri DB] Data already seeded, skipping');
+        seedingComplete = true;
+      } else {
+        console.error('[Seri DB] Failed to seed data:', error);
+        throw error;
+      }
+    } finally {
+      isSeeding = false;
+    }
+  } else {
+    // Data already exists
+    seedingComplete = true;
   }
 }
 

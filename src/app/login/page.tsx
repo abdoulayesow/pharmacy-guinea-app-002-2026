@@ -104,17 +104,58 @@ export default function LoginPage() {
         return;
       }
 
-      // Verify PIN using bcrypt
-      const isPinValid = await verifyPin(pin, user.pinHash);
+      // Try API authentication first (when online)
+      let isApiSuccess = false;
+      let jwtToken: string | undefined;
 
-      if (!isPinValid) {
-        // Incorrect PIN
-        incrementFailedAttempts();
-        setError('Code PIN incorrect');
-        triggerShake();
-        setPin('');
-        setIsLoading(false);
-        return;
+      if (navigator.onLine) {
+        try {
+          const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: selectedUser, pin }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.token) {
+              isApiSuccess = true;
+              jwtToken = data.token;
+              // Store JWT token in localStorage
+              localStorage.setItem('seri-jwt-token', jwtToken);
+              console.log('✅ Authenticated via API');
+            }
+          } else if (response.status === 401 || response.status === 404) {
+            // Invalid credentials from API
+            incrementFailedAttempts();
+            setError('Code PIN incorrect');
+            triggerShake();
+            setPin('');
+            setIsLoading(false);
+            return;
+          }
+          // If other error, fall through to offline verification
+        } catch (apiError) {
+          console.log('⚠️ API auth failed, falling back to offline:', apiError);
+          // Fall through to offline verification
+        }
+      }
+
+      // Fallback to offline verification (when API fails or offline)
+      if (!isApiSuccess) {
+        console.log('🔄 Using offline authentication');
+        const isPinValid = await verifyPin(pin, user.pinHash);
+
+        if (!isPinValid) {
+          // Incorrect PIN
+          incrementFailedAttempts();
+          setError('Code PIN incorrect');
+          triggerShake();
+          setPin('');
+          setIsLoading(false);
+          return;
+        }
+        console.log('✅ Authenticated offline');
       }
 
       // PIN is correct - reset failed attempts and log in

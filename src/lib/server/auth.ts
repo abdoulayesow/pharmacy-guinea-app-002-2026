@@ -35,11 +35,21 @@ export async function verifyPin(pin: string, hash: string): Promise<boolean> {
  */
 export async function generateToken(user: Omit<User, 'pinHash'>): Promise<string> {
   try {
-    const token = await new SignJWT({
+    const payload: Record<string, string> = {
       userId: user.id,
       name: user.name,
       role: user.role,
-    })
+    };
+
+    // Optionally include email and phone if present
+    if (user.email) {
+      payload.email = user.email;
+    }
+    if (user.phone) {
+      payload.phone = user.phone;
+    }
+
+    const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: JWT_ALGORITHM })
       .setIssuedAt()
       .setExpirationTime(JWT_EXPIRATION)
@@ -59,6 +69,8 @@ export async function verifyToken(token: string): Promise<{
   userId: string;
   name: string;
   role: string;
+  email?: string;
+  phone?: string;
 } | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
@@ -66,6 +78,8 @@ export async function verifyToken(token: string): Promise<{
       userId: payload.userId as string,
       name: payload.name as string,
       role: payload.role as string,
+      email: payload.email as string | undefined,
+      phone: payload.phone as string | undefined,
     };
   } catch (error) {
     console.error('[Auth] Token verification error:', error);

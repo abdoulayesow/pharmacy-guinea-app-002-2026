@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  phone     String?
+  pinHash   String   @map("pin_hash")
+  role      String   // OWNER | EMPLOYEE
+  avatar    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  sales           Sale[]
+  expenses        Expense[]
+  stockMovements  StockMovement[]
+
+  @@map("users")
+}
+
+model Product {
+  id            Int       @id @default(autoincrement())
+  name          String
+  price         Int       // Stored in GNF
+  priceBuy      Int?      @map("price_buy")
+  stock         Int       @default(0)
+  stockMin      Int       @default(10) @map("stock_min")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  saleItems       SaleItem[]
+  stockMovements  StockMovement[]
+
+  @@map("products")
+}
+
+model Sale {
+  id              Int       @id @default(autoincrement())
+  total           Int
+  paymentMethod   String    @map("payment_method") // CASH | ORANGE_MONEY | CREDIT
+  paymentStatus   String    @default("PAID") @map("payment_status") // PAID | PENDING | PARTIAL
+  paymentRef      String?   @map("payment_ref")
+  amountPaid      Int       @default(0) @map("amount_paid")
+  amountDue       Int       @default(0) @map("amount_due")
+  dueDate         DateTime? @map("due_date")
+  customerName    String?   @map("customer_name")
+  customerPhone   String?   @map("customer_phone")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  userId          String    @map("user_id")
+  modifiedAt      DateTime? @map("modified_at")
+  modifiedBy      String?   @map("modified_by")
+  editCount       Int       @default(0) @map("edit_count")
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id])
+  items           SaleItem[]
+  creditPayments  CreditPayment[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        Int   @id @default(autoincrement())
+  saleId    Int   @map("sale_id")
+  productId Int   @map("product_id")
+  quantity  Int
+  unitPrice Int   @map("unit_price")
+  subtotal  Int
+
+  // Relations
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model CreditPayment {
+  id          Int       @id @default(autoincrement())
+  saleId      Int       @map("sale_id")
+  amount      Int
+  method      String    // CASH | ORANGE_MONEY
+  reference   String?
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  recordedBy  String    @map("recorded_by")
+
+  // Relations
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("credit_payments")
+}
+
+model Expense {
+  id          Int       @id @default(autoincrement())
+  amount      Int
+  category    String    // STOCK_PURCHASE | RENT | SALARY | ELECTRICITY | TRANSPORT | OTHER
+  description String
+  date        DateTime  @default(now())
+  createdAt   DateTime  @default(now()) @map("created_at")
+  userId      String    @map("user_id")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@map("expenses")
+}
+
+model StockMovement {
+  id             Int       @id @default(autoincrement())
+  productId      Int       @map("product_id")
+  type           String    // SALE | SALE_EDIT | ADJUSTMENT | INVENTORY | DAMAGED | EXPIRED
+  quantityChange Int       @map("quantity_change") // Can be negative
+  reason         String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  userId         String    @map("user_id")
+
+  // Relations
+  product        Product   @relation(fields: [productId], references: [id])
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@map("stock_movements")
+}

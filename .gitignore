@@ -52,6 +52,6 @@ next-env.d.ts
 *.swp
 *.swo
 *~
-
+.env
 # OS
 Thumbs.db

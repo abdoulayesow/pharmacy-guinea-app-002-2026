@@ -22,6 +22,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          # Stub DATABASE_URL for Prisma generation
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+
       - name: TypeScript type check
         run: npx tsc --noEmit
 
@@ -44,6 +50,7 @@ jobs:
         run: npm run build
         env:
           # Provide stub env vars for build
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
           JWT_SECRET: ci-test-secret-do-not-use-in-production
 
   bundle-size:
@@ -64,6 +71,7 @@ jobs:
       - name: Build with bundle analyzer
         run: npm run analyze
         env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
           JWT_SECRET: ci-test-secret-do-not-use-in-production
 
       - name: Check bundle size (< 5MB requirement)

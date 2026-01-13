@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPin, generateToken } from '@/lib/server/auth';
+import { prisma } from '@/lib/server/prisma';
 import { isValidPin } from '@/lib/shared/utils';
 import type { LoginRequest, LoginResponse } from '@/lib/shared/types';
 
@@ -36,25 +37,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // In MVP, we use IndexedDB on the client side
-    // For now, this endpoint returns a stub response
-    // In Phase 2, this will verify against Neon PostgreSQL
-
-    // TODO: Phase 2 - Query user from Prisma/Neon
-    // const user = await prisma.user.findUnique({ where: { id: userId } });
-
-    // For MVP, simulate successful login (client handles PIN verification)
-    // This is because we're offline-first and user data is in IndexedDB
-    return NextResponse.json<LoginResponse>(
-      {
-        success: true,
-        error: 'MVP: Authentication handled client-side via IndexedDB',
+    // Query user from Prisma/Neon database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        avatar: true,
+        pinHash: true,
+        createdAt: true,
       },
-      { status: 501 } // Not Implemented (will be implemented in Phase 2)
-    );
+    });
 
-    // Phase 2 implementation (commented out for now):
-    /*
     if (!user) {
       return NextResponse.json<LoginResponse>(
         {
@@ -81,6 +78,8 @@ export async function POST(request: NextRequest) {
     const token = await generateToken({
       id: user.id,
       name: user.name,
+      email: user.email,
+      phone: user.phone,
       role: user.role,
       avatar: user.avatar,
       createdAt: user.createdAt,
@@ -92,12 +91,13 @@ export async function POST(request: NextRequest) {
       user: {
         id: user.id,
         name: user.name,
+        email: user.email,
+        phone: user.phone,
         role: user.role,
         avatar: user.avatar,
         createdAt: user.createdAt,
       },
     });
-    */
   } catch (error) {
     console.error('[API] Login error:', error);
     return NextResponse.json<LoginResponse>(

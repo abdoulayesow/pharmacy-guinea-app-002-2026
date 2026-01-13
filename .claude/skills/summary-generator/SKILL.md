@@ -1,6 +1,6 @@
 ---
 name: summary-generator
-description: Generates session summaries with resume prompts and self-reflection. Use when completing features, before context limits (~50% capacity), or when user says "summary", "wrap up", "save progress", "end session". Creates markdown in .claude/summaries/ with completed work, remaining tasks, and lessons learned.
+description: Generates session summaries and resume prompts for multi-session work. Use when completing features, before context limits (~50% capacity), or when user says "summary", "wrap up", "save progress", "end session". Creates markdown in docs/summaries/ with completed work, files modified, and restart instructions.
 allowed-tools: Read, Glob, Grep, Bash(git diff:*), Bash(git log:*), Bash(git status:*), Write
 ---
 
@@ -8,40 +8,16 @@ allowed-tools: Read, Glob, Grep, Bash(git diff:*), Bash(git log:*), Bash(git sta
 
 ## Overview
 
-This skill creates comprehensive session summaries for complex multi-session work, enabling seamless resumption of tasks. It generates a markdown file in `.claude/summaries/` with a standardized format.
-
-## MANDATORY Sections
-
-Every summary MUST include these critical sections:
-
-1. **Resume Prompt** - Copy-paste ready prompt with:
-   - Remaining tasks as numbered list
-   - Options for next direction (if applicable)
-   - Key files to review first
-   - Any blockers or decisions needed
-
-2. **Self-Reflection** - Learning from the session:
-   - What worked well (patterns to repeat)
-   - What failed and why (patterns to avoid)
-   - Specific improvements for next session
-   - Command/tool usage lessons
+This skill creates comprehensive session summaries for complex multi-session work, enabling seamless resumption of tasks. It generates a markdown file in `docs/summaries/` with a standardized format.
 
 ## When to Use
 
-### Trigger Phrases (User Says)
-
-**To Generate Summary:**
-- "wrap up"
-- "generate summary"
-- "save progress"
-- "end session"
-- "let's wrap up"
-
-**To Resume Previous Session:**
-- "resume from last session"
-- "continue from where we left off"
-- "pick up where we stopped"
-- "resume session"
+Trigger this skill when:
+- User explicitly requests a summary ("generate summary", "wrap up", "save progress")
+- Completing a significant feature or refactor
+- Conversation context is reaching limits (~50% before auto-compact)
+- Before starting a new chat session
+- When collaborating with team members on the same feature
 
 ### Auto-Suggest Triggers
 
@@ -51,30 +27,9 @@ Proactively suggest generating a summary when:
 - The conversation has been long (many exchanges)
 - User mentions ending their work session
 
-## Resuming Sessions
-
-When user says "resume from last session":
-
-1. **Find the latest summary:**
-   ```bash
-   # Find most recent summary folder and file
-   ls -td .claude/summaries/*/ | head -1 | xargs -I {} sh -c 'ls -t {}*.md | head -1'
-   ```
-
-2. **Read the summary file** and extract the Resume Prompt section
-
-3. **Present to user:**
-   - Show what was completed last session
-   - List remaining tasks
-   - Ask which task to start with (if options exist)
-
-4. **Continue from the Resume Prompt** as if it were the user's initial message
-
 ## Output Location
 
-Session summaries are stored in: `.claude/summaries/MM-DD-YYYY/YYYYMMDD-HHmm_feature-name.md`
-
-Example: `.claude/summaries/01-05-2026/20260105-1430_phase1-foundation.md`
+Session summaries are stored in: `docs/summaries/YYYY-MM-DD_feature-name.md`
 
 ## Instructions
 
@@ -106,50 +61,22 @@ Key sections to include:
 5. **Remaining Tasks**: What's left to do
 6. **Resume Prompt**: Copy-paste instructions for next session
 
-### Step 3: Create Resume Prompt (REQUIRED)
+### Step 3: Create Resume Prompt
 
-The resume prompt is the MOST IMPORTANT part of the summary. It must be:
-- **Copy-paste ready** - User can start a new session with this exact text
-- **Self-contained** - Includes all context needed to continue
-- **Action-oriented** - Clear next steps, not just status
+The resume prompt should include:
+- **Token optimization directive**: Reference to token-optimization.md guidelines (MANDATORY - include at the top)
+- Context reference to the summary file
+- Specific file paths to review first
+- Current status and immediate next steps
+- Any blockers or decisions that need user input
 
-**Required Elements:**
-
-```markdown
-## Resume Prompt
-
-Resume [PROJECT_NAME] - [FEATURE_NAME]
-
-### Context
-Previous session completed:
-- [Accomplishment 1]
-- [Accomplishment 2]
-
-Summary file: .claude/summaries/MM-DD-YYYY/YYYYMMDD-HHmm_feature-name.md
-
-### Key Files
-Review these first:
-- [path/to/file.tsx] - [why it matters]
-- [path/to/file.ts] - [why it matters]
-
-### Remaining Tasks
-1. [ ] [Task with enough detail to start immediately]
-2. [ ] [Next task]
-3. [ ] [Following task]
-
-### Options (if applicable)
-Choose one direction:
-A) [Option A description] - [trade-offs]
-B) [Option B description] - [trade-offs]
-
-### Blockers/Decisions Needed
-- [Any blockers that need resolution]
-- [Decisions user needs to make]
-
-### Environment
-- Port: [if applicable]
-- Database: [migration status]
-- Other setup: [any requirements]
+**IMPORTANT**: Always start the resume prompt with:
+```
+IMPORTANT: Follow token optimization patterns from `.claude/skills/summary-generator/guidelines/token-optimization.md`:
+- Use Grep before Read for searches
+- Use Explore agent for multi-file exploration
+- Reference this summary instead of re-reading files
+- Keep responses concise
 ```
 
 ### Step 4: Analyze Token Usage
@@ -220,71 +147,35 @@ Review tool calls for accuracy and error patterns using [analyzers/command-analy
 
 See [analyzers/command-analyzer.md](analyzers/command-analyzer.md) for detailed analysis methodology.
 
-### Step 6: Self-Reflection (REQUIRED)
-
-This section captures learnings to improve future sessions. Be honest and specific.
-
-**Required Elements:**
-
-#### What Worked Well (Patterns to Repeat)
-Identify 2-3 approaches that were effective:
-- Efficient tool usage patterns
-- Good decision-making moments
-- Successful problem-solving strategies
-
-#### What Failed and Why (Patterns to Avoid)
-Be specific about failures:
-- Commands that failed and root cause
-- Approaches that wasted time
-- Assumptions that were wrong
-
-#### Specific Improvements for Next Session
-Actionable items:
-- [ ] Verify X before doing Y
-- [ ] Use tool A instead of B for this type of task
-- [ ] Check file exists before editing
-
-#### Session Learning Summary
-
-Create a brief "lessons learned" that could be added to CLAUDE.md if the pattern is important enough:
-
-```markdown
-## Session Learning
-
-### Successes
-- [Pattern]: [Why it worked]
-
-### Failures
-- [Error]: [Root cause] → [Prevention]
-
-### Recommendations
-- [Specific actionable improvement]
-```
-
-**Self-Reflection Questions to Answer:**
-1. What commands failed? Why? How to prevent?
-2. What took longer than expected? Why?
-3. What would I do differently if starting over?
-4. What patterns should be documented for future sessions?
-5. Were there any "aha moments" worth remembering?
-
 ## Example Usage
 
-When user says: "Let's wrap up for today" or "wrap up"
+When user says: "Let's wrap up for today"
 
 Response:
 1. Analyze git changes and conversation history
-2. Create `.claude/summaries/12-30-2025/20251230-1645_enrollment-improvements.md`
-3. Provide the resume prompt for the next session
-4. Suggest: "When context gets long, consider starting a new chat with the resume prompt"
+2. Create `docs/summaries/2025-12-30_enrollment-improvements.md`
+3. Provide the resume prompt with token optimization directive
+4. Suggest: "When context gets long (~40% tokens), start a new chat with this resume prompt"
 
-When user says: "resume from last session"
+Example resume prompt output:
+```
+Resume enrollment improvements session.
 
-Response:
-1. Find the latest summary file in `.claude/summaries/`
-2. Read and parse the Resume Prompt section
-3. Present remaining tasks and ask which to start with
-4. Continue as if the Resume Prompt was the user's request
+IMPORTANT: Follow token optimization patterns from `.claude/skills/summary-generator/guidelines/token-optimization.md`:
+- Use Grep before Read for searches
+- Use Explore agent for multi-file exploration
+- Reference this summary instead of re-reading files
+- Keep responses concise
+
+## Context
+Previous session completed:
+- Added middle name support to enrollment form
+- Updated validation for optional middle name field
+- Added i18n translations for new field
+
+Session summary: docs/summaries/2025-12-30_enrollment-improvements.md
+...
+```
 
 ## Tips
 
@@ -293,23 +184,3 @@ Response:
 - Note any environmental setup needed (database migrations, etc.)
 - Flag any blocking issues or decisions made
 - Reference the CLAUDE.md file patterns when applicable
-
-## Quality Checklist
-
-Before finalizing the summary, verify:
-
-- [ ] **Resume Prompt** is copy-paste ready with all context
-- [ ] **Remaining Tasks** are numbered and actionable
-- [ ] **Options** are provided if there are multiple valid directions
-- [ ] **Self-Reflection** includes honest assessment of failures
-- [ ] **Improvements** are specific and actionable (not vague)
-- [ ] **Key Files** have clickable paths for navigation
-- [ ] **Environment** notes any setup requirements (port, migrations)
-
-## Anti-Patterns to Avoid
-
-- Generic summaries like "made progress on feature"
-- Resume prompts that require reading the full summary
-- Self-reflection that only mentions successes
-- Vague improvements like "be more careful"
-- Missing blockers or decisions that will stall next session

@@ -9,7 +9,8 @@
       "Skill(frontend-design)",
       "Skill(frontend-design:*)",
       "Bash(npx tsc:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(find:*)"
     ]
   }
 }

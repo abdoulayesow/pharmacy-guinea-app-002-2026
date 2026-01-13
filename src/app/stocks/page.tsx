@@ -343,10 +343,9 @@ export default function StocksPage() {
               return (
                 <div
                   key={product.id}
-                  onClick={() => handleOpenEdit(product)}
-                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 cursor-pointer hover:border-slate-600 transition-colors"
+                  className="bg-slate-900 rounded-xl p-4 border border-slate-700"
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-white mb-1 truncate">
                         {product.name}
@@ -357,18 +356,37 @@ export default function StocksPage() {
                       </p>
                     </div>
 
-                    {/* Stock Badge */}
+                    {/* Stock Badge - with red for zero stock */}
                     <div className="text-right ml-3 shrink-0">
                       <div
                         className={cn(
                           'px-3 py-1.5 rounded-lg font-bold text-base text-white',
-                          stockInfo.level === 'good' ? 'bg-emerald-500' : 'bg-gray-500'
+                          stockInfo.color
                         )}
                       >
-                        Stock: {product.stock}
+                        {product.stock}
                       </div>
                       <p className="text-xs text-slate-500 mt-1">Min: {product.minStock}</p>
                     </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleOpenEdit(product)}
+                      variant="outline"
+                      className="flex-1 h-10 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-sm"
+                    >
+                      <Edit3 className="w-4 h-4 mr-1.5" />
+                      Modifier
+                    </Button>
+                    <Button
+                      onClick={() => handleOpenAdjustment(product)}
+                      className="flex-1 h-10 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold"
+                    >
+                      <TrendingUp className="w-4 h-4 mr-1.5" />
+                      Ajuster stock
+                    </Button>
                   </div>
                 </div>
               );
@@ -496,6 +514,153 @@ export default function StocksPage() {
                   className="flex-1 h-12 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
                 >
                   {editingProduct ? 'Modifier' : 'Enregistrer'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Adjustment Modal */}
+      {showAdjustModal && adjustingProduct && (
+        <div className="fixed inset-0 bg-black/80 flex items-end z-50">
+          <div className="bg-slate-900 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-white font-bold text-xl">Ajuster le stock</h3>
+                <p className="text-slate-400 text-sm mt-1">{adjustingProduct.name}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAdjustModal(false);
+                  resetAdjustmentForm();
+                }}
+                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-800 flex items-center justify-center transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitAdjustment} className="space-y-5">
+              {/* Current Stock Display */}
+              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                <p className="text-slate-400 text-sm mb-1">Stock actuel</p>
+                <p className="text-white text-2xl font-bold">{adjustingProduct.stock} unités</p>
+              </div>
+
+              {/* Add or Remove Toggle */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingStock(true)}
+                  className={cn(
+                    'h-14 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+                    isAddingStock
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  )}
+                >
+                  <TrendingUp className="w-5 h-5" />
+                  Ajouter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingStock(false)}
+                  className={cn(
+                    'h-14 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+                    !isAddingStock
+                      ? 'bg-red-500 text-white'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  )}
+                >
+                  <TrendingDown className="w-5 h-5" />
+                  Retirer
+                </button>
+              </div>
+
+              {/* Movement Type */}
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  Type de mouvement *
+                </label>
+                <select
+                  value={adjustmentType}
+                  onChange={(e) => setAdjustmentType(e.target.value as StockMovementType)}
+                  className="w-full h-12 px-3.5 rounded-lg border border-slate-700 bg-slate-800 text-white focus:border-emerald-500 transition-all"
+                  required
+                >
+                  {MOVEMENT_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  Quantité *
+                </label>
+                <Input
+                  type="number"
+                  value={adjustmentQuantity}
+                  onChange={(e) => setAdjustmentQuantity(e.target.value)}
+                  placeholder="0"
+                  min="1"
+                  className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                  required
+                />
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  Raison / Commentaire *
+                </label>
+                <textarea
+                  value={adjustmentReason}
+                  onChange={(e) => setAdjustmentReason(e.target.value)}
+                  placeholder="Ex: Réception fournisseur, Inventaire, Produit périmé..."
+                  rows={3}
+                  className="w-full px-3.5 py-3 rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-emerald-500 transition-all resize-none"
+                  required
+                />
+              </div>
+
+              {/* Preview New Stock */}
+              {adjustmentQuantity && (
+                <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                  <p className="text-slate-400 text-sm mb-1">Nouveau stock</p>
+                  <p className="text-white text-2xl font-bold">
+                    {adjustingProduct.stock + (isAddingStock ? 1 : -1) * parseInt(adjustmentQuantity || '0')} unités
+                  </p>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowAdjustModal(false);
+                    resetAdjustmentForm();
+                  }}
+                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-800"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  className={cn(
+                    'flex-1 h-12 rounded-lg text-white font-semibold',
+                    isAddingStock
+                      ? 'bg-emerald-500 hover:bg-emerald-600'
+                      : 'bg-red-500 hover:bg-red-600'
+                  )}
+                >
+                  {isAddingStock ? 'Ajouter' : 'Retirer'}
                 </Button>
               </div>
             </form>

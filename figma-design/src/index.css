@@ -899,6 +899,10 @@
     overflow-y: auto;
   }
 
+  .rounded {
+    border-radius: .25rem;
+  }
+
   .rounded-full {
     border-radius: 3.40282e38px;
   }
@@ -1775,6 +1779,10 @@
 
   .focus\:border-emerald-500:focus {
     border-color: var(--color-emerald-500);
+  }
+
+  .focus\:ring-emerald-500:focus {
+    --tw-ring-color: var(--color-emerald-500);
   }
 
   .focus-visible\:border-ring:focus-visible {

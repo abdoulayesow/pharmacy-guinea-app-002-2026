@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Plus,
   Calendar,
-  DollarSign,
+  Coins,
   TrendingDown,
   X,
   Trash2,
@@ -22,12 +22,11 @@ import { Navigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 
 type FilterPeriod = 'all' | 'today' | 'week' | 'month';
 
 const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
-  { value: 'STOCK_PURCHASE', label: 'Achat de stock' },
+  { value: 'STOCK_PURCHASE', label: 'Achat de médicaments' },
   { value: 'RENT', label: 'Loyer' },
   { value: 'SALARY', label: 'Salaire' },
   { value: 'ELECTRICITY', label: 'Électricité' },
@@ -45,7 +44,7 @@ export default function DepensesPage() {
 
   // Form state
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('OTHER');
+  const [category, setCategory] = useState<ExpenseCategory>('STOCK_PURCHASE');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -71,17 +70,17 @@ export default function DepensesPage() {
 
   if (currentUser?.role !== 'OWNER') {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
         <Header />
         <main className="max-w-md mx-auto px-4 py-6">
           <Card className="p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
               <Wallet className="w-8 h-8 text-red-600 dark:text-red-400" />
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
               Accès restreint
             </h2>
-            <p className="text-slate-400">
+            <p className="text-gray-600 dark:text-gray-400">
               Seuls les propriétaires peuvent accéder aux dépenses.
             </p>
           </Card>
@@ -123,7 +122,7 @@ export default function DepensesPage() {
 
   const resetForm = () => {
     setAmount('');
-    setCategory('OTHER');
+    setCategory('STOCK_PURCHASE');
     setDescription('');
     setDate(new Date().toISOString().split('T')[0]);
     setEditingExpense(null);
@@ -197,7 +196,7 @@ export default function DepensesPage() {
       resetForm();
     } catch (error) {
       console.error('Error saving expense:', error);
-      alert('Erreur lors de l\'enregistrement');
+      alert("Erreur lors de l'enregistrement");
     }
   };
 
@@ -227,31 +226,35 @@ export default function DepensesPage() {
     return EXPENSE_CATEGORIES.find((c) => c.value === cat)?.label || cat;
   };
 
+  const formatTime = (date: Date) => {
+    return new Date(date).toLocaleTimeString('fr-GN', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
-    <div className="min-h-screen bg-slate-800 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       <Header />
 
-      <main className="max-w-md mx-auto px-4 py-6 space-y-5">
+      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
         {/* Header Card */}
-        <div className="bg-slate-900 rounded-xl p-6 shadow-md border border-slate-700 transition-all duration-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
                 <TrendingDown className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-white text-xl font-bold tracking-tight">Dépenses</h2>
+              <h2 className="text-gray-900 dark:text-white text-xl font-semibold">Dépenses</h2>
             </div>
             <Button
               onClick={handleOpenAdd}
-              className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white rounded-xl active:scale-95 transition-all h-11 px-5 shadow-md shadow-orange-500/30 font-semibold"
+              className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white rounded-md active:scale-95 transition-all h-11"
             >
-              <Plus className="w-5 h-5 mr-1.5" />
-              Nouvelle
+              <Plus className="w-5 h-5" />
+              Nouvelle dépense
             </Button>
           </div>
 
           {/* Filter Buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto pb-2">
             {[
               { key: 'all' as FilterPeriod, label: 'Toutes' },
               { key: 'today' as FilterPeriod, label: "Aujourd'hui" },
@@ -261,12 +264,11 @@ export default function DepensesPage() {
               <button
                 key={key}
                 onClick={() => setFilter(key)}
-                className={cn(
-                  'px-4 py-2.5 rounded-xl text-sm whitespace-nowrap transition-all font-semibold min-h-[44px]',
+                className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium ${
                   filter === key
-                    ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-md shadow-orange-500/30 scale-105'
-                    : 'bg-gray-100 dark:bg-gray-700 text-slate-300 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 active:scale-95'
-                )}
+                    ? 'bg-gray-700 dark:bg-gray-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600'
+                }`}
               >
                 {label}
               </button>
@@ -276,18 +278,14 @@ export default function DepensesPage() {
 
         {/* Total Card */}
         {filteredExpenses.length > 0 && (
-          <Card className="p-6 bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-900/20 dark:to-orange-900/10 border-orange-200 dark:border-orange-800 rounded-xl shadow-sm">
+          <Card className="p-5 bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-wider text-orange-700/80 dark:text-orange-300/80 font-semibold mb-1">
-                  Total des dépenses
-                </p>
-                <p className="text-3xl font-extrabold text-orange-900 dark:text-orange-100 tracking-tight">
-                  {formatCurrency(total)}
-                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">Total des dépenses</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(total)}</p>
               </div>
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/40 flex items-center justify-center">
-                <DollarSign className="w-7 h-7 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
+                <Coins className="w-6 h-6 text-white" />
               </div>
             </div>
           </Card>
@@ -296,41 +294,32 @@ export default function DepensesPage() {
         {/* Expense List */}
         <div className="space-y-3">
           {filteredExpenses.length === 0 ? (
-            <Card className="p-16 text-center rounded-xl bg-gradient-to-br from-gray-50 to-white dark:from-gray-800 dark:to-gray-800/50 border-2 border-dashed border-slate-700">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-900/20 dark:to-orange-900/10 flex items-center justify-center">
-                <DollarSign className="w-10 h-10 text-orange-400 dark:text-orange-500" />
-              </div>
-              <p className="text-slate-300 font-semibold mb-1 text-lg">Aucune dépense</p>
-              <p className="text-sm text-slate-400">
+            <Card className="p-12 text-center rounded-lg">
+              <Coins className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+              <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">Aucune dépense</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">
                 {filter !== 'all' ? 'pour cette période' : 'enregistrée'}
               </p>
             </Card>
           ) : (
             filteredExpenses.map((expense) => (
-              <Card key={expense.id} className="p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 dark:border-gray-700">
+              <Card key={expense.id} className="p-5 rounded-lg shadow-sm">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
-                    <div className="text-white font-semibold mb-2 text-base leading-tight">
-                      {expense.description}
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-100 to-orange-50 dark:from-orange-900/30 dark:to-orange-900/20 text-orange-700 dark:text-orange-300 text-xs font-semibold rounded-full border border-orange-200/50 dark:border-orange-700/50">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                    <div className="text-gray-900 dark:text-white font-semibold mb-1">{expense.description}</div>
+                    <div className="inline-block px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg">
                       {getCategoryLabel(expense.category)}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xl font-extrabold text-orange-600 dark:text-orange-400 tracking-tight">
-                      {formatCurrency(expense.amount)}
-                    </div>
+                    <div className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(expense.amount)}</div>
                     {!expense.synced && (
-                      <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                        En attente
-                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-medium">En attente</div>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center justify-between pt-3 border-t border-slate-700">
-                  <div className="flex items-center gap-2 text-sm text-slate-400 font-medium">
+                <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 font-medium">
                     <Calendar className="w-4 h-4" />
                     <span>
                       {new Date(expense.date).toLocaleDateString('fr-GN', {
@@ -339,19 +328,21 @@ export default function DepensesPage() {
                         year: 'numeric',
                       })}
                     </span>
+                    <span>•</span>
+                    <span>{formatTime(expense.date)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenEdit(expense)}
-                      className="h-10 w-10 rounded-xl flex items-center justify-center text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all active:scale-95 border border-transparent hover:border-orange-200 dark:hover:border-orange-700"
+                      className="h-10 w-10 rounded-lg flex items-center justify-center text-gray-600 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all active:scale-95"
                     >
-                      <Edit2 className="w-4.5 h-4.5" />
+                      <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(expense)}
-                      className="h-10 w-10 rounded-xl flex items-center justify-center text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-95 border border-transparent hover:border-red-200 dark:hover:border-red-700"
+                      className="h-10 w-10 rounded-lg flex items-center justify-center text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-95"
                     >
-                      <Trash2 className="w-4.5 h-4.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -363,14 +354,14 @@ export default function DepensesPage() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-end z-50 animate-in fade-in duration-200">
-          <div className="bg-slate-900 rounded-t-3xl w-full p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 bg-black/50 flex items-end z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-t-2xl w-full p-6 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-white font-bold text-xl tracking-tight">
+                <h3 className="text-gray-900 dark:text-white font-bold text-xl">
                   {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
                 </h3>
-                <p className="text-sm text-slate-400 mt-0.5">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   {editingExpense ? 'Mettez à jour les informations' : 'Ajoutez une nouvelle dépense'}
                 </p>
               </div>
@@ -379,37 +370,22 @@ export default function DepensesPage() {
                   setShowAddModal(false);
                   resetForm();
                 }}
-                className="text-slate-400 hover:text-slate-300 w-11 h-11 rounded-xl hover:bg-slate-700 flex items-center justify-center transition-all active:scale-90 shrink-0"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 w-10 h-10 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-all"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Amount */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2.5">
-                  Montant (GNF)
-                </label>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="15000"
-                  className="h-14 text-base rounded-xl border-2 focus:border-orange-500 dark:focus:border-orange-400 transition-all"
-                  required
-                />
-              </div>
-
+            <form onSubmit={handleSubmit} className="space-y-4">
               {/* Category */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2.5">
-                  Catégorie
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Catégorie *
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                  className="w-full h-14 px-4 rounded-xl border-2 border-slate-700 bg-slate-900 text-white focus:border-orange-500 dark:focus:border-orange-400 transition-all font-medium"
+                  className="w-full h-12 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-emerald-500 dark:focus:border-emerald-400 transition-all"
                   required
                 >
                   {EXPENSE_CATEGORIES.map((cat) => (
@@ -422,35 +398,40 @@ export default function DepensesPage() {
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2.5">
-                  Description
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Description *
                 </label>
                 <Input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Achat de médicaments"
-                  className="h-14 text-base rounded-xl border-2 focus:border-orange-500 dark:focus:border-orange-400 transition-all"
+                  placeholder="Ex: Achat de paracétamol chez Pharma Guinée"
+                  className="h-12"
                   required
                 />
               </div>
 
-              {/* Date */}
+              {/* Amount */}
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2.5">
-                  Date
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Montant (GNF) *
                 </label>
                 <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="h-14 text-base rounded-xl border-2 focus:border-orange-500 dark:focus:border-orange-400 transition-all"
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0"
+                  className="h-12"
                   required
                 />
+              </div>
+
+              <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300">
+                Cette dépense sera enregistrée avec la date et l'heure actuelles.
               </div>
 
               {/* Submit Button */}
-              <div className="flex gap-3 pt-6">
+              <div className="flex gap-3 pt-4">
                 <Button
                   type="button"
                   variant="outline"
@@ -458,15 +439,15 @@ export default function DepensesPage() {
                     setShowAddModal(false);
                     resetForm();
                   }}
-                  className="flex-1 h-14 rounded-xl border-2 font-semibold text-base active:scale-95 transition-all"
+                  className="flex-1 h-12 rounded-lg"
                 >
                   Annuler
                 </Button>
                 <Button
                   type="submit"
-                  className="flex-1 h-14 rounded-xl bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-base active:scale-95 transition-all"
+                  className="flex-1 h-12 rounded-lg bg-emerald-600 hover:bg-emerald-700"
                 >
-                  {editingExpense ? 'Modifier' : 'Enregistrer'}
+                  {editingExpense ? 'Modifier' : 'Enregistrer la dépense'}
                 </Button>
               </div>
             </form>

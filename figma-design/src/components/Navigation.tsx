@@ -1,8 +1,8 @@
-import { Home, ShoppingCart, Package, Coins } from 'lucide-react';
+import { Home, ShoppingCart, Package, Coins, Settings } from 'lucide-react';
 import { Logo } from './Logo';
 import { ThemeToggle } from './ThemeToggle';
 
-type Screen = 'dashboard' | 'sale' | 'products' | 'expenses';
+type Screen = 'dashboard' | 'sale' | 'products' | 'expenses' | 'settings';
 
 export function Navigation({ 
   currentScreen, 
@@ -18,6 +18,7 @@ export function Navigation({
     { id: 'sale' as Screen, label: 'Vente', icon: ShoppingCart },
     { id: 'products' as Screen, label: 'Stock', icon: Package },
     { id: 'expenses' as Screen, label: 'Dépenses', icon: Coins },
+    { id: 'settings' as Screen, label: 'Réglages', icon: Settings },
   ];
 
   return (

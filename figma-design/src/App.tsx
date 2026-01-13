@@ -8,10 +8,11 @@ import { ProductList } from './components/ProductList';
 import { ProductForm } from './components/ProductForm';
 import { ExpenseList } from './components/ExpenseList';
 import { ExpenseForm } from './components/ExpenseForm';
+import { Settings } from './components/Settings';
 import { Header, Navigation } from './components/Navigation';
 import { Product } from './lib/types';
 
-type Screen = 'dashboard' | 'sale' | 'products' | 'expenses';
+type Screen = 'dashboard' | 'sale' | 'products' | 'expenses' | 'settings';
 
 function MainApp() {
   const { currentUser, logout, isOnline, pendingSyncCount } = useApp();
@@ -60,6 +61,8 @@ function MainApp() {
         return <ProductList onEditProduct={(product) => setEditingProduct(product)} />;
       case 'expenses':
         return <ExpenseList onAddExpense={() => setShowExpenseForm(true)} />;
+      case 'settings':
+        return <Settings />;
       default:
         return <Dashboard />;
     }

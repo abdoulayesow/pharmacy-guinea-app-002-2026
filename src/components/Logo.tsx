@@ -29,10 +29,11 @@ export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProp
   };
 
   // Full variant dimensions (complete branding with logo + pharmacy name + location)
+  // SVG viewBox is 400x500, so aspect ratio is 0.8 (width/height)
   const fullDimensions = {
-    sm: { width: 140, height: 42 },
-    md: { width: 200, height: 60 },
-    lg: { width: 280, height: 84 },
+    sm: { width: 120, height: 150 },
+    md: { width: 160, height: 200 },
+    lg: { width: 200, height: 250 },
   };
 
   // Select dimensions based on variant

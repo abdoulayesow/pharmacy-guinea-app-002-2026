@@ -1,1 +1,21 @@
-<div xmlns="http://www.w3.org/1999/xhtml" id="logo-full"><svg width="400" height="500" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="crossGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#059669"/><stop offset="100%" stop-color="#0d9488"/></linearGradient><linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#059669"/><stop offset="100%" stop-color="#0d9488"/></linearGradient></defs><rect x="136" y="50" width="128" height="128" rx="20" fill="url(#crossGradient)"/><path d="M200 98 L200 154 M172 126 L228 126" stroke="white" stroke-width="12" stroke-linecap="round"/><circle cx="254" cy="60" r="20" fill="#fbbf24"/><circle cx="254" cy="60" r="16" fill="#fbbf24" stroke="white" stroke-width="4"/><text x="200" y="240" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#111827" text-anchor="middle">PHARMACIE</text><text x="200" y="285" font-family="Arial, sans-serif" font-size="36" font-weight="600" fill="#059669" text-anchor="middle">Thierno Mamadou</text><rect x="152" y="305" width="96" height="4" rx="2" fill="url(#lineGradient)"/><text x="200" y="340" font-family="Arial, sans-serif" font-size="14" fill="#4b5563" text-anchor="middle" letter-spacing="2">CONAKRY • GUINÉE</text><text x="200" y="400" font-family="Georgia, serif" font-size="18" fill="#374151" text-anchor="middle" font-style="italic">Votre santé, notre priorité</text></svg></div>
+<svg width="400" height="500" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="crossGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <rect x="136" y="50" width="128" height="128" rx="20" fill="url(#crossGradient)"/>
+  <path d="M200 98 L200 154 M172 126 L228 126" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="254" cy="60" r="20" fill="#fbbf24"/>
+  <circle cx="254" cy="60" r="16" fill="#fbbf24" stroke="white" stroke-width="4"/>
+  <text x="200" y="240" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#111827" text-anchor="middle">PHARMACIE</text>
+  <text x="200" y="285" font-family="Arial, sans-serif" font-size="36" font-weight="600" fill="#059669" text-anchor="middle">Thierno Mamadou</text>
+  <rect x="152" y="305" width="96" height="4" rx="2" fill="url(#lineGradient)"/>
+  <text x="200" y="340" font-family="Arial, sans-serif" font-size="14" fill="#4b5563" text-anchor="middle" letter-spacing="2">CONAKRY • GUINÉE</text>
+  <text x="200" y="400" font-family="Georgia, serif" font-size="18" fill="#374151" text-anchor="middle" font-style="italic">Votre santé, notre priorité</text>
+</svg>

@@ -39,6 +39,10 @@ export async function GET(request: NextRequest) {
           sales: [],
           expenses: [],
           stockMovements: [],
+          suppliers: [],
+          supplierOrders: [],
+          supplierReturns: [],
+          creditPayments: [], // 🆕 Credit payment tracking
         },
         serverTime: new Date(),
       },
@@ -74,6 +78,24 @@ export async function GET(request: NextRequest) {
       } : undefined,
     });
 
+    const suppliers = await prisma.supplier.findMany({
+      where: lastSyncAt ? {
+        updatedAt: { gt: lastSyncAt }
+      } : undefined,
+    });
+
+    const supplierOrders = await prisma.supplierOrder.findMany({
+      where: lastSyncAt ? {
+        updatedAt: { gt: lastSyncAt }
+      } : undefined,
+    });
+
+    const supplierReturns = await prisma.supplierReturn.findMany({
+      where: lastSyncAt ? {
+        createdAt: { gt: lastSyncAt }
+      } : undefined,
+    });
+
     return NextResponse.json<SyncPullResponse>({
       success: true,
       data: {
@@ -81,6 +103,9 @@ export async function GET(request: NextRequest) {
         sales,
         expenses,
         stockMovements,
+        suppliers,
+        supplierOrders,
+        supplierReturns,
       },
       serverTime: new Date(),
     });
@@ -97,6 +122,10 @@ export async function GET(request: NextRequest) {
             sales: [],
             expenses: [],
             stockMovements: [],
+            suppliers: [],
+            supplierOrders: [],
+            supplierReturns: [],
+            creditPayments: [], // 🆕
           },
           serverTime: new Date(),
         },
@@ -112,6 +141,10 @@ export async function GET(request: NextRequest) {
           sales: [],
           expenses: [],
           stockMovements: [],
+          suppliers: [],
+          supplierOrders: [],
+          supplierReturns: [],
+          creditPayments: [], // 🆕
         },
         serverTime: new Date(),
       },

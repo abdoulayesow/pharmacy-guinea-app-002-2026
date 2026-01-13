@@ -34,6 +34,8 @@ export interface Product {
   priceBuy?: number;
   stock: number;
   minStock: number;
+  expirationDate?: Date; // 🆕 Expiration tracking (MVP feature from user research)
+  lotNumber?: string; // 🆕 Batch/lot tracking
   synced: boolean;
   updatedAt: Date;
 }
@@ -51,7 +53,8 @@ export interface CartItem {
 // Sale Types
 // ============================================================================
 
-export type PaymentMethod = 'CASH' | 'ORANGE_MONEY';
+export type PaymentMethod = 'CASH' | 'ORANGE_MONEY' | 'CREDIT'; // 🆕 Added CREDIT for pay-later sales
+export type PaymentStatus = 'PAID' | 'PARTIALLY_PAID' | 'PENDING' | 'OVERDUE'; // 🆕 Payment tracking
 
 export interface SaleItem {
   id?: number;
@@ -71,6 +74,28 @@ export interface Sale {
   payment_ref?: string | null;
   user_id: string;
   synced: boolean;
+  // 🆕 Customer information (optional)
+  customer_name?: string;
+  customer_phone?: string;
+  // 🆕 Payment tracking for credit sales
+  payment_status: PaymentStatus; // Default: 'PAID' for CASH/ORANGE_MONEY, 'PENDING' for CREDIT
+  due_date?: Date; // Required for CREDIT payment method
+  amount_paid: number; // Amount paid so far (= total for CASH/ORANGE_MONEY, can be partial for CREDIT)
+  amount_due: number; // Remaining amount to be paid (= 0 for CASH/ORANGE_MONEY)
+}
+
+// 🆕 Credit payment tracking - records partial payments on credit sales
+export interface CreditPayment {
+  id?: number;
+  serverId?: number;
+  sale_id: number;
+  amount: number;
+  payment_method: 'CASH' | 'ORANGE_MONEY'; // Payment method for this installment
+  payment_ref?: string; // Orange Money reference if applicable
+  payment_date: Date;
+  notes?: string;
+  user_id: string;
+  synced: boolean;
 }
 
 // ============================================================================
@@ -79,6 +104,7 @@ export interface Sale {
 
 export type ExpenseCategory =
   | 'STOCK_PURCHASE'
+  | 'SUPPLIER_PAYMENT' // 🆕 Payment to supplier (linked to orders)
   | 'RENT'
   | 'SALARY'
   | 'ELECTRICITY'
@@ -92,6 +118,7 @@ export interface Expense {
   description: string;
   amount: number;
   category: ExpenseCategory;
+  supplier_order_id?: number; // 🆕 Optional link to supplier order payment
   user_id: string;
   synced: boolean;
 }
@@ -125,7 +152,15 @@ export interface StockMovement {
 // ============================================================================
 
 export type SyncStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
-export type SyncType = 'SALE' | 'EXPENSE' | 'PRODUCT' | 'STOCK_MOVEMENT';
+export type SyncType =
+  | 'SALE'
+  | 'EXPENSE'
+  | 'PRODUCT'
+  | 'STOCK_MOVEMENT'
+  | 'SUPPLIER' // 🆕
+  | 'SUPPLIER_ORDER' // 🆕
+  | 'SUPPLIER_RETURN' // 🆕
+  | 'CREDIT_PAYMENT'; // 🆕 Partial payment tracking
 export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE';
 
 export interface SyncQueueItem {
@@ -138,6 +173,56 @@ export interface SyncQueueItem {
   status: SyncStatus;
   retryCount: number;
   lastError?: string;
+}
+
+// ============================================================================
+// Supplier Types (NEW - from user research 2026-01)
+// ============================================================================
+
+export type SupplierOrderStatus = 'ORDERED' | 'DELIVERED' | 'PARTIALLY_PAID' | 'PAID';
+export type ReturnReason = 'EXPIRING' | 'DAMAGED' | 'OTHER';
+
+export interface Supplier {
+  id?: number;
+  serverId?: number;
+  name: string;
+  phone?: string;
+  paymentTermsDays: number; // Default: 30 days credit
+  createdAt: Date;
+  updatedAt: Date;
+  synced: boolean;
+}
+
+export interface SupplierOrder {
+  id?: number;
+  serverId?: number;
+  supplierId: number;
+  orderDate: Date;
+  deliveryDate?: Date;
+  totalAmount: number; // Total order amount in GNF
+  amountPaid: number; // Amount paid so far in GNF
+  dueDate: Date; // Calculated from orderDate + paymentTermsDays
+  status: SupplierOrderStatus;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  synced: boolean;
+}
+
+export interface SupplierReturn {
+  id?: number;
+  serverId?: number;
+  supplierId: number;
+  supplierOrderId?: number; // Optional link to order for deduction
+  productId: number;
+  quantity: number;
+  reason: ReturnReason;
+  creditAmount: number; // Credit value in GNF
+  returnDate: Date;
+  applied: boolean; // True if credit applied to payment
+  appliedToOrderId?: number; // Which order was this credit applied to
+  createdAt: Date;
+  synced: boolean;
 }
 
 // ============================================================================
@@ -161,6 +246,10 @@ export interface SyncPushRequest {
   expenses?: Expense[];
   stockMovements?: StockMovement[];
   products?: Product[];
+  suppliers?: Supplier[]; // 🆕
+  supplierOrders?: SupplierOrder[]; // 🆕
+  supplierReturns?: SupplierReturn[]; // 🆕
+  creditPayments?: CreditPayment[]; // 🆕 Partial payment tracking
 }
 
 export interface SyncPushResponse {
@@ -170,6 +259,10 @@ export interface SyncPushResponse {
     expenses: number[];
     stockMovements: number[];
     products: number[];
+    suppliers: number[]; // 🆕
+    supplierOrders: number[]; // 🆕
+    supplierReturns: number[]; // 🆕
+    creditPayments: number[]; // 🆕 Partial payment tracking
   };
   errors?: string[];
 }
@@ -185,6 +278,10 @@ export interface SyncPullResponse {
     sales: Sale[];
     expenses: Expense[];
     stockMovements: StockMovement[];
+    suppliers: Supplier[]; // 🆕
+    supplierOrders: SupplierOrder[]; // 🆕
+    supplierReturns: SupplierReturn[]; // 🆕
+    creditPayments: CreditPayment[]; // 🆕 Partial payment tracking
   };
   serverTime: Date;
 }

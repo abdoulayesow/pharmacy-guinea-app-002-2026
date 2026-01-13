@@ -4,13 +4,14 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Activity, Clock, Building2, FileText, AlertCircle } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { Card } from '@/components/ui/card';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { getExpirationSummary, getExpirationStatus } from '@/lib/client/expiration';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,10 +33,23 @@ export default function DashboardPage() {
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
   const sales = useLiveQuery(() => db.sales.toArray()) ?? [];
   const expenses = useLiveQuery(() => db.expenses.toArray()) ?? [];
+  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? []; // 🆕
+  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? []; // 🆕
 
   // Calculate today's stats
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // 🆕 Credit sales tracking
+  const creditSales = sales.filter(s => s.payment_method === 'CREDIT' && s.payment_status !== 'PAID');
+  const totalCreditDue = creditSales.reduce((sum, sale) => sum + sale.amount_due, 0);
+  const overdueCreditSales = creditSales.filter(sale => {
+    if (!sale.due_date) return false;
+    const dueDate = new Date(sale.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  });
+  const overdueAmount = overdueCreditSales.reduce((sum, sale) => sum + sale.amount_due, 0);
 
   const todaySales = sales.filter(s => {
     const saleDate = new Date(s.created_at);
@@ -56,6 +70,21 @@ export default function DashboardPage() {
   // Stock alerts
   const lowStockProducts = products.filter(p => p.stock <= p.minStock);
   const outOfStockProducts = products.filter(p => p.stock === 0);
+
+  // 🆕 Expiration alerts
+  const expirationSummary = getExpirationSummary(products);
+  const expiringProducts = products.filter(p => {
+    if (!p.expirationDate) return false;
+    const info = getExpirationStatus(p.expirationDate);
+    return info.status === 'critical' || info.status === 'warning' || info.status === 'expired';
+  });
+
+  // 🆕 Supplier debts
+  const pendingOrders = supplierOrders.filter(o => o.status !== 'PAID');
+  const totalOwed = pendingOrders.reduce((sum, o) => sum + (o.totalAmount - o.amountPaid), 0);
+  const nextPayment = pendingOrders
+    .filter(o => o.totalAmount > o.amountPaid)
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
 
   // This week stats
   const weekAgo = new Date();
@@ -146,6 +175,130 @@ export default function DashboardPage() {
             </Card>
           </div>
         </div>
+
+        {/* 🆕 Expiration Alerts */}
+        {expirationSummary.total > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">Péremption</h3>
+            <Link href="/stocks?filter=expiring">
+              <Card className={`p-5 cursor-pointer transition-colors ${
+                expirationSummary.expired > 0 || expirationSummary.critical > 0
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800 hover:border-red-400'
+                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-800 hover:border-amber-400'
+              }`}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    expirationSummary.expired > 0 || expirationSummary.critical > 0
+                      ? 'bg-red-600'
+                      : 'bg-amber-600'
+                  }`}>
+                    <Clock className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-gray-900 dark:text-white font-semibold">Produits expirant bientôt</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {expirationSummary.expired > 0 && `${expirationSummary.expired} périmé(s) • `}
+                      {expirationSummary.critical > 0 && `${expirationSummary.critical} critique(s) • `}
+                      {expirationSummary.warning > 0 && `${expirationSummary.warning} alerte(s)`}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {expiringProducts.slice(0, 3).map(product => {
+                    const expInfo = getExpirationStatus(product.expirationDate);
+                    return (
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
+                        <div className="flex-1">
+                          <div className="text-gray-900 dark:text-white font-medium">{product.name}</div>
+                          <div className={`text-sm ${expInfo.color}`}>{expInfo.label}</div>
+                        </div>
+                        <div className={`px-3 py-1 rounded-lg font-semibold text-sm ${expInfo.bgColor} ${expInfo.color}`}>
+                          {product.stock}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </Link>
+          </div>
+        )}
+
+        {/* 🆕 Credit Sales Tracking */}
+        {creditSales.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">Ventes à crédit</h3>
+            <Link href="/ventes/historique">
+              <Card className={`p-5 cursor-pointer transition-colors ${
+                overdueCreditSales.length > 0
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800 hover:border-red-400'
+                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-800 hover:border-blue-400'
+              }`}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    overdueCreditSales.length > 0 ? 'bg-red-600' : 'bg-blue-600'
+                  }`}>
+                    <FileText className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-gray-900 dark:text-white font-semibold">Crédits en attente</h4>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalCreditDue)}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white dark:bg-gray-700 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                    <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">En cours</div>
+                    <div className="text-2xl font-bold text-blue-900 dark:text-blue-300">{creditSales.length - overdueCreditSales.length}</div>
+                  </div>
+                  {overdueCreditSales.length > 0 && (
+                    <div className="bg-white dark:bg-gray-700 rounded-lg p-3 border border-red-200 dark:border-red-800">
+                      <div className="text-sm text-red-600 dark:text-red-400 mb-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        En retard
+                      </div>
+                      <div className="text-2xl font-bold text-red-900 dark:text-red-300">{overdueCreditSales.length}</div>
+                      <div className="text-xs text-red-700 dark:text-red-400 font-semibold mt-1">{formatCurrency(overdueAmount)}</div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </Link>
+          </div>
+        )}
+
+        {/* 🆕 Supplier Debts */}
+        {totalOwed > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">Dettes fournisseurs</h3>
+            <Link href="/fournisseurs">
+              <Card className="p-5 bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-gray-900 dark:text-white font-semibold">Total à payer</h4>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalOwed)}</p>
+                  </div>
+                </div>
+                {nextPayment && (
+                  <div className="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-300 dark:border-gray-600">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Prochain paiement</div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-gray-900 dark:text-white font-medium">{suppliers.find(s => s.id === nextPayment.supplierId)?.name}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Échéance: {formatDate(nextPayment.dueDate)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(nextPayment.totalAmount - nextPayment.amountPaid)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </Link>
+          </div>
+        )}
 
         {/* Stock Alerts - Sober */}
         {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (

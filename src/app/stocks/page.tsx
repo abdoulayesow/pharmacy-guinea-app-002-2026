@@ -6,7 +6,7 @@ import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '@/lib/shared/utils';
+import { formatCurrency, formatDate } from '@/lib/shared/utils';
 import { queueTransaction } from '@/lib/client/sync';
 import { cn } from '@/lib/client/utils';
 import { Header } from '@/components/Header';
@@ -22,8 +22,10 @@ import {
   TrendingUp,
   TrendingDown,
   Edit3,
+  AlertCircle,
 } from 'lucide-react';
 import type { Product, StockMovementType } from '@/lib/shared/types';
+import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
 
 const CATEGORIES = [
   'Antidouleur',
@@ -49,6 +51,7 @@ export default function StocksPage() {
   const { isAuthenticated, currentUser } = useAuthStore();
   const { updatePendingCount } = useSyncStore();
   const [selectedCategory, setSelectedCategory] = useState('Tous');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>('all'); // 🆕
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -67,6 +70,8 @@ export default function StocksPage() {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [minStock, setMinStock] = useState('');
+  const [expirationDate, setExpirationDate] = useState(''); // 🆕
+  const [lotNumber, setLotNumber] = useState(''); // 🆕
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -88,11 +93,22 @@ export default function StocksPage() {
       selectedCategory === 'Tous' ||
       product.category === selectedCategory;
 
-    return matchesSearch && matchesCategory;
+    // 🆕 Apply filter by type (all, alerts, expiring)
+    let matchesFilter = true;
+    if (selectedFilter === 'alerts') {
+      matchesFilter = product.stock <= product.minStock;
+    } else if (selectedFilter === 'expiring') {
+      if (!product.expirationDate) return false;
+      const expInfo = getExpirationStatus(product.expirationDate);
+      matchesFilter = expInfo.status === 'warning' || expInfo.status === 'critical' || expInfo.status === 'expired';
+    }
+
+    return matchesSearch && matchesCategory && matchesFilter;
   });
 
   // Calculate stats
   const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length;
+  const expirationSummary = getExpirationSummary(products); // 🆕
 
   // Stock level indicator - red (zero), gray (low), emerald (good)
   const getStockLevel = (product: Product) => {
@@ -120,6 +136,8 @@ export default function StocksPage() {
     setPrice(product.price.toString());
     setStock(product.stock.toString());
     setMinStock(product.minStock.toString());
+    setExpirationDate(product.expirationDate ? new Date(product.expirationDate).toISOString().split('T')[0] : ''); // 🆕
+    setLotNumber(product.lotNumber || ''); // 🆕
     setShowAddModal(true);
   };
 
@@ -130,6 +148,8 @@ export default function StocksPage() {
     setPrice('');
     setStock('');
     setMinStock('');
+    setExpirationDate(''); // 🆕
+    setLotNumber(''); // 🆕
   };
 
   // Submit add/edit product
@@ -143,6 +163,8 @@ export default function StocksPage() {
       priceBuy: parseInt(price), // Use same price for buy/sell for now
       stock: parseInt(stock),
       minStock: parseInt(minStock),
+      expirationDate: expirationDate ? new Date(expirationDate) : undefined, // 🆕
+      lotNumber: lotNumber.trim() || undefined, // 🆕
       synced: false,
       updatedAt: new Date(),
     };
@@ -316,15 +338,59 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Alert Card - Low Stock Warning */}
-        {lowStockCount > 0 && (
-          <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-slate-400 shrink-0" />
-            <p className="text-white font-semibold">
-              {lowStockCount} produit(s) en stock faible
-            </p>
-          </div>
-        )}
+        {/* Filter Tabs - All / Stock Alerts / Expiration */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSelectedFilter('all')}
+            className={cn(
+              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all',
+              selectedFilter === 'all'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-900 text-slate-400 border border-slate-700'
+            )}
+          >
+            Tous
+          </button>
+          <button
+            onClick={() => setSelectedFilter('alerts')}
+            className={cn(
+              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+              selectedFilter === 'alerts'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-900 text-slate-400 border border-slate-700'
+            )}
+          >
+            <Clock className="w-4 h-4" />
+            Alertes
+            {lowStockCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {lowStockCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setSelectedFilter('expiring')}
+            className={cn(
+              'flex-1 h-12 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
+              selectedFilter === 'expiring'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-900 text-slate-400 border border-slate-700'
+            )}
+          >
+            <AlertCircle className="w-4 h-4" />
+            Péremption
+            {expirationSummary.total > 0 && (
+              <span className={cn(
+                'text-xs font-bold px-2 py-0.5 rounded-full',
+                expirationSummary.expired > 0 || expirationSummary.critical > 0
+                  ? 'bg-red-500 text-white'
+                  : 'bg-amber-500 text-white'
+              )}>
+                {expirationSummary.total}
+              </span>
+            )}
+          </button>
+        </div>
 
         {/* Product List - Simplified Dark Theme */}
         <div className="space-y-3">
@@ -339,6 +405,7 @@ export default function StocksPage() {
           ) : (
             filteredProducts.map((product) => {
               const stockInfo = getStockLevel(product);
+              const expirationInfo = getExpirationStatus(product.expirationDate); // 🆕
 
               return (
                 <div
@@ -351,6 +418,15 @@ export default function StocksPage() {
                         {product.name}
                       </h3>
                       <p className="text-sm text-slate-400 mb-2">{product.category}</p>
+
+                      {/* 🆕 Expiration Badge */}
+                      {product.expirationDate && (
+                        <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold mb-2', expirationInfo.bgColor, expirationInfo.color)}>
+                          <Clock className="w-3.5 h-3.5" />
+                          {expirationInfo.label}
+                        </div>
+                      )}
+
                       <p className="text-xl font-bold text-emerald-500">
                         {formatCurrency(product.price)}
                       </p>
@@ -494,6 +570,39 @@ export default function StocksPage() {
                     required
                   />
                 </div>
+              </div>
+
+              {/* 🆕 Expiration Date & Lot Number */}
+              <div className="border-t border-slate-700 pt-4">
+                <h4 className="text-sm font-semibold text-white mb-3">Informations de péremption (optionnel)</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">
+                      Date d&apos;expiration
+                    </label>
+                    <Input
+                      type="date"
+                      value={expirationDate}
+                      onChange={(e) => setExpirationDate(e.target.value)}
+                      className="h-12 bg-slate-800 border-slate-700 text-white rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">
+                      Numéro de lot
+                    </label>
+                    <Input
+                      type="text"
+                      value={lotNumber}
+                      onChange={(e) => setLotNumber(e.target.value)}
+                      placeholder="LOT-2024-001"
+                      className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-2">
+                  💡 La date d&apos;expiration permettra de suivre les produits périmés et d&apos;envoyer des alertes
+                </p>
               </div>
 
               {/* Submit Buttons */}

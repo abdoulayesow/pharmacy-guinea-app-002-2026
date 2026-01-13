@@ -149,14 +149,11 @@ export default function LoginPage() {
             <Logo variant="full" size="lg" />
           </div>
 
-          {/* App Name with Gradient */}
+          {/* App Name */}
           <div>
-            <h1 className="text-4xl sm:text-5xl mb-2 sm:mb-3 text-white tracking-tight font-bold">
+            <h1 className="text-4xl sm:text-5xl text-white tracking-tight font-bold">
               Seri
             </h1>
-            <p className="text-slate-300 text-base sm:text-lg font-medium">
-              Gestion de pharmacie
-            </p>
           </div>
         </div>
       </div>

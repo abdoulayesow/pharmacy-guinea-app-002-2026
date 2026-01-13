@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingCart, Package, Wallet, Settings } from 'lucide-react';
+import { Home, ShoppingCart, Package, Building2, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Accueil', icon: Home },
   { href: '/ventes/nouvelle', label: 'Vente', icon: ShoppingCart },
   { href: '/stocks', label: 'Stock', icon: Package },
-  { href: '/depenses', label: 'Depenses', icon: Wallet },
-  { href: '/parametres', label: 'Reglages', icon: Settings },
+  { href: '/fournisseurs', label: 'Fourniss.', icon: Building2 }, // 🆕
+  { href: '/parametres', label: 'Réglages', icon: Settings },
 ];
 
 export function Navigation() {

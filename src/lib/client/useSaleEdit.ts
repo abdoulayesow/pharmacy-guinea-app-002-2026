@@ -40,6 +40,11 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
 
   // Calculate if this sale can be edited
   const canEdit = useMemo(() => {
+    // Return not allowed if sale is not loaded yet
+    if (!sale) {
+      return { allowed: false, reason: 'Chargement...' };
+    }
+
     // Cannot edit sales older than 24 hours
     const hoursSinceCreation = (Date.now() - new Date(sale.created_at).getTime()) / (1000 * 60 * 60);
     if (hoursSinceCreation > 24) {
@@ -61,6 +66,9 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
 
   // Calculate if there are significant changes
   const hasSignificantChanges = useMemo(() => {
+    // Return false if sale is not loaded yet
+    if (!sale) return false;
+
     const originalTotal = sale.total;
     const percentChange = Math.abs((editTotal - originalTotal) / originalTotal) * 100;
 
@@ -71,7 +79,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
     if (editItems.length < saleItems.length) return true;
 
     return false;
-  }, [editTotal, sale.total, editItems.length, saleItems.length]);
+  }, [sale, editTotal, editItems.length, saleItems.length]);
 
   // Enter edit mode
   const enterEditMode = useCallback(() => {

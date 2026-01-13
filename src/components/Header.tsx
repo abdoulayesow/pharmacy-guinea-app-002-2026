@@ -18,28 +18,28 @@ export function Header() {
   };
 
   return (
-    <header className="bg-slate-900 border-b border-slate-700 sticky top-0 z-40">
-      <div className="max-w-md mx-auto px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+    <header className="bg-gray-900 border-b border-gray-700 dark:bg-gray-950 dark:border-gray-800 sticky top-0 z-40">
+      <div className="max-w-md mx-auto px-3 sm:px-4 py-3 sm:py-4">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <Logo size="sm" />
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-semibold text-white">Seri</h1>
-              <div className="flex items-center gap-2 mt-0.5">
+              <h1 className="text-base sm:text-lg font-semibold text-white">Seri</h1>
+              <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
                 <div
                   className={cn(
-                    'w-2 h-2 rounded-full',
-                    isOnline ? 'bg-emerald-500' : 'bg-slate-500'
+                    'w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full',
+                    isOnline ? 'bg-emerald-500' : 'bg-gray-500'
                   )}
                 />
-                <span className="text-xs text-slate-400 font-medium">
+                <span className="text-xs text-gray-400 font-medium">
                   {isOnline ? 'En ligne' : 'Hors ligne'}
                 </span>
                 {pendingCount > 0 && (
                   <>
-                    <span className="text-slate-600">&#8226;</span>
+                    <span className="text-gray-600">&#8226;</span>
                     <span className="text-xs text-amber-400 font-medium">
-                      {pendingCount} en attente
+                      {pendingCount}
                     </span>
                   </>
                 )}
@@ -49,10 +49,10 @@ export function Header() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-all duration-200 border border-slate-600"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-all duration-200 border border-gray-600"
             >
-              <LogOut className="w-4 h-4 text-slate-300" />
-              <span className="text-sm font-medium text-slate-300">
+              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-300" />
+              <span className="text-xs sm:text-sm font-medium text-gray-300 hidden xs:inline">
                 Quitter
               </span>
             </button>

@@ -70,14 +70,14 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
       <Header />
 
-      <main className="max-w-md mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-md mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Welcome Header - Sober */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-300">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-lg bg-emerald-600 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-300">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-emerald-600 flex items-center justify-center">
               <Activity className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">

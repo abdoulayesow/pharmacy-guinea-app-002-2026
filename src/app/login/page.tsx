@@ -6,13 +6,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { User, ChevronLeft } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
+import { verifyPin } from '@/lib/client/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { cn } from '@/lib/utils';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated } = useAuthStore();
+  const { login, isAuthenticated, incrementFailedAttempts, resetFailedAttempts, isLocked, clearExpiredLock } = useAuthStore();
 
   const [step, setStep] = useState<'profile' | 'pin'>('profile');
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -72,6 +73,14 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
+    // Check if account is locked
+    clearExpiredLock();
+    if (isLocked()) {
+      setError('Compte verrouille. Reessayez dans 30 minutes.');
+      triggerShake();
+      return;
+    }
+
     if (!selectedUser) {
       setError('Selectionnez un profil');
       triggerShake();
@@ -91,14 +100,31 @@ export default function LoginPage() {
       if (!user) {
         setError('Utilisateur non trouve');
         triggerShake();
+        setIsLoading(false);
         return;
       }
 
-      // TODO: Re-enable PIN verification later
-      // For now, accept any 4-digit PIN
+      // Verify PIN using bcrypt
+      const isPinValid = await verifyPin(pin, user.pinHash);
+
+      if (!isPinValid) {
+        // Incorrect PIN
+        incrementFailedAttempts();
+        setError('Code PIN incorrect');
+        triggerShake();
+        setPin('');
+        setIsLoading(false);
+        return;
+      }
+
+      // PIN is correct - reset failed attempts and log in
+      resetFailedAttempts();
       login(user);
       router.push('/dashboard');
-    } finally {
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Erreur de connexion');
+      triggerShake();
       setIsLoading(false);
     }
   };

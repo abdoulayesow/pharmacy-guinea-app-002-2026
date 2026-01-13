@@ -14,7 +14,8 @@
       "Skill(seri-migrate)",
       "Skill(seri-migrate:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(timeout 10 tail:*)"
     ]
   }
 }

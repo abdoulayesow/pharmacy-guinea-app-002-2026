@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Logo } from './Logo';
+import { NotificationBadge } from './NotificationBadge';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { cn } from '@/lib/utils';
@@ -47,6 +48,9 @@ export function Header() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Notification badge for urgent payment reminders */}
+            <NotificationBadge />
+
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-all duration-200 border border-gray-600"

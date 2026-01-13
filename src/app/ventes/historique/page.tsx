@@ -64,48 +64,35 @@ export default function SalesHistoryPage() {
   }, [sales, filterMethod, filterStatus]);
 
   return (
-    <div className="min-h-screen bg-[#f5f1e8] relative overflow-hidden">
-      {/* Ledger paper texture background */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: `repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 31px,
-            #8b7355 31px,
-            #8b7355 32px
-          )`
-        }}
-      />
-
+    <div className="min-h-screen bg-slate-950 text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#2c1810] text-[#f5f1e8] shadow-lg border-b-4 border-[#8b7355]">
+      <div className="sticky top-0 z-20 bg-gradient-to-br from-slate-900 to-slate-950 shadow-xl border-b border-slate-700">
         <div className="px-4 py-4">
           <div className="flex items-center gap-3 mb-4">
             <button
               onClick={() => router.back()}
-              className="p-2 hover:bg-[#3d2415] rounded-lg transition-colors active:scale-95"
+              className="p-2 hover:bg-slate-800 rounded-lg transition-colors active:scale-95"
             >
               <ArrowLeft className="w-6 h-6" />
             </button>
             <div>
-              <h1 className="text-2xl font-serif font-bold tracking-wide">Registre des Ventes</h1>
-              <p className="text-sm text-[#d4c5b0] font-serif italic">Historique comptable</p>
+              <h1 className="text-2xl font-bold tracking-wide">Historique des ventes</h1>
+              <p className="text-sm text-slate-400">Consulter les transactions</p>
             </div>
           </div>
 
-          {/* Summary metrics - Ledger header style */}
+          {/* Summary metrics */}
           <div className="grid grid-cols-3 gap-2">
-            <div className="bg-[#3d2415] rounded-lg p-3 border border-[#5a3825]">
-              <div className="text-xs text-[#d4c5b0] font-serif mb-1">Total des ventes</div>
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+              <div className="text-xs text-slate-400 mb-1">Total des ventes</div>
               <div className="text-lg font-bold font-serif tabular-nums">{formatCurrency(metrics.totalSales)}</div>
             </div>
-            <div className="bg-[#3d2415] rounded-lg p-3 border border-[#5a3825]">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
               <div className="text-xs text-amber-400 font-serif mb-1">Crédits en cours</div>
               <div className="text-lg font-bold font-serif tabular-nums">{metrics.pendingCredits}</div>
               <div className="text-xs text-amber-300/70 font-serif tabular-nums">{formatCurrency(metrics.pendingAmount)}</div>
             </div>
-            <div className="bg-[#3d2415] rounded-lg p-3 border border-[#5a3825]">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
               <div className="text-xs text-red-400 font-serif mb-1">En retard</div>
               <div className="text-lg font-bold font-serif tabular-nums">{metrics.overdueCredits}</div>
               <div className="text-xs text-red-300/70 font-serif tabular-nums">{formatCurrency(metrics.overdueAmount)}</div>
@@ -115,13 +102,13 @@ export default function SalesHistoryPage() {
       </div>
 
       {/* Filters */}
-      <div className="sticky top-[168px] z-10 bg-[#e8e0d0] border-b-2 border-[#8b7355] shadow-md">
+      <div className="sticky top-[168px] z-10 bg-slate-900 border-b-2 border-slate-700 shadow-md">
         <div className="px-4 py-3">
           {/* Payment method filter */}
           <div className="mb-3">
             <div className="flex items-center gap-2 mb-2">
-              <Filter className="w-4 h-4 text-[#5a3825]" />
-              <span className="text-xs font-semibold text-[#5a3825] uppercase tracking-wide">Méthode de paiement</span>
+              <Filter className="w-4 h-4 text-slate-300" />
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Méthode de paiement</span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {(['ALL', 'CASH', 'ORANGE_MONEY', 'CREDIT'] as const).map((method) => (
@@ -132,8 +119,8 @@ export default function SalesHistoryPage() {
                     flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap
                     transition-all duration-200 border-2
                     ${filterMethod === method
-                      ? 'bg-[#2c1810] text-[#f5f1e8] border-[#2c1810] shadow-lg scale-105'
-                      : 'bg-white text-[#5a3825] border-[#c4b5a0] hover:border-[#8b7355] hover:shadow-md active:scale-95'
+                      ? 'bg-slate-700 text-white border-slate-700 shadow-lg scale-105'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600 hover:shadow-md active:scale-95'
                     }
                   `}
                 >
@@ -155,8 +142,8 @@ export default function SalesHistoryPage() {
           {/* Payment status filter */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Filter className="w-4 h-4 text-[#5a3825]" />
-              <span className="text-xs font-semibold text-[#5a3825] uppercase tracking-wide">Statut de paiement</span>
+              <Filter className="w-4 h-4 text-slate-300" />
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Statut de paiement</span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {(['ALL', 'PAID', 'PENDING', 'OVERDUE'] as const).map((status) => (
@@ -167,8 +154,8 @@ export default function SalesHistoryPage() {
                     flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap
                     transition-all duration-200 border-2
                     ${filterStatus === status
-                      ? 'bg-[#2c1810] text-[#f5f1e8] border-[#2c1810] shadow-lg scale-105'
-                      : 'bg-white text-[#5a3825] border-[#c4b5a0] hover:border-[#8b7355] hover:shadow-md active:scale-95'
+                      ? 'bg-slate-700 text-white border-slate-700 shadow-lg scale-105'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600 hover:shadow-md active:scale-95'
                     }
                   `}
                 >
@@ -193,9 +180,9 @@ export default function SalesHistoryPage() {
       <div className="px-4 py-6 space-y-4 pb-24">
         {filteredSales.length === 0 ? (
           <div className="text-center py-12">
-            <FileText className="w-16 h-16 mx-auto text-[#c4b5a0] mb-4" />
-            <p className="text-[#8b7355] font-serif text-lg">Aucune vente trouvée</p>
-            <p className="text-[#a89a84] font-serif text-sm mt-2">Essayez de modifier les filtres</p>
+            <FileText className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+            <p className="text-slate-300 font-serif text-lg">Aucune vente trouvée</p>
+            <p className="text-slate-400 font-serif text-sm mt-2">Essayez de modifier les filtres</p>
           </div>
         ) : (
           filteredSales.map((sale, index) => (
@@ -228,7 +215,7 @@ function SaleCard({ sale, index }: { sale: Sale; index: number }) {
 
   return (
     <div
-      className="bg-white rounded-lg shadow-md border-2 border-[#d4c5b0] overflow-hidden cursor-pointer
+      className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-lg shadow-xl border border-slate-700 overflow-hidden cursor-pointer
         hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200
         relative"
       onClick={() => router.push(`/ventes/detail/${sale.id}`)}
@@ -236,27 +223,17 @@ function SaleCard({ sale, index }: { sale: Sale; index: number }) {
         animation: `slideInUp 0.3s ease-out ${index * 0.05}s both`,
       }}
     >
-      {/* Perforated edge effect */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#d4c5b0] to-transparent opacity-50"
-        style={{
-          backgroundImage: `repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 10px,
-            #d4c5b0 10px,
-            #d4c5b0 12px
-          )`
-        }}
-      />
+      {/* Top accent line */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-slate-600 to-transparent opacity-50" />
 
       <div className="p-4 pt-6">
         {/* Header - Date and Status */}
         <div className="flex items-start justify-between mb-3">
           <div>
-            <div className="text-sm font-serif text-[#8b7355] mb-1">
+            <div className="text-sm font-serif text-slate-300 mb-1">
               {formatDate(new Date(sale.created_at))}
             </div>
-            <div className="text-xs text-[#a89a84] font-serif">
+            <div className="text-xs text-slate-400 font-serif">
               Vente #{sale.id?.toString().padStart(4, '0')}
             </div>
           </div>
@@ -266,8 +243,8 @@ function SaleCard({ sale, index }: { sale: Sale; index: number }) {
         </div>
 
         {/* Amount - Large serif numbers */}
-        <div className="mb-3 py-2 border-t border-b border-dashed border-[#d4c5b0]">
-          <div className="text-2xl font-bold font-serif tabular-nums text-[#2c1810]">
+        <div className="mb-3 py-2 border-t border-b border-dashed border-slate-700">
+          <div className="text-2xl font-bold font-serif tabular-nums text-white">
             {formatCurrency(sale.total)}
           </div>
           {sale.payment_method === 'CREDIT' && sale.amount_due > 0 && (
@@ -282,22 +259,22 @@ function SaleCard({ sale, index }: { sale: Sale; index: number }) {
           {sale.payment_method === 'CASH' && (
             <>
               <Banknote className="w-5 h-5 text-emerald-700" />
-              <span className="text-sm font-medium text-[#5a3825]">Espèces</span>
+              <span className="text-sm font-medium text-slate-300">Espèces</span>
             </>
           )}
           {sale.payment_method === 'ORANGE_MONEY' && (
             <>
               <Smartphone className="w-5 h-5 text-orange-600" />
-              <span className="text-sm font-medium text-[#5a3825]">Orange Money</span>
+              <span className="text-sm font-medium text-slate-300">Orange Money</span>
               {sale.payment_ref && (
-                <span className="text-xs text-[#a89a84] font-mono">#{sale.payment_ref}</span>
+                <span className="text-xs text-slate-400 font-mono">#{sale.payment_ref}</span>
               )}
             </>
           )}
           {sale.payment_method === 'CREDIT' && (
             <>
               <FileText className="w-5 h-5 text-blue-700" />
-              <span className="text-sm font-medium text-[#5a3825]">Crédit</span>
+              <span className="text-sm font-medium text-slate-300">Crédit</span>
             </>
           )}
         </div>

@@ -266,11 +266,11 @@ export default function NouvelleVentePage() {
   // Search Step
   if (step === 'search') {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
         <main className="max-w-md mx-auto px-4 py-6 space-y-4">
-          <div className="bg-slate-900 rounded-xl p-5 shadow-md border border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 shadow-md border border-slate-700">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md shadow-blue-500/30 flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
@@ -291,7 +291,7 @@ export default function NouvelleVentePage() {
                 placeholder="Rechercher un produit..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-10 h-14 bg-slate-800 border-2 border-slate-700 focus:border-blue-500 rounded-xl text-base shadow-sm focus:shadow-md transition-all"
+                className="pl-12 pr-10 h-14 bg-slate-950 border-2 border-slate-700 focus:border-blue-500 rounded-xl text-base shadow-sm focus:shadow-md transition-all"
               />
               {searchQuery && (
                 <button
@@ -392,7 +392,7 @@ export default function NouvelleVentePage() {
               onClick={() => setSelectedProduct(null)}
             >
               <div
-                className="bg-slate-900 rounded-t-3xl w-full p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-300"
+                className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-3xl w-full p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-300"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-start justify-between mb-5">
@@ -457,7 +457,7 @@ export default function NouvelleVentePage() {
                   </div>
 
                   <div className="border-t border-slate-700 pt-5">
-                    <div className="flex items-center justify-between mb-4 bg-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-4 bg-slate-950 rounded-xl p-4">
                       <span className="text-slate-300 font-medium">Total</span>
                       <span className="text-3xl font-bold text-emerald-400">
                         {formatCurrency(selectedProduct.price * quantity)}
@@ -485,11 +485,11 @@ export default function NouvelleVentePage() {
   // Cart Step
   if (step === 'cart') {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
         <main className="max-w-md mx-auto px-4 py-6 space-y-4 pb-48">
-          <div className="bg-slate-900 rounded-xl p-5 shadow-md border border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 shadow-md border border-slate-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-md shadow-emerald-500/30 flex items-center justify-center">
@@ -605,11 +605,11 @@ export default function NouvelleVentePage() {
   // 🆕 Customer Info Step (Optional)
   if (step === 'customer_info') {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
         <main className="max-w-md mx-auto px-4 py-6 space-y-5">
-          <div className="bg-slate-900 rounded-xl p-6 shadow-md border border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-6 shadow-md border border-slate-700">
             <h2 className="text-white text-xl font-bold tracking-tight mb-2">Informations client</h2>
             <p className="text-slate-400 text-sm">Optionnel - Vous pouvez passer cette étape</p>
           </div>
@@ -624,7 +624,7 @@ export default function NouvelleVentePage() {
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Ex: Mamadou Diallo"
-                className="h-12 bg-slate-800 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
+                className="h-12 bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
               />
             </div>
 
@@ -637,7 +637,7 @@ export default function NouvelleVentePage() {
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder="Ex: +224 622 12 34 56"
-                className="h-12 bg-slate-800 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
+                className="h-12 bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
               />
             </div>
           </Card>
@@ -668,11 +668,11 @@ export default function NouvelleVentePage() {
   // Payment Step
   if (step === 'payment') {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
         <main className="max-w-md mx-auto px-4 py-6 space-y-5">
-          <div className="bg-slate-900 rounded-xl p-6 shadow-md border border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-6 shadow-md border border-slate-700">
             <h2 className="text-slate-300 mb-2 text-lg font-medium">Encaissement</h2>
             <div className="text-4xl font-bold text-emerald-400">
               {formatCurrency(cartTotal)}
@@ -685,7 +685,7 @@ export default function NouvelleVentePage() {
               {cartItems.map((item) => (
                 <div
                   key={item.product.id}
-                  className="flex items-center justify-between text-sm p-3 bg-slate-800 rounded-lg"
+                  className="flex items-center justify-between text-sm p-3 bg-slate-950 rounded-lg"
                 >
                   <span className="text-slate-300 font-medium">
                     {item.product.name} × {item.quantity}
@@ -840,7 +840,7 @@ export default function NouvelleVentePage() {
                       {/* Decorative receipt perforation */}
                       <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex gap-2">
                         {[...Array(8)].map((_, i) => (
-                          <div key={i} className="w-2 h-2 rounded-full bg-slate-800 border border-emerald-700/50" />
+                          <div key={i} className="w-2 h-2 rounded-full bg-slate-950 border border-emerald-700/50" />
                         ))}
                       </div>
 
@@ -1430,7 +1430,7 @@ export default function NouvelleVentePage() {
   // Receipt Step
   if (step === 'receipt' && lastSale) {
     return (
-      <div className="min-h-screen bg-slate-800 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
         <main className="max-w-md mx-auto px-4 py-6 space-y-5">
@@ -1475,7 +1475,7 @@ export default function NouvelleVentePage() {
               {lastSale.items.map((item) => (
                 <div
                   key={item.product.id}
-                  className="bg-slate-800 rounded-lg p-3 border border-slate-700"
+                  className="bg-slate-950 rounded-lg p-3 border border-slate-700"
                 >
                   <div className="flex items-start justify-between mb-1">
                     <span className="text-white font-semibold flex-1">
@@ -1541,7 +1541,7 @@ export default function NouvelleVentePage() {
               )}
             </div>
 
-            <div className="text-center text-sm text-slate-400 font-medium bg-slate-800 rounded-lg py-3">
+            <div className="text-center text-sm text-slate-400 font-medium bg-slate-950 rounded-lg py-3">
               Ticket #{lastSale.id}
             </div>
           </Card>

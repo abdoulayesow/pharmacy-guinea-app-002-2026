@@ -272,12 +272,12 @@ export default function StocksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-800 pb-24">
+    <div className="min-h-screen bg-slate-950 pb-24">
       <Header />
 
       <main className="max-w-md mx-auto px-4 py-6 space-y-4">
         {/* Header Card - Dark Theme */}
-        <div className="relative bg-slate-900 rounded-xl p-5 border border-slate-700">
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 border border-slate-700">
           <div className="relative flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center">
@@ -304,7 +304,7 @@ export default function StocksPage() {
               placeholder="Rechercher..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 h-12 bg-slate-800 border-slate-700 focus:border-emerald-500 rounded-lg text-white placeholder:text-slate-500"
+              className="pl-11 h-12 bg-slate-950 border-slate-700 focus:border-emerald-500 rounded-lg text-white placeholder:text-slate-500"
             />
           </div>
 
@@ -316,7 +316,7 @@ export default function StocksPage() {
                 'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[44px]',
                 selectedCategory === 'Tous'
                   ? 'bg-slate-700 text-white'
-                  : 'bg-transparent text-slate-400 hover:bg-slate-800'
+                  : 'bg-transparent text-slate-400 hover:bg-slate-950'
               )}
             >
               Tous
@@ -329,7 +329,7 @@ export default function StocksPage() {
                   'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[44px]',
                   selectedCategory === cat
                     ? 'bg-slate-700 text-white'
-                    : 'bg-transparent text-slate-400 hover:bg-slate-800'
+                    : 'bg-transparent text-slate-400 hover:bg-slate-950'
                 )}
               >
                 {cat}
@@ -410,7 +410,7 @@ export default function StocksPage() {
               return (
                 <div
                   key={product.id}
-                  className="bg-slate-900 rounded-xl p-4 border border-slate-700"
+                  className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-4 border border-slate-700"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
@@ -451,7 +451,7 @@ export default function StocksPage() {
                     <Button
                       onClick={() => handleOpenEdit(product)}
                       variant="outline"
-                      className="flex-1 h-10 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-sm"
+                      className="flex-1 h-10 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-950 hover:text-white text-sm"
                     >
                       <Edit3 className="w-4 h-4 mr-1.5" />
                       Modifier
@@ -474,7 +474,7 @@ export default function StocksPage() {
       {/* Add/Edit Product Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 flex items-end z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-white font-bold text-xl">
@@ -486,7 +486,7 @@ export default function StocksPage() {
                   setShowAddModal(false);
                   resetProductForm();
                 }}
-                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-800 flex items-center justify-center transition-all"
+                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-950 flex items-center justify-center transition-all"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -503,7 +503,7 @@ export default function StocksPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ex: Paracétamol 500mg"
-                  className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                  className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                   required
                 />
               </div>
@@ -516,7 +516,7 @@ export default function StocksPage() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full h-12 px-3.5 rounded-lg border border-slate-700 bg-slate-800 text-white focus:border-emerald-500 transition-all"
+                  className="w-full h-12 px-3.5 rounded-lg border border-slate-700 bg-slate-950 text-white focus:border-emerald-500 transition-all"
                   required
                 >
                   {CATEGORIES.map((cat) => (
@@ -537,7 +537,7 @@ export default function StocksPage() {
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   placeholder="0"
-                  className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                  className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                   required
                 />
               </div>
@@ -553,7 +553,7 @@ export default function StocksPage() {
                     value={stock}
                     onChange={(e) => setStock(e.target.value)}
                     placeholder="0"
-                    className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                    className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                     required
                   />
                 </div>
@@ -566,7 +566,7 @@ export default function StocksPage() {
                     value={minStock}
                     onChange={(e) => setMinStock(e.target.value)}
                     placeholder="0"
-                    className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                    className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                     required
                   />
                 </div>
@@ -584,7 +584,7 @@ export default function StocksPage() {
                       type="date"
                       value={expirationDate}
                       onChange={(e) => setExpirationDate(e.target.value)}
-                      className="h-12 bg-slate-800 border-slate-700 text-white rounded-lg"
+                      className="h-12 bg-slate-950 border-slate-700 text-white rounded-lg"
                     />
                   </div>
                   <div>
@@ -596,7 +596,7 @@ export default function StocksPage() {
                       value={lotNumber}
                       onChange={(e) => setLotNumber(e.target.value)}
                       placeholder="LOT-2024-001"
-                      className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                      className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                     />
                   </div>
                 </div>
@@ -614,7 +614,7 @@ export default function StocksPage() {
                     setShowAddModal(false);
                     resetProductForm();
                   }}
-                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-800"
+                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-950"
                 >
                   Annuler
                 </Button>
@@ -633,7 +633,7 @@ export default function StocksPage() {
       {/* Stock Adjustment Modal */}
       {showAdjustModal && adjustingProduct && (
         <div className="fixed inset-0 bg-black/80 flex items-end z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-white font-bold text-xl">Ajuster le stock</h3>
@@ -644,7 +644,7 @@ export default function StocksPage() {
                   setShowAdjustModal(false);
                   resetAdjustmentForm();
                 }}
-                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-800 flex items-center justify-center transition-all"
+                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-950 flex items-center justify-center transition-all"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -652,7 +652,7 @@ export default function StocksPage() {
 
             <form onSubmit={handleSubmitAdjustment} className="space-y-5">
               {/* Current Stock Display */}
-              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div className="bg-slate-950 rounded-lg p-4 border border-slate-700">
                 <p className="text-slate-400 text-sm mb-1">Stock actuel</p>
                 <p className="text-white text-2xl font-bold">{adjustingProduct.stock} unités</p>
               </div>
@@ -666,7 +666,7 @@ export default function StocksPage() {
                     'h-14 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
                     isAddingStock
                       ? 'bg-emerald-500 text-white'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      : 'bg-slate-950 text-slate-400 border border-slate-700'
                   )}
                 >
                   <TrendingUp className="w-5 h-5" />
@@ -679,7 +679,7 @@ export default function StocksPage() {
                     'h-14 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2',
                     !isAddingStock
                       ? 'bg-red-500 text-white'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      : 'bg-slate-950 text-slate-400 border border-slate-700'
                   )}
                 >
                   <TrendingDown className="w-5 h-5" />
@@ -695,7 +695,7 @@ export default function StocksPage() {
                 <select
                   value={adjustmentType}
                   onChange={(e) => setAdjustmentType(e.target.value as StockMovementType)}
-                  className="w-full h-12 px-3.5 rounded-lg border border-slate-700 bg-slate-800 text-white focus:border-emerald-500 transition-all"
+                  className="w-full h-12 px-3.5 rounded-lg border border-slate-700 bg-slate-950 text-white focus:border-emerald-500 transition-all"
                   required
                 >
                   {MOVEMENT_TYPES.map((type) => (
@@ -717,7 +717,7 @@ export default function StocksPage() {
                   onChange={(e) => setAdjustmentQuantity(e.target.value)}
                   placeholder="0"
                   min="1"
-                  className="h-12 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                  className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
                   required
                 />
               </div>
@@ -732,14 +732,14 @@ export default function StocksPage() {
                   onChange={(e) => setAdjustmentReason(e.target.value)}
                   placeholder="Ex: Réception fournisseur, Inventaire, Produit périmé..."
                   rows={3}
-                  className="w-full px-3.5 py-3 rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-emerald-500 transition-all resize-none"
+                  className="w-full px-3.5 py-3 rounded-lg border border-slate-700 bg-slate-950 text-white placeholder:text-slate-500 focus:border-emerald-500 transition-all resize-none"
                   required
                 />
               </div>
 
               {/* Preview New Stock */}
               {adjustmentQuantity && (
-                <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                <div className="bg-slate-950 rounded-lg p-4 border border-slate-700">
                   <p className="text-slate-400 text-sm mb-1">Nouveau stock</p>
                   <p className="text-white text-2xl font-bold">
                     {adjustingProduct.stock + (isAddingStock ? 1 : -1) * parseInt(adjustmentQuantity || '0')} unités
@@ -756,7 +756,7 @@ export default function StocksPage() {
                     setShowAdjustModal(false);
                     resetAdjustmentForm();
                   }}
-                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-800"
+                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-950"
                 >
                   Annuler
                 </Button>

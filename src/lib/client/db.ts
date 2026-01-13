@@ -83,6 +83,21 @@ class SeriDatabase extends Dexie {
       supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
       credit_payments: '++id, serverId, sale_id, payment_date, synced', // 🆕 New table for partial payments
     });
+
+    // Version 4: Add payment_method index to sales table (for credit sales filtering)
+    this.version(4).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, user_id, customer_name, synced', // 🆕 Added payment_method index
+      sale_items: '++id, sale_id, product_id',
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, synced',
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    });
   }
 }
 

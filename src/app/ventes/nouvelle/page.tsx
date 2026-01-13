@@ -271,7 +271,7 @@ export default function NouvelleVentePage() {
       <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
-        <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+        <main className="max-w-md sm:max-w-lg lg:max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 sm:space-y-5 lg:space-y-6">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 shadow-md border border-slate-700">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md shadow-blue-500/30 flex items-center justify-center">
@@ -386,7 +386,7 @@ export default function NouvelleVentePage() {
             <div className="fixed bottom-24 left-0 right-0 px-4 z-30">
               <Button
                 onClick={() => setStep('cart')}
-                className="w-full max-w-md mx-auto h-14 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg shadow-emerald-500/30 rounded-xl font-semibold active:scale-95 transition-all duration-200"
+                className="w-full max-w-md sm:max-w-lg mx-auto h-14 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg shadow-emerald-500/30 rounded-xl font-semibold active:scale-95 transition-all duration-200"
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />
                 Voir le panier ({cartItems.length}) • {formatCurrency(cartTotal)}
@@ -497,7 +497,7 @@ export default function NouvelleVentePage() {
       <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
-        <main className="max-w-md mx-auto px-4 py-6 space-y-4 pb-48">
+        <main className="max-w-md sm:max-w-lg lg:max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 sm:space-y-5 lg:space-y-6 pb-48">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-5 shadow-md border border-slate-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -617,10 +617,10 @@ export default function NouvelleVentePage() {
       <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
-        <main className="max-w-md mx-auto px-4 py-6 space-y-5">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-6 shadow-md border border-slate-700">
-            <h2 className="text-white text-xl font-bold tracking-tight mb-2">Informations client</h2>
-            <p className="text-slate-400 text-sm">Optionnel - Vous pouvez passer cette étape</p>
+        <main className="max-w-md sm:max-w-lg lg:max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 sm:space-y-6 lg:space-y-7">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-6 sm:p-7 lg:p-8 shadow-md border border-slate-700">
+            <h2 className="text-white text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight mb-2">Informations client</h2>
+            <p className="text-slate-400 text-sm sm:text-base">Optionnel - Vous pouvez passer cette étape</p>
           </div>
 
           <Card className="p-5 rounded-xl shadow-sm border border-slate-700 bg-slate-900">
@@ -665,16 +665,16 @@ export default function NouvelleVentePage() {
       <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
-        <main className="max-w-md mx-auto px-4 py-6 space-y-5">
+        <main className="max-w-md sm:max-w-lg lg:max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 sm:space-y-6 lg:space-y-7">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-xl p-6 shadow-md border border-slate-700">
-            <h2 className="text-slate-300 mb-2 text-lg font-medium">Encaissement</h2>
-            <div className="text-4xl font-bold text-emerald-400">
+            <h2 className="text-slate-300 mb-2 text-lg sm:text-xl lg:text-2xl font-medium">Encaissement</h2>
+            <div className="text-4xl sm:text-5xl lg:text-6xl font-bold text-emerald-400">
               {formatCurrency(cartTotal)}
             </div>
           </div>
 
-          <Card className="p-5 rounded-xl shadow-sm border border-slate-700 bg-slate-900">
-            <h3 className="text-white font-semibold text-lg mb-4">Résumé de la commande</h3>
+          <Card className="p-5 sm:p-6 lg:p-7 rounded-xl shadow-sm border border-slate-700 bg-slate-900">
+            <h3 className="text-white font-semibold text-lg sm:text-xl lg:text-2xl mb-4">Résumé de la commande</h3>
             <div className="space-y-2 mb-4">
               {cartItems.map((item) => (
                 <div
@@ -699,10 +699,12 @@ export default function NouvelleVentePage() {
           </Card>
 
           <div className="space-y-4">
-            <h3 className="text-white font-semibold text-lg">Méthode de paiement</h3>
+            <h3 className="text-white font-semibold text-lg sm:text-xl lg:col-span-2">Méthode de paiement</h3>
 
-            {/* Cash payment with calculator - TACTILE REGISTER AESTHETIC */}
-            <div className="space-y-3">
+            {/* Payment cards container - Grid layout on large screens */}
+            <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+              {/* Cash payment with calculator - TACTILE REGISTER AESTHETIC */}
+              <div className="space-y-3 lg:col-span-2">
               <button
                 onClick={() => setShowCashCalculator(!showCashCalculator)}
                 disabled={isProcessing}
@@ -723,10 +725,10 @@ export default function NouvelleVentePage() {
                       <Banknote className="w-7 h-7 text-white drop-shadow-md" />
                     </div>
                     <div>
-                      <div className="text-white font-bold text-xl mb-0.5 tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <div className="text-white font-bold text-xl sm:text-2xl lg:text-3xl mb-0.5 tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         Espèces
                       </div>
-                      <div className="text-sm text-emerald-400/90 font-semibold uppercase tracking-wider">
+                      <div className="text-sm sm:text-base text-emerald-400/90 font-semibold uppercase tracking-wider">
                         Paiement Cash
                       </div>
                     </div>
@@ -918,10 +920,10 @@ export default function NouvelleVentePage() {
                     )}
                   </div>
                   <div>
-                    <div className="text-white font-bold text-xl mb-0.5 tracking-tight">
+                    <div className="text-white font-bold text-xl sm:text-2xl lg:text-3xl mb-0.5 tracking-tight">
                       Orange Money
                     </div>
-                    <div className="text-sm text-orange-400/90 font-semibold uppercase tracking-wider flex items-center gap-2">
+                    <div className="text-sm sm:text-base text-orange-400/90 font-semibold uppercase tracking-wider flex items-center gap-2">
                       <span>Paiement Mobile</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
                     </div>
@@ -956,14 +958,14 @@ export default function NouvelleVentePage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-white font-bold text-xl mb-0.5 tracking-tight flex items-center gap-2">
+                    <div className="text-white font-bold text-xl sm:text-2xl lg:text-3xl mb-0.5 tracking-tight flex items-center gap-2">
                       Crédit
                       {/* Trust badge */}
-                      <span className="text-xs font-bold text-amber-400 bg-amber-900/40 px-2 py-0.5 rounded border border-amber-700/50">
+                      <span className="text-xs sm:text-sm font-bold text-amber-400 bg-amber-900/40 px-2 py-0.5 rounded border border-amber-700/50">
                         DIFFÉRÉ
                       </span>
                     </div>
-                    <div className="text-sm text-amber-400/90 font-semibold uppercase tracking-wider">
+                    <div className="text-sm sm:text-base text-amber-400/90 font-semibold uppercase tracking-wider">
                       Payer plus tard
                     </div>
                   </div>
@@ -973,6 +975,8 @@ export default function NouvelleVentePage() {
                 </div>
               </div>
             </button>
+            </div>
+            {/* End payment cards grid */}
 
             <Button
               variant="outline"
@@ -994,7 +998,7 @@ export default function NouvelleVentePage() {
               onClick={() => setShowOrangeMoneyDialog(false)}
             >
               <div
-                className="relative bg-gradient-to-br from-slate-900 via-slate-900 to-orange-950/20 rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-2 border-orange-500/30 overflow-hidden"
+                className="relative bg-gradient-to-br from-slate-900 via-slate-900 to-orange-950/20 rounded-3xl w-full max-w-md sm:max-w-lg shadow-2xl animate-in zoom-in duration-300 border-2 border-orange-500/30 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   boxShadow: '0 20px 60px rgba(249, 115, 22, 0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
@@ -1156,7 +1160,7 @@ export default function NouvelleVentePage() {
               onClick={() => setShowCreditDialog(false)}
             >
               <div
-                className="relative bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-2 border-amber-500/30 overflow-hidden"
+                className="relative bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 rounded-3xl w-full max-w-md sm:max-w-lg shadow-2xl animate-in zoom-in duration-300 border-2 border-amber-500/30 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   boxShadow: '0 20px 60px rgba(245, 158, 11, 0.3), inset 0 1px 0 rgba(255,255,255,0.05)',
@@ -1379,7 +1383,7 @@ export default function NouvelleVentePage() {
       <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
 
-        <main className="max-w-md mx-auto px-4 py-6 space-y-5">
+        <main className="max-w-md sm:max-w-lg lg:max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 sm:space-y-6 lg:space-y-7">
           {/* Success banner */}
           <div className="relative bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700 rounded-2xl p-10 text-center shadow-2xl shadow-emerald-600/40 overflow-hidden">
             <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />

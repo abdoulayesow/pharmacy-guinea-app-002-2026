@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          # Provide stub env vars for build
+          JWT_SECRET: ci-test-secret-do-not-use-in-production
+
+  bundle-size:
+    name: Bundle Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build with bundle analyzer
+        run: npm run analyze
+        env:
+          JWT_SECRET: ci-test-secret-do-not-use-in-production
+
+      - name: Check bundle size (< 5MB requirement)
+        run: |
+          BUNDLE_SIZE=$(du -sk .next/static | cut -f1)
+          BUNDLE_SIZE_MB=$((BUNDLE_SIZE / 1024))
+          echo "Bundle size: ${BUNDLE_SIZE_MB}MB"
+          if [ $BUNDLE_SIZE_MB -gt 5 ]; then
+            echo "❌ Bundle size exceeds 5MB limit (found ${BUNDLE_SIZE_MB}MB)"
+            exit 1
+          fi
+          echo "✓ Bundle size OK (${BUNDLE_SIZE_MB}MB / 5MB)"
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Check for critical vulnerabilities
+        run: |
+          CRITICAL=$(npm audit --json | jq '.metadata.vulnerabilities.critical')
+          HIGH=$(npm audit --json | jq '.metadata.vulnerabilities.high')
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "❌ Found $CRITICAL critical and $HIGH high vulnerabilities"
+            exit 1
+          fi
+          echo "✓ No critical or high vulnerabilities found"
+
+  pwa-validation:
+    name: PWA Config Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PWA manifest
+        run: |
+          if [ ! -f "public/manifest.json" ]; then
+            echo "❌ manifest.json not found"
+            exit 1
+          fi
+
+          # Check required fields
+          node -e "
+            const manifest = require('./public/manifest.json');
+            const required = ['name', 'short_name', 'start_url', 'display', 'icons'];
+            const missing = required.filter(field => !manifest[field]);
+            if (missing.length > 0) {
+              console.error('❌ Missing required fields:', missing.join(', '));
+              process.exit(1);
+            }
+            console.log('✓ manifest.json is valid');
+          "
+
+      - name: Check service worker config
+        run: |
+          if ! grep -q "next-pwa" package.json; then
+            echo "❌ next-pwa not found in package.json"
+            exit 1
+          fi
+          echo "✓ PWA configuration found"
+
+  offline-first-check:
+    name: Offline-First Architecture Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Dexie.js setup
+        run: |
+          if ! grep -q "dexie" package.json; then
+            echo "❌ Dexie.js not found"
+            exit 1
+          fi
+
+          if [ ! -f "src/lib/client/db.ts" ]; then
+            echo "❌ db.ts not found"
+            exit 1
+          fi
+
+          echo "✓ Offline-first setup verified"
+
+      - name: Check for sync queue implementation
+        run: |
+          if ! grep -q "sync_queue" src/lib/client/db.ts; then
+            echo "⚠️  Warning: sync_queue table not found in schema"
+            exit 0
+          fi
+          echo "✓ Sync queue found"
+
+  # Optional: Lighthouse CI (uncomment when you have a deployed preview)
+  # lighthouse:
+  #   name: Lighthouse Performance Check
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: treosh/lighthouse-ci-action@v10
+  #       with:
+  #         urls: |
+  #           https://your-preview-url.vercel.app
+  #         uploadArtifacts: true
+  #         temporaryPublicStorage: true

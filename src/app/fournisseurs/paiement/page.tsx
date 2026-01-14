@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -253,14 +251,14 @@ export default function PaymentPage() {
                 <button
                   type="button"
                   onClick={() => setPaymentAmount(Math.floor(totalDue / 2).toString())}
-                  className="h-10 rounded-lg font-semibold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  className="h-12 rounded-xl font-semibold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700 active:scale-95 transition-all"
                 >
                   50% ({formatCurrency(Math.floor(totalDue / 2))})
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaymentAmount(totalDue.toString())}
-                  className="h-10 rounded-lg font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-500"
+                  className="h-12 rounded-xl font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-500 active:scale-95 transition-all"
                 >
                   Tout payer ({formatCurrency(totalDue)})
                 </button>

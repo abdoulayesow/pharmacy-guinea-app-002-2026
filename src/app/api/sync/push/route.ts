@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body: SyncPushRequest = await request.json();
-    const { sales, expenses, stockMovements, products, suppliers, supplierOrders, supplierReturns, creditPayments } = body; // 🆕 Added creditPayments
+    const { sales, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
 
     console.log('[API] Sync push request from:', user.userId);
     console.log('[API] Items to sync:', {
@@ -27,8 +27,10 @@ export async function POST(request: NextRequest) {
       products: products?.length || 0,
       suppliers: suppliers?.length || 0,
       supplierOrders: supplierOrders?.length || 0,
+      supplierOrderItems: supplierOrderItems?.length || 0,
       supplierReturns: supplierReturns?.length || 0,
-      creditPayments: creditPayments?.length || 0, // 🆕
+      productSuppliers: productSuppliers?.length || 0,
+      creditPayments: creditPayments?.length || 0,
     });
 
     // Phase 2: Implement server-side sync
@@ -38,7 +40,9 @@ export async function POST(request: NextRequest) {
     const syncedProducts: Record<string, number> = {};
     const syncedSuppliers: Record<string, number> = {};
     const syncedSupplierOrders: Record<string, number> = {};
+    const syncedSupplierOrderItems: Record<string, number> = {};
     const syncedSupplierReturns: Record<string, number> = {};
+    const syncedProductSuppliers: Record<string, number> = {};
     const syncedCreditPayments: Record<string, number> = {};
     const errors: string[] = [];
 
@@ -225,7 +229,7 @@ export async function POST(request: NextRequest) {
             // Conflict: check timestamps
             const serverUpdatedAt = existingProduct.updatedAt;
             const localUpdatedAt = product.updatedAt ? new Date(product.updatedAt) : null;
-            
+
             if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
               // Local is newer - update
               const updated = await prisma.product.update({
@@ -236,6 +240,7 @@ export async function POST(request: NextRequest) {
                   priceBuy: product.priceBuy || null,
                   stock: product.stock,
                   stockMin: product.minStock || 10,
+                  category: product.category || null,
                 },
               });
               syncedProducts[product.id?.toString() || ''] = updated.id;
@@ -251,6 +256,7 @@ export async function POST(request: NextRequest) {
                 priceBuy: product.priceBuy || null,
                 stock: product.stock,
                 stockMin: product.minStock || 10,
+                category: product.category || null,
               },
             });
             syncedProducts[product.id?.toString() || ''] = newProduct.id;
@@ -263,20 +269,284 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Suppliers (not yet in Prisma schema - skip for now)
-    // TODO: Implement when Supplier models are added to schema
+    // Sync Suppliers
     if (suppliers && suppliers.length > 0) {
-      errors.push(`Suppliers sync skipped: Supplier models not yet in database schema (${suppliers.length} items)`);
+      for (const supplier of suppliers) {
+        try {
+          let existingSupplier = null;
+
+          // Try to find by serverId first
+          if (supplier.serverId) {
+            existingSupplier = await prisma.supplier.findUnique({
+              where: { id: supplier.serverId },
+            });
+          }
+
+          // If not found, try to find by name
+          if (!existingSupplier && supplier.name) {
+            const suppliersByName = await prisma.supplier.findMany({
+              where: { name: supplier.name },
+              orderBy: { updatedAt: 'desc' },
+              take: 1,
+            });
+            existingSupplier = suppliersByName[0] || null;
+          }
+
+          if (existingSupplier) {
+            // Conflict: check timestamps
+            const serverUpdatedAt = existingSupplier.updatedAt;
+            const localUpdatedAt = supplier.updatedAt ? new Date(supplier.updatedAt) : null;
+
+            if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
+              // Local is newer - update
+              const updated = await prisma.supplier.update({
+                where: { id: existingSupplier.id },
+                data: {
+                  name: supplier.name,
+                  phone: supplier.phone || null,
+                  paymentTermsDays: supplier.paymentTermsDays,
+                },
+              });
+              syncedSuppliers[supplier.id?.toString() || ''] = updated.id;
+            } else {
+              syncedSuppliers[supplier.id?.toString() || ''] = existingSupplier.id;
+            }
+          } else {
+            // New supplier
+            const newSupplier = await prisma.supplier.create({
+              data: {
+                name: supplier.name,
+                phone: supplier.phone || null,
+                paymentTermsDays: supplier.paymentTermsDays,
+              },
+            });
+            syncedSuppliers[supplier.id?.toString() || ''] = newSupplier.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync supplier ${supplier.id}: ${errorMsg}`);
+          console.error('[API] Supplier sync error:', error);
+        }
+      }
     }
 
-    // Sync Supplier Orders (not yet in Prisma schema - skip for now)
+    // Sync Supplier Orders
     if (supplierOrders && supplierOrders.length > 0) {
-      errors.push(`Supplier orders sync skipped: SupplierOrder models not yet in database schema (${supplierOrders.length} items)`);
+      for (const order of supplierOrders) {
+        try {
+          // Find the supplier serverId (should already be synced)
+          const supplierServerId = syncedSuppliers[order.supplierId?.toString() || ''] || order.supplierId;
+
+          let existingOrder = null;
+          if (order.serverId) {
+            existingOrder = await prisma.supplierOrder.findUnique({
+              where: { id: order.serverId },
+            });
+          }
+
+          if (existingOrder) {
+            // Conflict: check timestamps
+            const serverUpdatedAt = existingOrder.updatedAt;
+            const localUpdatedAt = order.updatedAt ? new Date(order.updatedAt) : null;
+
+            if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
+              // Local is newer - update
+              const updated = await prisma.supplierOrder.update({
+                where: { id: existingOrder.id },
+                data: {
+                  supplierId: supplierServerId,
+                  orderDate: order.orderDate ? new Date(order.orderDate) : undefined,
+                  deliveryDate: order.deliveryDate ? new Date(order.deliveryDate) : null,
+                  totalAmount: order.totalAmount,
+                  calculatedTotal: order.calculatedTotal || null,
+                  amountPaid: order.amountPaid,
+                  dueDate: order.dueDate ? new Date(order.dueDate) : undefined,
+                  status: order.status,
+                  notes: order.notes || null,
+                },
+              });
+              syncedSupplierOrders[order.id?.toString() || ''] = updated.id;
+            } else {
+              syncedSupplierOrders[order.id?.toString() || ''] = existingOrder.id;
+            }
+          } else {
+            // New order
+            const newOrder = await prisma.supplierOrder.create({
+              data: {
+                supplierId: supplierServerId,
+                orderDate: order.orderDate ? new Date(order.orderDate) : new Date(),
+                deliveryDate: order.deliveryDate ? new Date(order.deliveryDate) : null,
+                totalAmount: order.totalAmount,
+                calculatedTotal: order.calculatedTotal || null,
+                amountPaid: order.amountPaid,
+                dueDate: order.dueDate ? new Date(order.dueDate) : new Date(),
+                status: order.status,
+                notes: order.notes || null,
+              },
+            });
+            syncedSupplierOrders[order.id?.toString() || ''] = newOrder.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync supplier order ${order.id}: ${errorMsg}`);
+          console.error('[API] Supplier order sync error:', error);
+        }
+      }
     }
 
-    // Sync Supplier Returns (not yet in Prisma schema - skip for now)
+    // Sync Supplier Order Items
+    if (supplierOrderItems && supplierOrderItems.length > 0) {
+      for (const item of supplierOrderItems) {
+        try {
+          // Find the order serverId (should already be synced)
+          const orderServerId = syncedSupplierOrders[item.order_id?.toString() || ''] || item.order_id;
+
+          let existingItem = null;
+          if (item.serverId) {
+            existingItem = await prisma.supplierOrderItem.findUnique({
+              where: { id: item.serverId },
+            });
+          }
+
+          if (!existingItem) {
+            // New order item
+            const newItem = await prisma.supplierOrderItem.create({
+              data: {
+                orderId: orderServerId,
+                productId: item.product_id || null,
+                productName: item.product_name,
+                category: item.category || null,
+                quantity: item.quantity,
+                unitPrice: item.unit_price,
+                subtotal: item.subtotal,
+                notes: item.notes || null,
+              },
+            });
+            syncedSupplierOrderItems[item.id?.toString() || ''] = newItem.id;
+          } else {
+            syncedSupplierOrderItems[item.id?.toString() || ''] = existingItem.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync supplier order item ${item.id}: ${errorMsg}`);
+          console.error('[API] Supplier order item sync error:', error);
+        }
+      }
+    }
+
+    // Sync Supplier Returns
     if (supplierReturns && supplierReturns.length > 0) {
-      errors.push(`Supplier returns sync skipped: SupplierReturn models not yet in database schema (${supplierReturns.length} items)`);
+      for (const returnItem of supplierReturns) {
+        try {
+          // Find the supplier serverId
+          const supplierServerId = syncedSuppliers[returnItem.supplierId?.toString() || ''] || returnItem.supplierId;
+          const appliedToOrderServerId = returnItem.appliedToOrderId
+            ? (syncedSupplierOrders[returnItem.appliedToOrderId.toString()] || returnItem.appliedToOrderId)
+            : null;
+
+          let existingReturn = null;
+          if (returnItem.serverId) {
+            existingReturn = await prisma.supplierReturn.findUnique({
+              where: { id: returnItem.serverId },
+            });
+          }
+
+          if (!existingReturn) {
+            // New return
+            const newReturn = await prisma.supplierReturn.create({
+              data: {
+                supplierId: supplierServerId,
+                supplierOrderId: returnItem.supplierOrderId || null,
+                productId: returnItem.productId,
+                quantity: returnItem.quantity,
+                reason: returnItem.reason,
+                creditAmount: returnItem.creditAmount,
+                returnDate: returnItem.returnDate ? new Date(returnItem.returnDate) : new Date(),
+                applied: returnItem.applied,
+                appliedToOrderId: appliedToOrderServerId,
+              },
+            });
+            syncedSupplierReturns[returnItem.id?.toString() || ''] = newReturn.id;
+          } else {
+            // Update existing if local is newer
+            const updated = await prisma.supplierReturn.update({
+              where: { id: existingReturn.id },
+              data: {
+                applied: returnItem.applied,
+                appliedToOrderId: appliedToOrderServerId,
+              },
+            });
+            syncedSupplierReturns[returnItem.id?.toString() || ''] = updated.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync supplier return ${returnItem.id}: ${errorMsg}`);
+          console.error('[API] Supplier return sync error:', error);
+        }
+      }
+    }
+
+    // Sync Product-Supplier Links
+    if (productSuppliers && productSuppliers.length > 0) {
+      for (const link of productSuppliers) {
+        try {
+          // Find the product and supplier serverIds
+          const productServerId = syncedProducts[link.product_id?.toString() || ''] || link.product_id;
+          const supplierServerId = syncedSuppliers[link.supplier_id?.toString() || ''] || link.supplier_id;
+
+          let existingLink = null;
+          if (link.serverId) {
+            existingLink = await prisma.productSupplier.findUnique({
+              where: { id: link.serverId },
+            });
+          }
+
+          // Also check by unique constraint (productId + supplierId)
+          if (!existingLink) {
+            existingLink = await prisma.productSupplier.findUnique({
+              where: {
+                productId_supplierId: {
+                  productId: productServerId,
+                  supplierId: supplierServerId,
+                },
+              },
+            });
+          }
+
+          if (!existingLink) {
+            // New link
+            const newLink = await prisma.productSupplier.create({
+              data: {
+                productId: productServerId,
+                supplierId: supplierServerId,
+                supplierProductCode: link.supplier_product_code || null,
+                supplierProductName: link.supplier_product_name || null,
+                defaultPrice: link.default_price || null,
+                isPrimary: link.is_primary,
+                lastOrderedDate: link.last_ordered_date ? new Date(link.last_ordered_date) : null,
+              },
+            });
+            syncedProductSuppliers[link.id?.toString() || ''] = newLink.id;
+          } else {
+            // Update existing
+            const updated = await prisma.productSupplier.update({
+              where: { id: existingLink.id },
+              data: {
+                supplierProductCode: link.supplier_product_code || null,
+                supplierProductName: link.supplier_product_name || null,
+                defaultPrice: link.default_price || null,
+                isPrimary: link.is_primary,
+                lastOrderedDate: link.last_ordered_date ? new Date(link.last_ordered_date) : null,
+              },
+            });
+            syncedProductSuppliers[link.id?.toString() || ''] = updated.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product-supplier link ${link.id}: ${errorMsg}`);
+          console.error('[API] Product-supplier sync error:', error);
+        }
+      }
     }
 
     // Sync Credit Payments
@@ -330,7 +600,9 @@ export async function POST(request: NextRequest) {
         products: syncedProducts,
         suppliers: syncedSuppliers,
         supplierOrders: syncedSupplierOrders,
+        supplierOrderItems: syncedSupplierOrderItems,
         supplierReturns: syncedSupplierReturns,
+        productSuppliers: syncedProductSuppliers,
         creditPayments: syncedCreditPayments,
       },
       errors: errors.length > 0 ? errors : undefined,
@@ -466,8 +738,10 @@ export async function POST(request: NextRequest) {
             products: {},
             suppliers: {},
             supplierOrders: {},
+            supplierOrderItems: {},
             supplierReturns: {},
-            creditPayments: {}, // 🆕
+            productSuppliers: {},
+            creditPayments: {},
           },
           errors: ['Non autorisé'],
         },
@@ -485,8 +759,10 @@ export async function POST(request: NextRequest) {
           products: {},
           suppliers: {},
           supplierOrders: {},
+          supplierOrderItems: {},
           supplierReturns: {},
-          creditPayments: {}, // 🆕
+          productSuppliers: {},
+          creditPayments: {},
         },
         errors: ['Erreur serveur'],
       },

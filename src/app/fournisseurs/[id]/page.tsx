@@ -45,10 +45,14 @@ export default function SupplierDetailPage() {
     () => db.supplier_orders.where('supplierId').equals(supplierId).reverse().toArray(),
     [supplierId]
   ) ?? [];
+  const allOrderItems = useLiveQuery(
+    () => db.supplier_order_items.toArray(),
+    []
+  ) ?? [];
 
   // Calculate stats
-  const totalOwed = orders.reduce((sum, o) => sum + (o.totalAmount - o.amountPaid), 0);
-  const totalOrdered = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const totalOwed = orders.reduce((sum, o) => sum + ((o.calculatedTotal ?? o.totalAmount) - o.amountPaid), 0);
+  const totalOrdered = orders.reduce((sum, o) => sum + (o.calculatedTotal ?? o.totalAmount), 0);
   const totalPaid = orders.reduce((sum, o) => sum + o.amountPaid, 0);
 
   const getPaymentStatus = (order: SupplierOrder): 'overdue' | 'urgent' | 'upcoming' | 'paid' => {
@@ -146,7 +150,7 @@ export default function SupplierDetailPage() {
         <div className="flex items-center gap-3 p-4 max-w-2xl mx-auto">
           <button
             onClick={() => router.back()}
-            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors active:scale-95"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -156,7 +160,7 @@ export default function SupplierDetailPage() {
           </div>
           <button
             onClick={() => {/* TODO: Edit supplier */}}
-            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors active:scale-95"
           >
             <Edit3 className="w-4 h-4" />
           </button>
@@ -218,7 +222,7 @@ export default function SupplierDetailPage() {
         <div className="grid grid-cols-3 gap-2">
           <Button
             onClick={() => router.push(`/fournisseurs/commande/nouvelle?supplierId=${supplierId}`)}
-            className="h-20 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center gap-1"
+            className="h-20 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
           >
             <Package className="w-5 h-5" />
             <span className="text-xs font-semibold">Nouvelle commande</span>
@@ -226,14 +230,14 @@ export default function SupplierDetailPage() {
           <Button
             onClick={() => router.push(`/fournisseurs/paiement?supplierId=${supplierId}`)}
             disabled={totalOwed === 0}
-            className="h-20 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-20 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
           >
             <CreditCard className="w-5 h-5" />
             <span className="text-xs font-semibold">Paiement</span>
           </Button>
           <Button
             onClick={() => router.push(`/fournisseurs/retour/nouveau?supplierId=${supplierId}`)}
-            className="h-20 bg-orange-600 hover:bg-orange-500 text-white rounded-xl flex flex-col items-center justify-center gap-1"
+            className="h-20 bg-orange-600 hover:bg-orange-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
           >
             <RotateCcw className="w-5 h-5" />
             <span className="text-xs font-semibold">Retour produit</span>
@@ -260,13 +264,14 @@ export default function SupplierDetailPage() {
                 const StatusIcon = statusConfig.icon;
                 const orderStatusConfig = getOrderStatusConfig(order.status);
                 const OrderStatusIcon = orderStatusConfig.icon;
-                const balance = order.totalAmount - order.amountPaid;
+                const balance = (order.calculatedTotal ?? order.totalAmount) - order.amountPaid;
+                const orderItemsCount = allOrderItems.filter(item => item.order_id === order.id).length;
 
                 return (
                   <div
                     key={order.id}
-                    className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer"
-                    onClick={() => router.push(`/fournisseurs/paiement/${order.id}`)}
+                    className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer active:scale-[0.98]"
+                    onClick={() => router.push(`/fournisseurs/commande/${order.id}`)}
                   >
                     {/* Order Header */}
                     <div className="flex items-start justify-between mb-3">
@@ -281,11 +286,16 @@ export default function SupplierDetailPage() {
                           <p className="text-xs text-slate-500">
                             {formatDate(order.orderDate)}
                           </p>
+                          {orderItemsCount > 0 && (
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {orderItemsCount} {orderItemsCount === 1 ? 'produit' : 'produits'}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-white">
-                          {formatCurrency(order.totalAmount)}
+                          {formatCurrency(order.calculatedTotal ?? order.totalAmount)}
                         </p>
                         <p className={cn('text-xs font-semibold', orderStatusConfig.color)}>
                           {orderStatusConfig.label}
@@ -300,13 +310,13 @@ export default function SupplierDetailPage() {
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="text-slate-500">Paiement</span>
                             <span className="text-slate-400 font-medium">
-                              {Math.round((order.amountPaid / order.totalAmount) * 100)}%
+                              {Math.round((order.amountPaid / (order.calculatedTotal ?? order.totalAmount)) * 100)}%
                             </span>
                           </div>
                           <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-emerald-500 transition-all"
-                              style={{ width: `${(order.amountPaid / order.totalAmount) * 100}%` }}
+                              style={{ width: `${(order.amountPaid / (order.calculatedTotal ?? order.totalAmount)) * 100}%` }}
                             />
                           </div>
                         </div>

@@ -161,7 +161,7 @@ export default function NewSupplierPage() {
                   key={days}
                   type="button"
                   onClick={() => setPaymentTermsDays(days.toString())}
-                  className={`h-10 rounded-lg font-semibold text-sm transition-all ${
+                  className={`h-12 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
                     paymentTermsDays === days.toString()
                       ? 'bg-emerald-600 text-white'
                       : 'bg-slate-800 text-slate-400 hover:bg-slate-700'

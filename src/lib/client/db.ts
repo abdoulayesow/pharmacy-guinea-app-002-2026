@@ -19,7 +19,9 @@ import type {
   SyncQueueItem,
   Supplier,
   SupplierOrder,
+  SupplierOrderItem, // 🆕 Order line items
   SupplierReturn,
+  ProductSupplier, // 🆕 Product-supplier links
   CreditPayment, // 🆕 Credit payment tracking
 } from '@/lib/shared/types';
 
@@ -37,7 +39,9 @@ class SeriDatabase extends Dexie {
   // 🆕 Supplier tables (from user research 2026-01)
   suppliers!: Table<Supplier>;
   supplier_orders!: Table<SupplierOrder>;
+  supplier_order_items!: Table<SupplierOrderItem>; // 🆕 Order line items
   supplier_returns!: Table<SupplierReturn>;
+  product_suppliers!: Table<ProductSupplier>; // 🆕 Product-supplier links
   credit_payments!: Table<CreditPayment>; // 🆕 Partial payment tracking
 
   constructor() {
@@ -111,6 +115,23 @@ class SeriDatabase extends Dexie {
       suppliers: '++id, serverId, name, synced',
       supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
       supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    });
+
+    // Version 6: Add supplier order items and product-supplier links (2026-01)
+    this.version(6).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced',
+      sale_items: '++id, sale_id, product_id',
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, supplier_order_id, synced', // 🆕 Added supplier_order_id index
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
+      supplier_order_items: '++id, serverId, order_id, product_id, synced', // 🆕 New table for order line items
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      product_suppliers: '++id, serverId, product_id, supplier_id, is_primary, synced', // 🆕 New table for product-supplier links
       credit_payments: '++id, serverId, sale_id, payment_date, synced',
     });
   }
@@ -356,7 +377,9 @@ export async function clearDatabase() {
   await db.sync_queue.clear();
   await db.suppliers.clear(); // 🆕
   await db.supplier_orders.clear(); // 🆕
+  await db.supplier_order_items.clear(); // 🆕
   await db.supplier_returns.clear(); // 🆕
+  await db.product_suppliers.clear(); // 🆕
   await db.credit_payments.clear(); // 🆕
   console.log('[Seri DB] Database cleared');
 }
@@ -373,7 +396,9 @@ export async function getDatabaseStats() {
     stockMovements: await db.stock_movements.count(),
     suppliers: await db.suppliers.count(), // 🆕
     supplierOrders: await db.supplier_orders.count(), // 🆕
+    supplierOrderItems: await db.supplier_order_items.count(), // 🆕
     supplierReturns: await db.supplier_returns.count(), // 🆕
+    productSuppliers: await db.product_suppliers.count(), // 🆕
     creditPayments: await db.credit_payments.count(), // 🆕
     pendingSync: await db.sync_queue.where('status').equals('PENDING').count(),
   };

@@ -17,7 +17,7 @@ const SYNC_TIMEOUT_MS = 30000; // 30 seconds per sync request
  * Add a transaction to the sync queue
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
   payload: any,
   localId?: string

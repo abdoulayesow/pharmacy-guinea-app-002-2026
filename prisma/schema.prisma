@@ -79,12 +79,14 @@ model Product {
   priceBuy      Int?      @map("price_buy")
   stock         Int       @default(0)
   stockMin      Int       @default(10) @map("stock_min")
+  category      String?   // Product category
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  saleItems       SaleItem[]
-  stockMovements  StockMovement[]
+  saleItems        SaleItem[]
+  stockMovements   StockMovement[]
+  productSuppliers ProductSupplier[]
 
   @@map("products")
 }
@@ -174,4 +176,103 @@ model StockMovement {
   user           User      @relation(fields: [userId], references: [id])
 
   @@map("stock_movements")
+}
+
+// ============================================================================
+// Supplier Management Models
+// ============================================================================
+
+model Supplier {
+  id               Int       @id @default(autoincrement())
+  name             String
+  phone            String?
+  paymentTermsDays Int       @default(30) @map("payment_terms_days")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  orders           SupplierOrder[]
+  returns          SupplierReturn[]
+  productSuppliers ProductSupplier[]
+
+  @@map("suppliers")
+}
+
+model SupplierOrder {
+  id              Int       @id @default(autoincrement())
+  supplierId      Int       @map("supplier_id")
+  orderDate       DateTime  @default(now()) @map("order_date")
+  deliveryDate    DateTime? @map("delivery_date")
+  totalAmount     Int       @map("total_amount") // Total in GNF
+  calculatedTotal Int?      @map("calculated_total") // Calculated from items
+  amountPaid      Int       @default(0) @map("amount_paid")
+  dueDate         DateTime  @map("due_date")
+  status          String    @default("PENDING") // PENDING | DELIVERED | PAID | CANCELLED
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  items           SupplierOrderItem[]
+  appliedReturns  SupplierReturn[]    @relation("AppliedToOrder")
+
+  @@map("supplier_orders")
+}
+
+model SupplierOrderItem {
+  id          Int       @id @default(autoincrement())
+  orderId     Int       @map("order_id")
+  productId   Int?      @map("product_id") // Null if new product not yet created
+  productName String    @map("product_name")
+  category    String?   // Category for new products
+  quantity    Int
+  unitPrice   Int       @map("unit_price")
+  subtotal    Int
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  order       SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_order_items")
+}
+
+model ProductSupplier {
+  id                  Int       @id @default(autoincrement())
+  productId           Int       @map("product_id")
+  supplierId          Int       @map("supplier_id")
+  supplierProductCode String?   @map("supplier_product_code")
+  supplierProductName String?   @map("supplier_product_name")
+  defaultPrice        Int?      @map("default_price")
+  isPrimary           Boolean   @default(false) @map("is_primary")
+  lastOrderedDate     DateTime? @map("last_ordered_date")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  product             Product   @relation(fields: [productId], references: [id])
+  supplier            Supplier  @relation(fields: [supplierId], references: [id])
+
+  @@unique([productId, supplierId])
+  @@map("product_suppliers")
+}
+
+model SupplierReturn {
+  id               Int       @id @default(autoincrement())
+  supplierId       Int       @map("supplier_id")
+  supplierOrderId  Int?      @map("supplier_order_id") // Optional link for deduction
+  productId        Int       @map("product_id")
+  quantity         Int
+  reason           String    // EXPIRED | DAMAGED | WRONG_PRODUCT | QUALITY_ISSUE | OTHER
+  creditAmount     Int       @map("credit_amount")
+  returnDate       DateTime  @default(now()) @map("return_date")
+  applied          Boolean   @default(false) // Credit applied to payment
+  appliedToOrderId Int?      @map("applied_to_order_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  supplier         Supplier       @relation(fields: [supplierId], references: [id])
+  appliedToOrder   SupplierOrder? @relation("AppliedToOrder", fields: [appliedToOrderId], references: [id])
+
+  @@map("supplier_returns")
 }

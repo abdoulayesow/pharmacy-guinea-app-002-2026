@@ -322,7 +322,7 @@ export default function FournisseursPage() {
               return (
                 <div
                   key={supplier.id}
-                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer group"
+                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer group active:scale-[0.98]"
                   onClick={() => router.push(`/fournisseurs/${supplier.id}`)}
                 >
                   <div className="flex items-start justify-between mb-3">

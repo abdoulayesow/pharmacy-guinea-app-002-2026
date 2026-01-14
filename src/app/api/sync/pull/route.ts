@@ -83,12 +83,55 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'asc' },
     });
 
+    // Query Suppliers (updated after lastSyncAt)
+    const suppliers = await prisma.supplier.findMany({
+      where: lastSyncAt
+        ? {
+            updatedAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    // Query Supplier Orders (updated after lastSyncAt, include items)
+    const supplierOrders = await prisma.supplierOrder.findMany({
+      where: lastSyncAt
+        ? {
+            updatedAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      include: {
+        items: true,
+      },
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    // Query Supplier Returns (created after lastSyncAt)
+    const supplierReturns = await prisma.supplierReturn.findMany({
+      where: lastSyncAt
+        ? {
+            createdAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Query Product-Supplier Links (created after lastSyncAt)
+    const productSuppliers = await prisma.productSupplier.findMany({
+      where: lastSyncAt
+        ? {
+            createdAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { createdAt: 'asc' },
+    });
+
     // Transform Prisma models to client types
     const transformedProducts = products.map((p) => ({
       id: p.id,
       serverId: p.id,
       name: p.name,
-      category: '', // Not in schema yet
+      category: p.category || '',
       price: p.price,
       priceBuy: p.priceBuy || undefined,
       stock: p.stock,
@@ -162,6 +205,127 @@ export async function GET(request: NextRequest) {
       synced: true,
     }));
 
+    // Transform Suppliers
+    const transformedSuppliers = suppliers.map((s) => ({
+      id: s.id,
+      serverId: s.id,
+      name: s.name,
+      phone: s.phone || undefined,
+      paymentTermsDays: s.paymentTermsDays,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      synced: true,
+    }));
+
+    // Transform Supplier Orders (with nested items)
+    // Note: DB uses PENDING but client type uses ORDERED - map accordingly
+    const transformedSupplierOrders = supplierOrders.map((o) => {
+      // Map database status to client status type
+      let clientStatus: 'ORDERED' | 'DELIVERED' | 'PARTIALLY_PAID' | 'PAID' = 'ORDERED';
+      switch (o.status) {
+        case 'PENDING':
+          clientStatus = 'ORDERED';
+          break;
+        case 'DELIVERED':
+          clientStatus = 'DELIVERED';
+          break;
+        case 'PAID':
+          clientStatus = 'PAID';
+          break;
+        case 'CANCELLED':
+          clientStatus = 'ORDERED'; // Map cancelled to ordered for client
+          break;
+        default:
+          clientStatus = 'ORDERED';
+      }
+      // Check if partially paid
+      if (o.amountPaid > 0 && o.amountPaid < o.totalAmount) {
+        clientStatus = 'PARTIALLY_PAID';
+      }
+
+      return {
+        id: o.id,
+        serverId: o.id,
+        supplierId: o.supplierId,
+        orderDate: o.orderDate,
+        deliveryDate: o.deliveryDate || undefined,
+        totalAmount: o.totalAmount,
+        calculatedTotal: o.calculatedTotal || undefined,
+        amountPaid: o.amountPaid,
+        dueDate: o.dueDate,
+        status: clientStatus,
+        notes: o.notes || undefined,
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
+        synced: true,
+      };
+    });
+
+    // Transform Supplier Order Items (flattened from orders)
+    const transformedSupplierOrderItems = supplierOrders.flatMap((o) =>
+      o.items.map((item) => ({
+        id: item.id,
+        serverId: item.id,
+        order_id: item.orderId,
+        product_id: item.productId || undefined,
+        product_name: item.productName,
+        category: item.category || undefined,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        subtotal: item.subtotal,
+        notes: item.notes || undefined,
+        synced: true,
+      }))
+    );
+
+    // Transform Supplier Returns
+    // Map DB reason to client ReturnReason type
+    const transformedSupplierReturns = supplierReturns.map((r) => {
+      // Map database reason to client type (EXPIRING | DAMAGED | OTHER)
+      let clientReason: 'EXPIRING' | 'DAMAGED' | 'OTHER' = 'OTHER';
+      switch (r.reason) {
+        case 'EXPIRED':
+        case 'EXPIRING':
+          clientReason = 'EXPIRING';
+          break;
+        case 'DAMAGED':
+          clientReason = 'DAMAGED';
+          break;
+        default:
+          clientReason = 'OTHER';
+      }
+
+      return {
+        id: r.id,
+        serverId: r.id,
+        supplierId: r.supplierId,
+        supplierOrderId: r.supplierOrderId || undefined,
+        productId: r.productId,
+        quantity: r.quantity,
+        reason: clientReason,
+        creditAmount: r.creditAmount,
+        returnDate: r.returnDate,
+        applied: r.applied,
+        appliedToOrderId: r.appliedToOrderId || undefined,
+        createdAt: r.createdAt,
+        synced: true,
+      };
+    });
+
+    // Transform Product-Supplier Links
+    const transformedProductSuppliers = productSuppliers.map((ps) => ({
+      id: ps.id,
+      serverId: ps.id,
+      product_id: ps.productId,
+      supplier_id: ps.supplierId,
+      supplier_product_code: ps.supplierProductCode || undefined,
+      supplier_product_name: ps.supplierProductName || undefined,
+      default_price: ps.defaultPrice || undefined,
+      is_primary: ps.isPrimary,
+      last_ordered_date: ps.lastOrderedDate || undefined,
+      synced: true,
+    }));
+
     return NextResponse.json<SyncPullResponse>({
       success: true,
       data: {
@@ -169,9 +333,11 @@ export async function GET(request: NextRequest) {
         sales: transformedSales,
         expenses: transformedExpenses,
         stockMovements: transformedStockMovements,
-        suppliers: [], // Not yet in schema
-        supplierOrders: [], // Not yet in schema
-        supplierReturns: [], // Not yet in schema
+        suppliers: transformedSuppliers,
+        supplierOrders: transformedSupplierOrders,
+        supplierOrderItems: transformedSupplierOrderItems,
+        supplierReturns: transformedSupplierReturns,
+        productSuppliers: transformedProductSuppliers,
         creditPayments: transformedCreditPayments,
       },
       serverTime,
@@ -190,8 +356,10 @@ export async function GET(request: NextRequest) {
             stockMovements: [],
             suppliers: [],
             supplierOrders: [],
+            supplierOrderItems: [],
             supplierReturns: [],
-            creditPayments: [], // 🆕
+            productSuppliers: [],
+            creditPayments: [],
           },
           serverTime: new Date(),
         },
@@ -209,8 +377,10 @@ export async function GET(request: NextRequest) {
           stockMovements: [],
           suppliers: [],
           supplierOrders: [],
+          supplierOrderItems: [],
           supplierReturns: [],
-          creditPayments: [], // 🆕
+          productSuppliers: [],
+          creditPayments: [],
         },
         serverTime: new Date(),
       },

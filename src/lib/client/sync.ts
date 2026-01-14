@@ -229,15 +229,16 @@ export async function processSyncQueue(): Promise<{
         try {
           let serverId: string | undefined;
 
-          // Get the server ID from response
-          if (item.type === 'SALE' && data.sales?.[item.localId]) {
-            serverId = data.sales[item.localId];
-          } else if (item.type === 'EXPENSE' && data.expenses?.[item.localId]) {
-            serverId = data.expenses[item.localId];
-          } else if (item.type === 'PRODUCT' && data.products?.[item.localId]) {
-            serverId = data.products[item.localId];
-          } else if (item.type === 'STOCK_MOVEMENT' && data.stockMovements?.[item.localId]) {
-            serverId = data.stockMovements[item.localId];
+          // Get the server ID from response (now using Record<string, number>)
+          const localIdStr = item.localId.toString();
+          if (item.type === 'SALE' && data.synced?.sales?.[localIdStr]) {
+            serverId = data.synced.sales[localIdStr].toString();
+          } else if (item.type === 'EXPENSE' && data.synced?.expenses?.[localIdStr]) {
+            serverId = data.synced.expenses[localIdStr].toString();
+          } else if (item.type === 'PRODUCT' && data.synced?.products?.[localIdStr]) {
+            serverId = data.synced.products[localIdStr].toString();
+          } else if (item.type === 'STOCK_MOVEMENT' && data.synced?.stockMovements?.[localIdStr]) {
+            serverId = data.synced.stockMovements[localIdStr].toString();
           }
 
           await markSynced(item.id, serverId);
@@ -247,6 +248,16 @@ export async function processSyncQueue(): Promise<{
           results.failed++;
           results.errors.push(`Item ${item.id}: ${error}`);
         }
+      }
+    }
+
+    // After successful push, pull changes from server
+    if (results.synced > 0) {
+      try {
+        await pullFromServer();
+      } catch (error) {
+        // Don't fail push sync if pull fails
+        console.warn('[Sync] Pull after push failed:', error);
       }
     }
   } catch (error) {
@@ -275,9 +286,13 @@ export function setupBackgroundSync(): void {
   window.addEventListener('online', () => {
     console.log('Device is online - starting sync');
     processSyncQueue();
+    // Also pull changes when coming online
+    pullFromServer().catch((error) => {
+      console.warn('[Sync] Pull on online event failed:', error);
+    });
   });
 
-  // Check periodically if online and sync
+  // Check periodically if online and sync push queue
   setInterval(() => {
     if (navigator.onLine) {
       getPendingCount().then((count) => {
@@ -287,6 +302,15 @@ export function setupBackgroundSync(): void {
       });
     }
   }, 30000); // Check every 30 seconds
+
+  // Periodic pull sync (every 5 minutes)
+  setInterval(() => {
+    if (navigator.onLine) {
+      pullFromServer().catch((error) => {
+        console.warn('[Sync] Periodic pull failed:', error);
+      });
+    }
+  }, 5 * 60 * 1000); // 5 minutes
 }
 
 /**
@@ -388,4 +412,326 @@ export async function savePinOfflineFirst(
       error: error instanceof Error ? error.message : 'Erreur inconnue' 
     };
   }
+}
+
+/**
+ * Get last sync timestamp from localStorage
+ */
+function getLastSyncAt(): Date | null {
+  if (typeof window === 'undefined') return null;
+  const lastSync = localStorage.getItem('seri-last-sync');
+  return lastSync ? new Date(lastSync) : null;
+}
+
+/**
+ * Store last sync timestamp to localStorage
+ */
+function setLastSyncAt(date: Date): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('seri-last-sync', date.toISOString());
+}
+
+/**
+ * Merge pulled data into IndexedDB with conflict resolution
+ */
+async function mergePulledData(data: {
+  products: any[];
+  sales: any[];
+  expenses: any[];
+  stockMovements: any[];
+  creditPayments: any[];
+}): Promise<{
+  merged: number;
+  conflicts: number;
+  errors: string[];
+}> {
+  const results = { merged: 0, conflicts: 0, errors: [] as string[] };
+
+  // Merge Products
+  for (const product of data.products) {
+    try {
+      const existing = product.serverId
+        ? await db.products.where('serverId').equals(product.serverId).first()
+        : null;
+
+      if (existing) {
+        // Conflict: compare timestamps
+        const serverUpdatedAt = product.updatedAt ? new Date(product.updatedAt) : new Date(0);
+        const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
+
+        if (serverUpdatedAt >= localUpdatedAt) {
+          // Server wins - update local
+          await db.products.update(existing.id!, {
+            name: product.name,
+            price: product.price,
+            priceBuy: product.priceBuy,
+            stock: product.stock,
+            minStock: product.minStock,
+            serverId: product.serverId,
+            synced: true,
+            updatedAt: product.updatedAt,
+          });
+          results.merged++;
+        } else {
+          // Local is newer - keep local (will be pushed on next sync)
+          results.conflicts++;
+        }
+      } else {
+        // New product - insert
+        await db.products.add({
+          name: product.name,
+          price: product.price,
+          priceBuy: product.priceBuy,
+          stock: product.stock,
+          minStock: product.minStock,
+          serverId: product.serverId,
+          synced: true,
+          updatedAt: product.updatedAt,
+          category: product.category || '',
+          expirationDate: product.expirationDate,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Product ${product.id}: ${error}`);
+    }
+  }
+
+  // Merge Sales
+  for (const sale of data.sales) {
+    try {
+      const existing = sale.serverId
+        ? await db.sales.where('serverId').equals(sale.serverId).first()
+        : null;
+
+      if (existing) {
+        // Check if server version is newer
+        const serverModifiedAt = sale.modified_at
+          ? new Date(sale.modified_at)
+          : new Date(sale.created_at);
+        const localModifiedAt = existing.modified_at
+          ? new Date(existing.modified_at)
+          : new Date(existing.created_at);
+
+        if (serverModifiedAt >= localModifiedAt) {
+          // Server wins - update local
+          await db.sales.update(existing.id!, {
+            total: sale.total,
+            payment_method: sale.payment_method,
+            payment_status: sale.payment_status,
+            payment_ref: sale.payment_ref,
+            customer_name: sale.customer_name,
+            customer_phone: sale.customer_phone,
+            due_date: sale.due_date,
+            amount_paid: sale.amount_paid,
+            amount_due: sale.amount_due,
+            modified_at: sale.modified_at,
+            modified_by: sale.modified_by,
+            edit_count: sale.edit_count,
+            serverId: sale.serverId,
+            synced: true,
+          } as any);
+          results.merged++;
+        } else {
+          results.conflicts++;
+        }
+      } else {
+        // New sale - insert
+        await db.sales.add({
+          total: sale.total,
+          payment_method: sale.payment_method,
+          payment_status: sale.payment_status,
+          payment_ref: sale.payment_ref,
+          customer_name: sale.customer_name,
+          customer_phone: sale.customer_phone,
+          due_date: sale.due_date,
+          amount_paid: sale.amount_paid,
+          amount_due: sale.amount_due,
+          created_at: sale.created_at,
+          user_id: sale.user_id,
+          modified_at: sale.modified_at,
+          modified_by: sale.modified_by,
+          edit_count: sale.edit_count,
+          serverId: sale.serverId,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Sale ${sale.id}: ${error}`);
+    }
+  }
+
+  // Merge Expenses
+  for (const expense of data.expenses) {
+    try {
+      const existing = expense.serverId
+        ? await db.expenses.where('serverId').equals(expense.serverId).first()
+        : null;
+
+      if (!existing) {
+        await db.expenses.add({
+          date: expense.date,
+          description: expense.description,
+          amount: expense.amount,
+          category: expense.category,
+          user_id: expense.user_id,
+          serverId: expense.serverId,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Expense ${expense.id}: ${error}`);
+    }
+  }
+
+  // Merge Stock Movements
+  for (const movement of data.stockMovements) {
+    try {
+      const existing = movement.serverId
+        ? await db.stock_movements.where('serverId').equals(movement.serverId).first()
+        : null;
+
+      if (!existing) {
+        await db.stock_movements.add({
+          product_id: movement.product_id,
+          type: movement.type,
+          quantity_change: movement.quantity_change,
+          reason: movement.reason,
+          created_at: movement.created_at,
+          user_id: movement.user_id,
+          serverId: movement.serverId,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Stock movement ${movement.id}: ${error}`);
+    }
+  }
+
+  // Merge Credit Payments
+  for (const payment of data.creditPayments) {
+    try {
+      const existing = payment.serverId
+        ? await db.credit_payments.where('serverId').equals(payment.serverId).first()
+        : null;
+
+      if (!existing) {
+        await db.credit_payments.add({
+          sale_id: payment.sale_id,
+          amount: payment.amount,
+          payment_method: payment.payment_method,
+          payment_ref: payment.payment_ref,
+          payment_date: payment.payment_date,
+          notes: payment.notes,
+          user_id: payment.user_id,
+          serverId: payment.serverId,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Credit payment ${payment.id}: ${error}`);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Pull changes from server and merge into IndexedDB
+ */
+export async function pullFromServer(): Promise<{
+  success: boolean;
+  pulled: number;
+  conflicts: number;
+  errors: string[];
+  serverTime: Date | null;
+}> {
+  if (!navigator.onLine) {
+    return {
+      success: false,
+      pulled: 0,
+      conflicts: 0,
+      errors: ['Device is offline'],
+      serverTime: null,
+    };
+  }
+
+  try {
+    const lastSyncAt = getLastSyncAt();
+    const url = lastSyncAt
+      ? `/api/sync/pull?lastSyncAt=${lastSyncAt.toISOString()}`
+      : '/api/sync/pull';
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Include cookies for auth
+      signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Authentication failed - session expired');
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.error || `Server error: ${response.status}`
+      );
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error('Pull sync failed');
+    }
+
+    // Merge pulled data into IndexedDB
+    const mergeResults = await mergePulledData(data.data);
+
+    // Update last sync timestamp
+    if (data.serverTime) {
+      setLastSyncAt(new Date(data.serverTime));
+    }
+
+    return {
+      success: true,
+      pulled: mergeResults.merged,
+      conflicts: mergeResults.conflicts,
+      errors: mergeResults.errors,
+      serverTime: data.serverTime ? new Date(data.serverTime) : null,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Sync] Pull error:', error);
+    return {
+      success: false,
+      pulled: 0,
+      conflicts: 0,
+      errors: [errorMsg],
+      serverTime: null,
+    };
+  }
+}
+
+/**
+ * Perform initial sync (pull all data from server)
+ */
+export async function performInitialSync(): Promise<{
+  success: boolean;
+  pulled: number;
+  errors: string[];
+}> {
+  console.log('[Sync] Performing initial sync...');
+  const result = await pullFromServer();
+  return {
+    success: result.success,
+    pulled: result.pulled,
+    errors: result.errors,
+  };
 }

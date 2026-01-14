@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
+import { useLockStore } from '@/stores/lock';
 import { useActivityMonitor } from '@/hooks/useActivityMonitor';
 import { Logo } from '@/components/Logo';
 
@@ -23,11 +24,24 @@ interface AuthGuardProps {
  */
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const { isAuthenticated, syncFromSession } = useAuthStore();
+  const { isLocked } = useLockStore();
 
   // Monitor user activity and redirect to login after 5 min inactivity
   useActivityMonitor();
+
+  // Prevent navigation when locked (except login/setup-pin pages)
+  useEffect(() => {
+    if (isLocked) {
+      const isAuthPage = pathname === '/login' || pathname?.includes('/auth/setup-pin');
+      if (!isAuthPage) {
+        // Don't navigate, just show lock screen
+        // Lock screen overlay will handle blocking interaction
+      }
+    }
+  }, [isLocked, pathname]);
 
   // Sync NextAuth session to Zustand store when session changes
   useEffect(() => {

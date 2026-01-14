@@ -265,14 +265,14 @@ export interface SyncPushRequest {
 export interface SyncPushResponse {
   success: boolean;
   synced: {
-    sales: number[];
-    expenses: number[];
-    stockMovements: number[];
-    products: number[];
-    suppliers: number[]; // 🆕
-    supplierOrders: number[]; // 🆕
-    supplierReturns: number[]; // 🆕
-    creditPayments: number[]; // 🆕 Partial payment tracking
+    sales: Record<string, number>; // Map localId -> serverId
+    expenses: Record<string, number>;
+    stockMovements: Record<string, number>;
+    products: Record<string, number>;
+    suppliers: Record<string, number>; // 🆕
+    supplierOrders: Record<string, number>; // 🆕
+    supplierReturns: Record<string, number>; // 🆕
+    creditPayments: Record<string, number>; // 🆕 Partial payment tracking
   };
   errors?: string[];
 }

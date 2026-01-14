@@ -102,15 +102,37 @@ export function extractToken(authHeader: string | null): string | null {
 }
 
 /**
- * Get user from request headers (PIN login JWT)
+ * Extract token from httpOnly cookie
+ */
+export function extractTokenFromCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const tokenCookie = cookies.find(c => c.startsWith('seri-token='));
+  
+  if (!tokenCookie) return null;
+  
+  return tokenCookie.split('=')[1];
+}
+
+/**
+ * Get user from request headers or cookie (PIN login JWT)
+ * Checks both Authorization header and httpOnly cookie
  */
 export async function getUserFromRequest(request: Request): Promise<{
   userId: string;
   name: string;
   role: string;
 } | null> {
+  // First try Authorization header (for API clients)
   const authHeader = request.headers.get('Authorization');
-  const token = extractToken(authHeader);
+  let token = extractToken(authHeader);
+
+  // Fallback to httpOnly cookie (for browser)
+  if (!token) {
+    token = extractTokenFromCookie(request);
+  }
 
   if (!token) return null;
 

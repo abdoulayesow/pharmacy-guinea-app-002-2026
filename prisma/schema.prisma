@@ -14,6 +14,7 @@ model User {
   image         String?
   phone         String?
   pinHash       String?   @map("pin_hash") // Optional: set after OAuth
+  mustChangePin Boolean   @default(true) @map("must_change_pin") // Force PIN change on first login
   role          String    @default("EMPLOYEE") // OWNER | EMPLOYEE
   avatar        String?
   createdAt     DateTime  @default(now()) @map("created_at")

@@ -4,8 +4,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types';
 
-// Inactivity timeout in milliseconds (5 minutes)
-export const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+// Inactivity timeout in milliseconds (configurable via NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES)
+// Default: 5 minutes
+const INACTIVITY_MINUTES = parseInt(process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES || '5', 10);
+export const INACTIVITY_TIMEOUT_MS = INACTIVITY_MINUTES * 60 * 1000;
 
 interface AuthState {
   currentUser: User | null;
@@ -23,6 +25,8 @@ interface AuthState {
   resetFailedAttempts: () => void;
   isLocked: () => boolean;
   clearExpiredLock: () => void;
+  // Sync from NextAuth session to keep states aligned
+  syncFromSession: (sessionUser: { id: string; name?: string | null; role?: string; image?: string | null }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -97,6 +101,25 @@ export const useAuthStore = create<AuthState>()(
         const { lockedUntil } = get();
         if (lockedUntil && new Date() > new Date(lockedUntil)) {
           set({ lockedUntil: null, failedAttempts: 0 });
+        }
+      },
+
+      syncFromSession: (sessionUser) => {
+        const { isAuthenticated, currentUser } = get();
+        
+        // Only sync if not already authenticated or user changed
+        if (!isAuthenticated || currentUser?.id !== sessionUser.id) {
+          set({
+            currentUser: {
+              id: sessionUser.id,
+              name: sessionUser.name || 'Utilisateur',
+              role: (sessionUser.role as 'OWNER' | 'EMPLOYEE') || 'EMPLOYEE',
+              image: sessionUser.image || undefined,
+              createdAt: new Date(),
+            },
+            isAuthenticated: true,
+            lastActivityAt: Date.now(),
+          });
         }
       },
     }),

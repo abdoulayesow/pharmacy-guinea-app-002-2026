@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { signIn, useSession } from 'next-auth/react';
 import { User, ChevronLeft, KeyRound, Clock } from 'lucide-react';
-import { db, seedInitialData } from '@/lib/db';
+import { db } from '@/lib/db';
 import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
 import { verifyPin } from '@/lib/client/auth';
 import { Button } from '@/components/ui/button';
@@ -133,9 +134,10 @@ function LoginPageContent() {
     };
   }, []);
 
-  // Initialize database with seed data
+  // Initialize database schema (no demo users - real users created via Google OAuth)
   useEffect(() => {
-    seedInitialData();
+    // Database schema is auto-initialized by Dexie on first access
+    // Real users are created when they log in via Google OAuth
   }, []);
 
   // Get users from IndexedDB
@@ -180,6 +182,13 @@ function LoginPageContent() {
     if (isAuthenticated) {
       hasRedirectedRef.current = true;
       router.push(callbackUrl);
+      return;
+    }
+
+    // If Google session but must change PIN, redirect to PIN setup
+    if (hasGoogleSession && (session.user as { mustChangePin?: boolean }).mustChangePin) {
+      hasRedirectedRef.current = true;
+      router.push('/auth/setup-pin?force=true');
       return;
     }
 
@@ -290,7 +299,6 @@ function LoginPageContent() {
 
       // Try API authentication first (when online)
       let isApiSuccess = false;
-      let jwtToken: string | undefined;
 
       if (isOnline) {
         try {
@@ -301,14 +309,13 @@ function LoginPageContent() {
           });
 
           if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.token) {
-              isApiSuccess = true;
-              jwtToken = data.token;
-              localStorage.setItem('seri-jwt-token', jwtToken!);
-              console.log('[Auth] Authenticated via API');
-            }
-          } else if (response.status === 401 || response.status === 404) {
+                            const data = await response.json();
+                            if (data.success) {
+                              isApiSuccess = true;
+                              // JWT is now stored in httpOnly cookie by the server
+                              console.log('[Auth] Authenticated via API (cookie set)');
+                            }
+                          } else if (response.status === 401 || response.status === 404) {
             incrementFailedAttempts();
             setError('Code PIN incorrect');
             triggerShake();
@@ -689,6 +696,16 @@ function LoginPageContent() {
                 >
                   {isLoading ? 'Connexion...' : 'Se connecter'}
                 </Button>
+
+                {/* Forgot PIN Link */}
+                <div className="text-center mt-4">
+                  <Link
+                    href="/auth/reset-pin"
+                    className="text-sm text-slate-400 hover:text-emerald-400 transition-colors"
+                  >
+                    PIN oublie?
+                  </Link>
+                </div>
               </div>
             </div>
           )}

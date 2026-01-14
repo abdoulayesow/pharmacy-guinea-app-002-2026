@@ -17,8 +17,8 @@ const SYNC_TIMEOUT_MS = 30000; // 30 seconds per sync request
  * Add a transaction to the sync queue
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT',
-  action: 'CREATE' | 'UPDATE' | 'DELETE',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER',
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
   payload: any,
   localId?: string
 ): Promise<SyncQueueItem> {
@@ -314,4 +314,78 @@ export async function getSyncStats(): Promise<{
     synced: all.filter((i: any) => i.status === 'SYNCED').length,
     failed: all.filter((i: any) => i.status === 'FAILED').length,
   };
+}
+
+/**
+ * Queue PIN update for background sync
+ * This is separate from the batch sync for immediate retry on failure
+ */
+export async function queuePinUpdate(userId: string, pinHash: string): Promise<void> {
+  await queueTransaction('USER', 'UPDATE_PIN', { userId, pinHash }, userId);
+  
+  // Try to sync immediately if online
+  if (navigator.onLine) {
+    try {
+      const response = await fetch('/api/auth/setup-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies for auth
+        body: JSON.stringify({ pinHash, syncFromLocal: true }),
+      });
+      
+      if (response.ok) {
+        // Mark as synced - find the queue item we just created
+        const items = await getPendingItems();
+        const pinItem = items.find(
+          (i: any) => i.type === 'USER' && i.action === 'UPDATE_PIN' && i.payload?.userId === userId
+        );
+        if (pinItem?.id) {
+          await markSynced(pinItem.id);
+        }
+      }
+    } catch (error) {
+      // Sync failed, will retry via background sync
+      console.log('[Sync] PIN update queued for background sync:', error);
+    }
+  }
+}
+
+/**
+ * Save PIN locally and queue for sync (offline-first)
+ */
+export async function savePinOfflineFirst(
+  userId: string, 
+  pin: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Dynamic import bcryptjs only when needed
+    const bcrypt = await import('bcryptjs');
+    const pinHash = await bcrypt.hash(pin, 10);
+    
+    // 1. Save to IndexedDB first (always works offline)
+    const existingUser = await db.users.get(userId);
+    if (existingUser) {
+      await db.users.update(userId, { pinHash });
+    } else {
+      // User doesn't exist locally - create a minimal record
+      await db.users.put({
+        id: userId,
+        name: 'Utilisateur',
+        role: 'EMPLOYEE',
+        pinHash,
+        createdAt: new Date(),
+      } as any);
+    }
+    
+    // 2. Queue for server sync
+    await queuePinUpdate(userId, pinHash);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Sync] Failed to save PIN locally:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Erreur inconnue' 
+    };
+  }
 }

@@ -56,6 +56,7 @@ export const authConfig: NextAuthConfig = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60, // 7 days (matches existing JWT expiration)
+    // Configurable via SESSION_MAX_AGE_DAYS env var (default: 7 days)
+    maxAge: parseInt(process.env.SESSION_MAX_AGE_DAYS || '7', 10) * 24 * 60 * 60,
   },
 };

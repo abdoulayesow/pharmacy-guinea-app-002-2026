@@ -7,11 +7,13 @@ declare module 'next-auth' {
       id: string;
       role: string;
       hasPin?: boolean;
+      mustChangePin?: boolean;
     } & DefaultSession['user'];
   }
 
   interface User {
     role?: string;
+    mustChangePin?: boolean;
   }
 }
 
@@ -20,6 +22,7 @@ declare module 'next-auth/jwt' {
     id?: string;
     role?: string;
     hasPin?: boolean;
+    mustChangePin?: boolean;
     accessToken?: string;
   }
 }

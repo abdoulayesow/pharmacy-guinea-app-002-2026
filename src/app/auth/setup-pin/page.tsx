@@ -1,18 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Shield, Check } from 'lucide-react';
+import { Shield, Check, WifiOff, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { cn } from '@/lib/utils';
+import { savePinOfflineFirst } from '@/lib/client/sync';
 
 type SetupStep = 'enter' | 'confirm';
 
-export default function SetupPinPage() {
+// Loading fallback
+function SetupPinLoading() {
+  return (
+    <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+      <div className="animate-pulse">
+        <Logo variant="icon" size="lg" />
+      </div>
+    </div>
+  );
+}
+
+function SetupPinContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
+  
+  // Check if this is a forced PIN change (default PIN)
+  const isForced = searchParams.get('force') === 'true';
 
   const [step, setStep] = useState<SetupStep>('enter');
   const [pin, setPin] = useState('');
@@ -20,6 +36,33 @@ export default function SetupPinPage() {
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Track online status
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Block browser back button when forced
+  useEffect(() => {
+    if (isForced) {
+      const handlePopState = (e: PopStateEvent) => {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      };
+      window.history.pushState(null, '', window.location.href);
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+    }
+  }, [isForced]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -28,9 +71,9 @@ export default function SetupPinPage() {
     }
   }, [status, router]);
 
-  // If user already has PIN, redirect to dashboard
+  // If user already has PIN and not forced to change, redirect to dashboard
   useEffect(() => {
-    if (session?.user?.hasPin) {
+    if (session?.user?.hasPin && !session?.user?.mustChangePin) {
       router.push('/dashboard');
     }
   }, [session, router]);
@@ -90,27 +133,44 @@ export default function SetupPinPage() {
       return;
     }
 
+    if (!session?.user?.id) {
+      setError('Session invalide');
+      triggerShake();
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/setup-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, confirmPin }),
-      });
+      // OFFLINE-FIRST: Save PIN locally first, then sync to server
+      const result = await savePinOfflineFirst(session.user.id, pin);
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result.success) {
+        // Also call API to clear mustChangePin flag (when online)
+        if (isOnline) {
+          try {
+            await fetch('/api/auth/setup-pin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ pin, confirmPin, clearMustChangePin: true }),
+            });
+          } catch (apiError) {
+            // Non-blocking - PIN is saved locally, flag will sync later
+            console.log('[Setup PIN] API call to clear flag failed:', apiError);
+          }
+        }
+        
+        // PIN saved locally - navigate immediately (optimistic UI)
         router.push('/dashboard');
       } else {
-        setError(data.error || 'Erreur lors de la configuration');
+        setError(result.error || 'Erreur lors de la configuration');
         triggerShake();
         setConfirmPin('');
       }
     } catch (error) {
       console.error('Setup PIN error:', error);
-      setError('Erreur de connexion');
+      setError('Erreur lors de la configuration');
       triggerShake();
     } finally {
       setIsLoading(false);
@@ -153,19 +213,37 @@ export default function SetupPinPage() {
         <div className="w-full max-w-md">
           {/* Welcome Message */}
           <div className="mb-4">
-            <div className="bg-emerald-500 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-emerald-400 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-emerald-900" />
-              </div>
-              <div>
-                <div className="font-semibold text-white text-lg">
-                  Bienvenue, {session?.user?.name}
+            {isForced ? (
+              // Forced PIN change - show warning style
+              <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-amber-500/30 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6 text-amber-400" />
                 </div>
-                <div className="text-sm font-medium text-emerald-100">
-                  Configurez votre code PIN
+                <div>
+                  <div className="font-semibold text-amber-400 text-lg">
+                    Changement de PIN requis
+                  </div>
+                  <div className="text-sm font-medium text-amber-200/80">
+                    Vous devez changer le PIN par defaut (1234)
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              // Normal PIN setup
+              <div className="bg-emerald-500 rounded-xl p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-emerald-400 flex items-center justify-center">
+                  <Shield className="w-6 h-6 text-emerald-900" />
+                </div>
+                <div>
+                  <div className="font-semibold text-white text-lg">
+                    Bienvenue, {session?.user?.name}
+                  </div>
+                  <div className="text-sm font-medium text-emerald-100">
+                    Configurez votre code PIN
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* PIN Entry Card */}
@@ -201,7 +279,9 @@ export default function SetupPinPage() {
             </div>
 
             <h3 className="text-center mb-6 text-white font-semibold text-xl">
-              {step === 'enter' ? 'Choisissez un code PIN' : 'Confirmez le code PIN'}
+              {step === 'enter' 
+                ? (isForced ? 'Choisissez un nouveau PIN' : 'Choisissez un code PIN') 
+                : 'Confirmez le code PIN'}
             </h3>
 
             {/* PIN Display */}
@@ -281,10 +361,29 @@ export default function SetupPinPage() {
 
           {/* Info text */}
           <p className="text-center text-slate-400 text-sm mt-4">
-            Ce code PIN vous permettra de vous connecter rapidement, meme hors ligne.
+            {isForced 
+              ? 'Pour votre securite, veuillez choisir un nouveau code PIN personnel.'
+              : 'Ce code PIN vous permettra de vous connecter rapidement, meme hors ligne.'}
           </p>
+
+          {/* Offline indicator */}
+          {!isOnline && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-amber-400 text-sm">
+              <WifiOff className="w-4 h-4" />
+              <span>Mode hors ligne - PIN sera synchronise plus tard</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrap with Suspense for useSearchParams
+export default function SetupPinPage() {
+  return (
+    <Suspense fallback={<SetupPinLoading />}>
+      <SetupPinContent />
+    </Suspense>
   );
 }

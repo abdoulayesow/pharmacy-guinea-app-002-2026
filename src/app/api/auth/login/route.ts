@@ -7,11 +7,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPin, generateToken } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
+import { verifyCsrf } from '@/lib/server/middleware';
 import { isValidPin } from '@/lib/shared/utils';
 import type { LoginRequest, LoginResponse, UserRole } from '@/lib/shared/types';
 
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection - verify origin matches host
+    if (!verifyCsrf(request)) {
+      return NextResponse.json<LoginResponse>(
+        {
+          success: false,
+          error: 'Requête non autorisée',
+        },
+        { status: 403 }
+      );
+    }
+
     // Parse request body
     const body: LoginRequest = await request.json();
     const { userId, pin } = body;
@@ -96,9 +108,9 @@ export async function POST(request: NextRequest) {
       createdAt: user.createdAt,
     });
 
-    return NextResponse.json<LoginResponse>({
+    // Create response with user data
+    const response = NextResponse.json<LoginResponse>({
       success: true,
-      token,
       user: {
         id: user.id,
         name: user.name,
@@ -109,6 +121,17 @@ export async function POST(request: NextRequest) {
         createdAt: user.createdAt,
       },
     });
+
+    // Set JWT as httpOnly cookie (secure against XSS)
+    response.cookies.set('seri-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('[API] Login error:', error);
     return NextResponse.json<LoginResponse>(

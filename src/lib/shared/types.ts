@@ -19,6 +19,7 @@ export interface User {
   phone?: string | null;
   role: UserRole;
   pinHash?: string | null; // Optional: set after OAuth login
+  mustChangePin?: boolean; // Force PIN change on first login
   avatar?: string | null;
   image?: string | null; // Google profile picture URL
   createdAt: Date;
@@ -168,8 +169,9 @@ export type SyncType =
   | 'SUPPLIER' // 🆕
   | 'SUPPLIER_ORDER' // 🆕
   | 'SUPPLIER_RETURN' // 🆕
-  | 'CREDIT_PAYMENT'; // 🆕 Partial payment tracking
-export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE';
+  | 'CREDIT_PAYMENT' // 🆕 Partial payment tracking
+  | 'USER'; // 🆕 User PIN updates
+export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN';
 
 export interface SyncQueueItem {
   id?: number;

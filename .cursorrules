@@ -1,0 +1,349 @@
+# Seri PWA - Cursor Rules
+
+> Development rules for Seri pharmacy management app (Guinea, West Africa)
+> These rules are MANDATORY for all code changes.
+
+---
+
+## 1. OFFLINE-FIRST ARCHITECTURE (CRITICAL)
+
+### Golden Rule
+```
+The app MUST work as if it were always offline.
+Network connectivity is a BONUS, never a requirement.
+```
+
+### Data Flow Pattern
+
+All data mutations MUST follow this exact sequence:
+
+```typescript
+// CORRECT - Offline-first pattern
+'use client';
+import { db } from '@/lib/client/db';
+import { queueSync } from '@/lib/client/sync';
+
+async function createSale(saleData: Sale) {
+  // 1. Save to IndexedDB FIRST (immediate, offline-safe)
+  const localId = await db.sales.add({
+    ...saleData,
+    synced: false,
+    createdAt: new Date(),
+  });
+
+  // 2. Queue for background sync (non-blocking)
+  await queueSync('SALE', 'CREATE', saleData, localId);
+
+  // 3. Show success immediately (optimistic UI)
+  toast.success('Vente enregistrée');
+  
+  return localId;
+}
+```
+
+```typescript
+// WRONG - Network-dependent (NEVER DO THIS)
+async function createSale(saleData: Sale) {
+  const response = await fetch('/api/sales', {
+    method: 'POST',
+    body: JSON.stringify(saleData),
+  });
+  // ❌ This blocks on network and fails offline!
+}
+```
+
+### Import Rules
+
+| Location | Import From | Use For |
+|----------|-------------|---------|
+| Client components | `@/lib/client/db` | Dexie.js IndexedDB operations |
+| Client components | `@/lib/client/sync` | Sync queue operations |
+| API routes only | `@/lib/server/prisma` | PostgreSQL via Prisma |
+| Anywhere | `@/lib/shared/types` | TypeScript interfaces |
+| Anywhere | `@/lib/shared/utils` | formatCurrency, formatDate |
+
+### Sync Queue Requirements
+
+- ALL mutations (create, update, delete) MUST be queued
+- Queue status: `PENDING` → `SYNCING` → `SYNCED` or `FAILED`
+- Max 3 retry attempts for failed syncs
+- Auto-sync when device comes online
+
+### Reading Data
+
+```typescript
+// CORRECT - Read from IndexedDB with live updates
+'use client';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/client/db';
+
+function ProductList() {
+  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // Automatically updates when IndexedDB changes
+}
+```
+
+---
+
+## 2. PERFORMANCE BUDGET (P0 - NON-NEGOTIABLE)
+
+### Target Devices
+- Low-end Android smartphones (2GB RAM, Android 8+)
+- Intermittent 3G connectivity
+- Expensive mobile data
+
+### Bundle Size Limits
+
+| Asset | Budget | Enforcement |
+|-------|--------|-------------|
+| **Total bundle** | < 300KB | Build fails if exceeded |
+| JavaScript | < 200KB gzipped | Code splitting required |
+| CSS | < 30KB gzipped | Tailwind purge enabled |
+| Images | < 50KB total | SVG preferred, compressed |
+| Fonts | **0 bytes** | system-ui only |
+
+### Runtime Targets
+
+| Metric | Target | Priority |
+|--------|--------|----------|
+| First Contentful Paint | < 1.5s | P0 |
+| Time to Interactive | < 3s | P0 |
+| Product search response | < 500ms | P0 |
+| Lighthouse Performance | > 90 | P0 |
+
+### Forbidden Patterns
+
+```typescript
+// ❌ FORBIDDEN - Heavy libraries
+import moment from 'moment';           // Use native Date + Intl
+import _ from 'lodash';                // Use native array methods
+import * as Icons from 'lucide-react'; // Import only needed icons
+
+// ✅ CORRECT - Lightweight alternatives
+import { formatDate } from '@/lib/shared/utils';  // Native Intl.DateTimeFormat
+import { ShoppingCart, Package } from 'lucide-react'; // Tree-shakable
+```
+
+### Code Splitting
+
+```typescript
+// ✅ CORRECT - Dynamic imports for routes
+import dynamic from 'next/dynamic';
+
+const ExpenseForm = dynamic(() => import('@/components/ExpenseForm'), {
+  loading: () => <Skeleton className="h-48" />,
+});
+```
+
+### Image Rules
+
+- Use SVG for icons (lucide-react)
+- Compress all images (< 10KB each)
+- Use `next/image` with proper sizing
+- No decorative images
+
+---
+
+## 3. MOBILE-FIRST TOUCH UX
+
+### Touch Target Sizes
+
+All interactive elements MUST be minimum 48x48dp:
+
+```typescript
+// ✅ CORRECT - Touch-friendly button
+<Button className="min-h-12 min-w-12 p-4">
+  <Plus className="h-6 w-6" />
+</Button>
+
+// ❌ WRONG - Too small for touch
+<button className="p-1">
+  <Plus className="h-4 w-4" />
+</button>
+```
+
+### Responsive Breakpoints
+
+Test ALL layouts at these widths:
+- **360px** - Minimum (low-end Android) - REQUIRED
+- **390px** - iPhone SE
+- **428px** - Larger phones
+
+```typescript
+// ✅ Mobile-first responsive design
+<div className="p-4 md:p-6 lg:p-8">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+```
+
+### Traffic Light Status Colors
+
+Use consistent status indicators across the app:
+
+| Status | Color | Tailwind Classes | Use Case |
+|--------|-------|------------------|----------|
+| OK/Success | Green | `bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200` | Stock OK, synced |
+| Warning | Yellow | `bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200` | Low stock, pending |
+| Critical | Red | `bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200` | Out of stock, failed |
+
+```typescript
+// Use the helper function
+import { getStockStatus, getStockStatusColor } from '@/lib/shared/utils';
+
+const status = getStockStatus(product.stock, product.minStock);
+const colorClass = getStockStatusColor(status);
+```
+
+### Interaction Feedback
+
+- Visual feedback on EVERY tap (scale, color change)
+- Use `active:scale-95` for press feedback
+- Toast notifications for all actions
+- No hover-only states (mobile has no hover)
+
+```typescript
+// ✅ CORRECT - Touch feedback
+<Button className="active:scale-95 transition-transform">
+  Ajouter au panier
+</Button>
+```
+
+### Typography
+
+- Base font size: 16px minimum (prevents iOS zoom)
+- Use relative units (rem) not pixels
+- High contrast ratios for readability
+
+```typescript
+// ✅ CORRECT
+<Input className="text-base" />  // 16px prevents iOS zoom
+
+// ❌ WRONG
+<Input className="text-sm" />    // 14px triggers iOS zoom on focus
+```
+
+---
+
+## 4. DESIGN SYSTEM CONSISTENCY
+
+### Color Palette
+
+```css
+/* Primary Brand */
+--primary: emerald-600 (#059669)
+--primary-hover: emerald-700 (#047857)
+--primary-light: emerald-100 (#d1fae5)
+
+/* Module Colors */
+--sales: blue-600 (#2563eb)
+--inventory: purple-600 (#9333ea)
+--expenses: orange-600 (#ea580c)
+
+/* Status Colors */
+--success: emerald-600
+--warning: yellow-500
+--error: red-600
+```
+
+### Tailwind Color Usage
+
+```typescript
+// Primary actions
+<Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+
+// Module-specific headers
+<header className="bg-blue-600">      {/* Sales */}
+<header className="bg-purple-600">    {/* Inventory */}
+<header className="bg-orange-600">    {/* Expenses */}
+```
+
+### Border Radius Scale
+
+| Size | Tailwind | Pixels | Use Case |
+|------|----------|--------|----------|
+| Small | `rounded-lg` | 8px | Inputs, small cards |
+| Medium | `rounded-xl` | 12px | Cards, dialogs |
+| Large | `rounded-2xl` | 16px | Main containers, sheets |
+
+### Typography
+
+**Font Stack (NO CUSTOM FONTS):**
+```css
+font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+```
+
+This is already configured in `tailwind.config.js`.
+
+### Spacing
+
+Use 4px base unit (Tailwind default):
+- `p-4` (16px) - Standard padding
+- `p-5` (20px) - Comfortable padding
+- `p-6` (24px) - Generous padding
+- `gap-4` (16px) - Standard gaps
+
+### Dark Mode
+
+ALL components MUST support dark mode:
+
+```typescript
+// ✅ CORRECT - Dark mode support
+<div className="bg-white dark:bg-gray-900">
+  <p className="text-gray-900 dark:text-gray-100">
+  <Card className="border-gray-200 dark:border-gray-700">
+```
+
+### Component Reference
+
+Use existing components from:
+- `src/components/ui/` - Button, Card, Input, Badge
+- `figma-design/src/components/` - Reference implementations
+
+```typescript
+// ✅ Use existing UI components
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+```
+
+### Icons
+
+Use lucide-react with consistent sizing:
+
+```typescript
+import { ShoppingCart, Package, Wallet } from 'lucide-react';
+
+// Standard sizes
+<Icon className="h-4 w-4" />  // Small (inline)
+<Icon className="h-5 w-5" />  // Medium (buttons)
+<Icon className="h-6 w-6" />  // Large (navigation)
+```
+
+---
+
+## Quick Reference Checklist
+
+Before committing any code, verify:
+
+- [ ] Works offline (test in DevTools Network → Offline)
+- [ ] Data saved to IndexedDB first, then synced
+- [ ] No TypeScript errors
+- [ ] All text in French
+- [ ] Amounts use `formatCurrency()` → "15 000 GNF"
+- [ ] Dates use `formatDate()` → "15/01/2026"
+- [ ] Touch targets ≥ 48x48dp
+- [ ] Responsive at 360px width
+- [ ] Dark mode supported
+- [ ] No custom fonts loaded
+- [ ] Bundle size within budget
+
+---
+
+## Related Documentation
+
+- [CLAUDE.md](CLAUDE.md) - Full project documentation
+- [figma-design/](figma-design/) - UI reference implementation
+- [src/lib/client/db.ts](src/lib/client/db.ts) - Dexie.js schema
+- [src/lib/client/sync.ts](src/lib/client/sync.ts) - Sync queue logic
+- [src/lib/shared/utils.ts](src/lib/shared/utils.ts) - Formatting helpers
+

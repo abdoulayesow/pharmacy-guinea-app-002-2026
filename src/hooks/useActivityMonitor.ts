@@ -5,8 +5,16 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
 
+// Check interval increased to 60s for better battery life on mobile
+const CHECK_INTERVAL_MS = 60 * 1000;
+
 /**
  * Hook to monitor user activity and redirect to login after inactivity.
+ *
+ * Optimizations for mobile battery life:
+ * - Uses visibility API to pause checks when tab is hidden
+ * - 60-second check interval instead of 30 seconds
+ * - Throttled activity updates (max once per 30 seconds)
  *
  * Flow:
  * - Tracks user interactions (clicks, key presses, touches, scrolls)
@@ -19,10 +27,24 @@ export function useActivityMonitor() {
   const { data: session, status } = useSession();
   const { updateActivity, logout, lastActivityAt } = useAuthStore();
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isVisibleRef = useRef(true);
 
   // Throttled activity update (max once per 30 seconds to reduce store updates)
   const lastUpdateRef = useRef<number>(0);
   const THROTTLE_MS = 30 * 1000;
+
+  const checkInactivity = useCallback(() => {
+    if (!lastActivityAt) return;
+
+    const timeSinceActivity = Date.now() - lastActivityAt;
+
+    if (timeSinceActivity > INACTIVITY_TIMEOUT_MS) {
+      // User has been inactive for > 5 minutes
+      // Logout from Zustand (requires PIN re-entry) but keep Google session
+      logout();
+      router.push('/login');
+    }
+  }, [lastActivityAt, logout, router]);
 
   const handleActivity = useCallback(() => {
     const now = Date.now();
@@ -55,6 +77,24 @@ export function useActivityMonitor() {
     };
   }, [status, session, handleActivity, updateActivity]);
 
+  // Handle visibility changes for battery optimization
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = document.visibilityState === 'visible';
+      
+      // When tab becomes visible, check inactivity immediately
+      if (isVisibleRef.current) {
+        checkInactivity();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [checkInactivity]);
+
   // Check for inactivity and redirect
   useEffect(() => {
     // Only check if user has Google session
@@ -62,21 +102,12 @@ export function useActivityMonitor() {
       return;
     }
 
-    const checkInactivity = () => {
-      if (!lastActivityAt) return;
-
-      const timeSinceActivity = Date.now() - lastActivityAt;
-
-      if (timeSinceActivity > INACTIVITY_TIMEOUT_MS) {
-        // User has been inactive for > 5 minutes
-        // Logout from Zustand (requires PIN re-entry) but keep Google session
-        logout();
-        router.push('/login');
+    // Check every 60 seconds (only when visible for battery optimization)
+    checkIntervalRef.current = setInterval(() => {
+      if (isVisibleRef.current) {
+        checkInactivity();
       }
-    };
-
-    // Check every 30 seconds
-    checkIntervalRef.current = setInterval(checkInactivity, 30 * 1000);
+    }, CHECK_INTERVAL_MS);
 
     // Initial check
     checkInactivity();
@@ -86,5 +117,5 @@ export function useActivityMonitor() {
         clearInterval(checkIntervalRef.current);
       }
     };
-  }, [status, session, lastActivityAt, logout, router]);
+  }, [status, session, checkInactivity]);
 }

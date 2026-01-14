@@ -24,6 +24,7 @@ import {
 import { db, clearDatabase, getDatabaseStats, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { hashPin } from '@/lib/client/auth';
+import { savePinOfflineFirst } from '@/lib/client/sync';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
@@ -146,21 +147,44 @@ export default function ParametresPage() {
 
     setIsSavingPin(true);
     try {
-      // Hash the PIN using bcrypt before storing
-      const hashedPin = await hashPin(newPin);
+      // Check if changing own PIN (to clear mustChangePin flag)
+      const isChangingOwnPin = selectedUserForPin.id === session?.user?.id;
+      
+      // OFFLINE-FIRST: Save PIN locally first, then sync to server
+      const result = await savePinOfflineFirst(selectedUserForPin.id, newPin);
 
-      await db.users.update(selectedUserForPin.id, {
-        pinHash: hashedPin,
-      });
+      if (result.success) {
+        // Also call API to update server and clear mustChangePin flag (when online)
+        if (navigator.onLine && isChangingOwnPin) {
+          try {
+            await fetch('/api/auth/setup-pin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ 
+                pin: newPin, 
+                confirmPin: newPin,
+                clearMustChangePin: true 
+              }),
+            });
+          } catch (apiError) {
+            // Non-blocking - PIN is saved locally, will sync later
+            console.log('[Settings] API call to update PIN failed:', apiError);
+          }
+        }
 
-      toast.success(`PIN modifie pour ${selectedUserForPin.name}`);
-      setShowPinDialog(false);
-      setNewPin('');
-      setConfirmPin('');
-      setSelectedUserForPin(null);
+        toast.success(`PIN modifie pour ${selectedUserForPin.name}`);
+        setShowPinDialog(false);
+        setNewPin('');
+        setConfirmPin('');
+        setSelectedUserForPin(null);
+      } else {
+        setPinError(result.error || 'Erreur lors de la modification du PIN');
+      }
     } catch (error) {
       console.error('Failed to update PIN:', error);
       toast.error('Erreur lors de la modification du PIN');
+      setPinError('Erreur lors de la modification');
     } finally {
       setIsSavingPin(false);
     }
@@ -208,7 +232,9 @@ export default function ParametresPage() {
           <div className="space-y-2 sm:space-y-3">
             <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
               <span className="text-slate-400 text-sm font-medium">Nom</span>
-              <span className="text-white font-semibold">{currentUser?.name}</span>
+              <span className="text-white font-semibold">
+                {session?.user?.name || currentUser?.name || 'Utilisateur'}
+              </span>
             </div>
             <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
               <span className="text-slate-400 text-sm font-medium">Role</span>
@@ -358,42 +384,88 @@ export default function ParametresPage() {
           </div>
         </div>
 
-        {/* Security - Owner Only */}
-        {isOwner && (
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20">
-                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-white font-semibold text-base sm:text-lg">Securite</h3>
-                <p className="text-xs sm:text-sm text-slate-400">Gestion des acces</p>
-              </div>
+        {/* Security - PIN Change */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20">
+              <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" />
             </div>
-
-            <div className="space-y-3">
-              {users.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => handleOpenPinDialog(user)}
-                  className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]"
-                >
-                  <div className="text-left">
-                    <span className="text-white font-medium block">
-                      Modifier le PIN - {user.name}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {user.role === 'OWNER' ? 'Proprietaire' : 'Employe'}
-                    </span>
-                  </div>
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center ring-1 ring-orange-500/20">
-                    <Key className="w-4 h-4 text-orange-400" />
-                  </div>
-                </button>
-              ))}
+            <div className="flex-1">
+              <h3 className="text-white font-semibold text-base sm:text-lg">Securite</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Gestion du code PIN</p>
             </div>
           </div>
-        )}
+
+          <div className="space-y-3">
+            {/* Current user's PIN change */}
+            {session?.user?.id && (
+              <button
+                onClick={() => {
+                  // Find current user in IndexedDB or create a user object from session
+                  const currentUserId = session.user.id;
+                  const dbUser = users.find(u => u.id === currentUserId);
+                  
+                  if (dbUser) {
+                    handleOpenPinDialog(dbUser);
+                  } else {
+                    // Create a temporary user object from session for PIN change
+                    const sessionUser: UserType = {
+                      id: currentUserId,
+                      name: session.user.name || 'Utilisateur',
+                      role: (session.user.role as 'OWNER' | 'EMPLOYEE') || 'EMPLOYEE',
+                      image: session.user.image || undefined,
+                      createdAt: new Date(),
+                    };
+                    handleOpenPinDialog(sessionUser);
+                  }
+                }}
+                className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]"
+              >
+                <div className="text-left">
+                  <span className="text-white font-medium block">
+                    Modifier mon PIN
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {session?.user?.name || currentUser?.name || 'Utilisateur'}
+                  </span>
+                </div>
+                <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center ring-1 ring-orange-500/20">
+                  <Key className="w-4 h-4 text-orange-400" />
+                </div>
+              </button>
+            )}
+
+            {/* Owner can change other users' PINs */}
+            {isOwner && users.filter(u => u.id !== session?.user?.id).length > 0 && (
+              <>
+                <div className="pt-2 border-t border-slate-700">
+                  <p className="text-xs text-slate-400 mb-3 px-1">Autres utilisateurs</p>
+                </div>
+                {users
+                  .filter(u => u.id !== session?.user?.id)
+                  .map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleOpenPinDialog(user)}
+                      className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]"
+                    >
+                      <div className="text-left">
+                        <span className="text-white font-medium block">
+                          Modifier le PIN - {user.name}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {user.role === 'OWNER' ? 'Proprietaire' : 'Employe'}
+                        </span>
+                      </div>
+                      <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center ring-1 ring-orange-500/20">
+                        <Key className="w-4 h-4 text-orange-400" />
+                      </div>
+                    </button>
+                  ))}
+              </>
+            )}
+          </div>
+        </div>
 
         {/* About */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">

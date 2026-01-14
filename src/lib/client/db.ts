@@ -119,7 +119,7 @@ class SeriDatabase extends Dexie {
 export const db = new SeriDatabase();
 
 // ============================================================================
-// Seed Initial Data
+// Seed Demo Data (Products, Suppliers - NOT Users)
 // ============================================================================
 
 // Mutex to prevent concurrent seeding
@@ -127,9 +127,14 @@ let isSeeding = false;
 let seedingComplete = false;
 
 /**
- * Seed initial users if database is empty
- * These are the demo users for "Pharmacie Thierno Mamadou"
- * Uses mutex to prevent race conditions when called from multiple pages
+ * Seed demo products and suppliers for testing/demo purposes.
+ * 
+ * NOTE: Users are NOT seeded here. Real users are created via:
+ * 1. Google OAuth login (creates user in Postgres)
+ * 2. NextAuth createUser event (sets default PIN + mustChangePin flag)
+ * 3. User data syncs to IndexedDB for offline access
+ * 
+ * Uses mutex to prevent race conditions when called from multiple pages.
  */
 export async function seedInitialData() {
   // If already seeded or currently seeding, skip
@@ -137,34 +142,13 @@ export async function seedInitialData() {
     return;
   }
 
-  const userCount = await db.users.count();
+  const productCount = await db.products.count();
 
-  if (userCount === 0) {
+  if (productCount === 0) {
     isSeeding = true;
-    console.log('[Seri DB] Seeding initial data...');
+    console.log('[Seri DB] Seeding demo products and suppliers...');
 
     try {
-      // Add demo users
-      // PIN is "1234" for all users (hashed with bcrypt)
-      await db.users.bulkAdd([
-        {
-          id: 'user-owner-oumar',
-          name: 'Oumar',
-          role: 'OWNER',
-          pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
-          avatar: 'O',
-          createdAt: new Date(),
-        },
-        {
-          id: 'user-employee-abdoulaye',
-          name: 'Abdoulaye',
-          role: 'EMPLOYEE',
-          pinHash: '$2a$10$KAtt6JktpbwwmJxE115FEe6sO2KxNhKcEB.TGYqjtkCn5fhfbNQJO', // 1234
-          avatar: 'A',
-          createdAt: new Date(),
-        },
-      ]);
-
       // Add demo products
       await db.products.bulkAdd([
       {
@@ -335,22 +319,22 @@ export async function seedInitialData() {
         },
       ]);
 
-      console.log('[Seri DB] Seed data complete');
+      console.log('[Seri DB] Demo data seeding complete (products + suppliers)');
       seedingComplete = true;
     } catch (error: any) {
       // Ignore ConstraintError (duplicate key) - data already exists
       if (error?.name === 'BulkError' && error?.failures?.some((f: any) => f?.name === 'ConstraintError')) {
-        console.log('[Seri DB] Data already seeded, skipping');
+        console.log('[Seri DB] Demo data already seeded, skipping');
         seedingComplete = true;
       } else {
-        console.error('[Seri DB] Failed to seed data:', error);
+        console.error('[Seri DB] Failed to seed demo data:', error);
         throw error;
       }
     } finally {
       isSeeding = false;
     }
   } else {
-    // Data already exists
+    // Demo data already exists
     seedingComplete = true;
   }
 }

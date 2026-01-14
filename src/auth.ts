@@ -13,6 +13,10 @@ import { authConfig } from './auth.config';
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
+  // AUTH_SECRET is automatically read from process.env.AUTH_SECRET
+  // If you see "no matching decryption secret" errors, it means there are old
+  // session cookies encrypted with a different secret. This is harmless - 
+  // NextAuth will treat them as invalid and create new sessions.
   callbacks: {
     ...authConfig.callbacks,
     // Sync Google profile data on every sign-in
@@ -47,22 +51,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
     async jwt({ token, user, account, trigger }) {
-      // On sign in, fetch user role from database
+      // On sign in, fetch user data from database
       if (user && user.id) {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: user.id },
-            select: { role: true, pinHash: true },
+            select: { role: true, pinHash: true, mustChangePin: true },
           });
           token.id = user.id;
           token.role = dbUser?.role || 'EMPLOYEE';
           token.hasPin = !!dbUser?.pinHash;
+          token.mustChangePin = dbUser?.mustChangePin ?? true;
         } catch (error) {
           console.error('[Auth] JWT callback error:', error);
           // Set defaults if DB query fails
           token.id = user.id;
           token.role = 'EMPLOYEE';
           token.hasPin = false;
+          token.mustChangePin = true;
         }
       }
       if (account) {
@@ -75,18 +81,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         (session.user as { hasPin?: boolean }).hasPin = token.hasPin as boolean;
+        (session.user as { mustChangePin?: boolean }).mustChangePin = token.mustChangePin as boolean;
       }
       return session;
     },
   },
   events: {
-    // When a new user is created via OAuth, set default role
+    // When a new user is created via OAuth, set default role and default PIN
     async createUser({ user }) {
       try {
+        // Import config and bcrypt dynamically
+        const { AUTH_CONFIG } = await import('@/lib/shared/config');
+        const bcrypt = await import('bcryptjs');
+        
+        // Hash the default PIN
+        const defaultPinHash = await bcrypt.hash(AUTH_CONFIG.DEFAULT_PIN, 10);
+        
         await prisma.user.update({
           where: { id: user.id },
-          data: { role: 'EMPLOYEE' },
+          data: { 
+            role: 'EMPLOYEE',
+            pinHash: defaultPinHash,
+            mustChangePin: true, // Force user to change default PIN
+          },
         });
+        console.log('[Auth] Created user with default PIN:', user.id);
       } catch (error) {
         console.error('[Auth] createUser event error:', error);
         // Non-fatal - role defaults to EMPLOYEE in schema

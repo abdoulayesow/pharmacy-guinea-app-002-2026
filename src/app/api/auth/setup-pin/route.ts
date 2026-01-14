@@ -9,12 +9,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hash } from 'bcryptjs';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/server/prisma';
+import { verifyCsrf } from '@/lib/server/middleware';
 import { isValidPin } from '@/lib/shared/utils';
 
 const BCRYPT_ROUNDS = 10;
 
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection - verify origin matches host
+    if (!verifyCsrf(request)) {
+      return NextResponse.json(
+        { success: false, error: 'Requête non autorisée' },
+        { status: 403 }
+      );
+    }
+
     // Verify user is authenticated via OAuth
     const session = await auth();
 
@@ -27,31 +36,43 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { pin, confirmPin } = body;
+    const { pin, confirmPin, pinHash: syncedPinHash, syncFromLocal, clearMustChangePin } = body;
 
-    // Validate PIN format
-    if (!pin || !isValidPin(pin)) {
-      return NextResponse.json(
-        { success: false, error: 'Le PIN doit contenir exactement 4 chiffres' },
-        { status: 400 }
-      );
+    let finalPinHash: string;
+
+    // If syncing from local (offline-first), use the pre-hashed PIN
+    if (syncFromLocal && syncedPinHash) {
+      finalPinHash = syncedPinHash;
+    } else {
+      // Normal flow: validate and hash PIN
+      // Validate PIN format
+      if (!pin || !isValidPin(pin)) {
+        return NextResponse.json(
+          { success: false, error: 'Le PIN doit contenir exactement 4 chiffres' },
+          { status: 400 }
+        );
+      }
+
+      // Validate PIN confirmation
+      if (pin !== confirmPin) {
+        return NextResponse.json(
+          { success: false, error: 'Les PINs ne correspondent pas' },
+          { status: 400 }
+        );
+      }
+
+      // Hash PIN
+      finalPinHash = await hash(pin, BCRYPT_ROUNDS);
     }
 
-    // Validate PIN confirmation
-    if (pin !== confirmPin) {
-      return NextResponse.json(
-        { success: false, error: 'Les PINs ne correspondent pas' },
-        { status: 400 }
-      );
-    }
-
-    // Hash PIN
-    const pinHash = await hash(pin, BCRYPT_ROUNDS);
-
-    // Update user with PIN
+    // Update user with PIN and optionally clear mustChangePin flag
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { pinHash },
+      data: { 
+        pinHash: finalPinHash,
+        // Clear mustChangePin flag if requested (after changing default PIN)
+        ...(clearMustChangePin && { mustChangePin: false }),
+      },
     });
 
     return NextResponse.json({

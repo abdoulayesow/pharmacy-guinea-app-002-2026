@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { db, clearDatabase, seedInitialData } from '@/lib/client/db';
+import { db, clearDatabase, seedInitialData, getDatabaseStats } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
 
 export default function DebugPage() {
@@ -11,7 +11,7 @@ export default function DebugPage() {
     try {
       await clearDatabase();
       await seedInitialData();
-      setMessage('✅ Database cleared and reseeded successfully! PIN 1234 should now work.');
+      setMessage('✅ Database cleared! Demo products and suppliers reseeded. Users must log in via Google.');
     } catch (error) {
       setMessage(`❌ Error: ${error}`);
     }
@@ -21,7 +21,17 @@ export default function DebugPage() {
     try {
       const users = await db.users.toArray();
       console.log('Users in database:', users);
-      setMessage(`Found ${users.length} users. Check console for details.`);
+      setMessage(`Found ${users.length} user(s) in IndexedDB. Check console for details.`);
+    } catch (error) {
+      setMessage(`❌ Error: ${error}`);
+    }
+  };
+
+  const handleCheckStats = async () => {
+    try {
+      const stats = await getDatabaseStats();
+      console.log('Database stats:', stats);
+      setMessage(`Products: ${stats.products}, Users: ${stats.users}, Suppliers: ${stats.suppliers}, Pending sync: ${stats.pendingSync}`);
     } catch (error) {
       setMessage(`❌ Error: ${error}`);
     }
@@ -40,7 +50,7 @@ export default function DebugPage() {
               Database Actions
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Use these tools to fix the PIN hash issue
+              Tools for debugging the IndexedDB local database
             </p>
           </div>
 
@@ -48,7 +58,7 @@ export default function DebugPage() {
             onClick={handleClearAndReseed}
             className="w-full bg-red-600 hover:bg-red-700 text-white"
           >
-            Clear Database & Reseed (Fix PIN 1234)
+            Clear Database & Reseed Demo Data
           </Button>
 
           <Button
@@ -56,7 +66,15 @@ export default function DebugPage() {
             variant="outline"
             className="w-full"
           >
-            Check Users in Database
+            Check Users in IndexedDB
+          </Button>
+
+          <Button
+            onClick={handleCheckStats}
+            variant="outline"
+            className="w-full"
+          >
+            Show Database Stats
           </Button>
 
           {message && (
@@ -65,16 +83,15 @@ export default function DebugPage() {
             </div>
           )}
 
-          <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <h3 className="font-semibold text-yellow-900 dark:text-yellow-100 mb-2">
-              Instructions:
+          <div className="mt-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <h3 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2">
+              Auth Flow:
             </h3>
-            <ol className="list-decimal list-inside space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-              <li>Click "Clear Database & Reseed"</li>
-              <li>Go back to login page</li>
-              <li>Select Mamadou or Fatoumata</li>
-              <li>Enter PIN: 1234</li>
-              <li>Login should work!</li>
+            <ol className="list-decimal list-inside space-y-1 text-sm text-emerald-800 dark:text-emerald-200">
+              <li>Log in with Google (first time creates user in Postgres)</li>
+              <li>Default PIN "1234" is auto-set, user is prompted to change it</li>
+              <li>After 5 min inactivity, PIN is required to re-enter</li>
+              <li>After 7 days, full Google re-login is required</li>
             </ol>
           </div>
         </div>

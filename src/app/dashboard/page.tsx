@@ -29,7 +29,7 @@ export default function DashboardPage() {
   const userName = session?.user?.name || currentUser?.name;
   const userImage = session?.user?.image || currentUser?.image;
 
-  // Initialize database
+  // Initialize demo products/suppliers (users are created via Google OAuth)
   useEffect(() => {
     seedInitialData();
   }, []);

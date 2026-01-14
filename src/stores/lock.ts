@@ -19,12 +19,14 @@ interface LockState {
   isLocked: boolean;
   lockReason: LockReason;
   lastActivityAt: number | null;
+  _hasHydrated: boolean;
   
   // Actions
   lock: (reason?: LockReason) => void;
   unlock: () => void;
   updateActivity: () => void;
   checkAutoLock: () => void;
+  setHasHydrated: (state: boolean) => void;
 }
 
 // Get initial lock state from sessionStorage (clears on refresh per requirement)
@@ -38,6 +40,11 @@ export const useLockStore = create<LockState>((set, get) => ({
   isLocked: getInitialLockState(),
   lockReason: null,
   lastActivityAt: typeof window !== 'undefined' ? Date.now() : null,
+  _hasHydrated: false,
+
+  setHasHydrated: (state) => {
+    set({ _hasHydrated: state });
+  },
 
   lock: (reason: LockReason = 'manual') => {
     if (typeof window !== 'undefined') {

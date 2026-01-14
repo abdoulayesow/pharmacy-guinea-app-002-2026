@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function LockScreen() {
-  const { isLocked, lockReason, unlock, updateActivity } = useLockStore();
+  const { isLocked, lockReason, unlock, updateActivity, _hasHydrated, setHasHydrated } = useLockStore();
   const { currentUser } = useAuthStore();
   const { data: session } = useSession();
   const [pin, setPin] = useState('');
@@ -20,6 +20,11 @@ export function LockScreen() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [hasBiometric, setHasBiometric] = useState(false);
+
+  // Hydrate on mount
+  useEffect(() => {
+    setHasHydrated(true);
+  }, [setHasHydrated]);
 
   // Get current user ID
   const userId = session?.user?.id || currentUser?.id;
@@ -150,6 +155,9 @@ export function LockScreen() {
     }
   }, [pin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Wait for hydration before rendering to prevent hydration mismatch
+  if (!_hasHydrated) return null;
+  
   if (!isLocked) return null;
 
   const lockMessage = lockReason === 'inactivity' 
@@ -163,12 +171,18 @@ export function LockScreen() {
     updateActivity(); // Update activity on any interaction
   };
 
+  const handleOverlayTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    updateActivity(); // Update activity on any interaction
+  };
+
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
       onClick={handleOverlayClick}
       onMouseDown={handleOverlayClick}
-      onTouchStart={handleOverlayClick}
+      onTouchStart={handleOverlayTouch}
     >
       <div 
         className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl border border-slate-700 w-full max-w-sm shadow-2xl"

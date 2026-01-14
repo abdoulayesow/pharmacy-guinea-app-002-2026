@@ -163,18 +163,24 @@ export function LockScreen() {
     updateActivity(); // Update activity on any interaction
   };
 
+  const handleOverlayTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    updateActivity(); // Update activity on any interaction
+  };
+
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
       onClick={handleOverlayClick}
       onMouseDown={handleOverlayClick}
-      onTouchStart={handleOverlayClick}
+      onTouchStart={handleOverlayTouch}
     >
       <div 
         className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl border border-slate-700 w-full max-w-sm shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
+        onTouchStart={(e: React.TouchEvent) => e.stopPropagation()}
       >
         <div className="p-6">
           {/* Lock Icon */}

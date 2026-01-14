@@ -59,20 +59,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Fetch user data with all needed fields
           const dbUser = await prisma.user.findUnique({
             where: { id: userId as string },
-            select: { 
-              role: true, 
-              pinHash: true, 
-              // @ts-expect-error - mustChangePin exists in schema but TypeScript types may be stale
-              mustChangePin: true,
-            },
-          }) as { role: string; pinHash: string | null; mustChangePin: boolean | null } | null;
+          });
           
-          if (dbUser) {
+          // Extract needed fields with type safety
+          const userData = dbUser ? {
+            role: dbUser.role,
+            pinHash: dbUser.pinHash,
+            mustChangePin: (dbUser as { mustChangePin?: boolean | null }).mustChangePin ?? false,
+          } : null;
+          
+          if (userData) {
             // Update token with fresh data from database
             token.id = userId as string;
-            token.role = dbUser.role || 'EMPLOYEE';
-            token.hasPin = !!dbUser.pinHash;
-            token.mustChangePin = dbUser.mustChangePin ?? false;
+            token.role = userData.role || 'EMPLOYEE';
+            token.hasPin = !!userData.pinHash;
+            token.mustChangePin = userData.mustChangePin;
           } else {
             // User not found in database - keep existing token values
             console.warn('[Auth] User not found in database:', userId);

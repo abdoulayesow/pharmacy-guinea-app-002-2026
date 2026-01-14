@@ -460,14 +460,14 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           synced: {
-            sales: [],
-            expenses: [],
-            stockMovements: [],
-            products: [],
-            suppliers: [],
-            supplierOrders: [],
-            supplierReturns: [],
-            creditPayments: [], // 🆕
+            sales: {},
+            expenses: {},
+            stockMovements: {},
+            products: {},
+            suppliers: {},
+            supplierOrders: {},
+            supplierReturns: {},
+            creditPayments: {}, // 🆕
           },
           errors: ['Non autorisé'],
         },
@@ -479,14 +479,14 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         synced: {
-          sales: [],
-          expenses: [],
-          stockMovements: [],
-          products: [],
-          suppliers: [],
-          supplierOrders: [],
-          supplierReturns: [],
-          creditPayments: [], // 🆕
+          sales: {},
+          expenses: {},
+          stockMovements: {},
+          products: {},
+          suppliers: {},
+          supplierOrders: {},
+          supplierReturns: {},
+          creditPayments: {}, // 🆕
         },
         errors: ['Erreur serveur'],
       },

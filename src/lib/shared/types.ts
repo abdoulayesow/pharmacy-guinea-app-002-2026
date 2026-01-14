@@ -20,6 +20,7 @@ export interface User {
   role: UserRole;
   pinHash?: string | null; // Optional: set after OAuth login
   avatar?: string | null;
+  image?: string | null; // Google profile picture URL
   createdAt: Date;
 }
 

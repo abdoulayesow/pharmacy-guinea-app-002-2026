@@ -4,31 +4,43 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Activity, Clock, Building2, FileText, AlertCircle, History } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { Card } from '@/components/ui/card';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
+import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBanner } from '@/components/NotificationBadge';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
 import { getExpirationSummary, getExpirationStatus } from '@/lib/client/expiration';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const { currentUser, isAuthenticated } = useAuthStore();
+
+  // Get user info from OAuth session or Zustand store
+  const userName = session?.user?.name || currentUser?.name;
+  const userImage = session?.user?.image || currentUser?.image;
 
   // Initialize database
   useEffect(() => {
     seedInitialData();
   }, []);
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Wait for session to load before redirecting
+    if (status === 'loading') return;
+
+    // Allow access if either OAuth session or Zustand auth is valid
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
       router.push('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   // Get data from IndexedDB with live queries
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
@@ -95,7 +107,9 @@ export default function DashboardPage() {
   const weekSales = sales.filter(s => new Date(s.created_at) >= weekAgo);
   const weekRevenue = weekSales.reduce((sum, s) => sum + s.total, 0);
 
-  if (!isAuthenticated) {
+  // Show nothing while loading or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 
@@ -107,11 +121,14 @@ export default function DashboardPage() {
         {/* Welcome Header */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl border border-slate-700">
           <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20">
-              <Activity className="w-6 h-6 text-emerald-400" />
-            </div>
+            <UserAvatar
+              name={userName}
+              image={userImage}
+              size="lg"
+              className="w-12 h-12 sm:w-14 sm:h-14"
+            />
             <div className="flex-1">
-              <h2 className="text-white text-xl font-semibold">Bonjour, {currentUser?.name}</h2>
+              <h2 className="text-white text-xl font-semibold">Bonjour, {userName}</h2>
               <p className="text-sm text-slate-400 mt-0.5">{formatDate(new Date())}</p>
             </div>
           </div>

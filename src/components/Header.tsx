@@ -1,8 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { LogOut } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
 import { Logo } from './Logo';
+import { UserAvatar } from './UserAvatar';
 import { NotificationBadge } from './NotificationBadge';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
@@ -10,11 +13,25 @@ import { cn } from '@/lib/utils';
 
 export function Header() {
   const router = useRouter();
+  const { data: session } = useSession();
   const { currentUser, logout } = useAuthStore();
   const { isOnline, pendingCount } = useSyncStatus();
 
-  const handleLogout = () => {
+  // Get user info from OAuth session or Zustand store
+  const userName = session?.user?.name || currentUser?.name;
+  const userImage = session?.user?.image || currentUser?.image;
+
+  const handleLogout = async () => {
+    // Clear Zustand auth state
     logout();
+    // Clear localStorage JWT token
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('seri-jwt-token');
+    }
+    // Sign out from Auth.js session if exists
+    if (session) {
+      await signOut({ redirect: false });
+    }
     router.push('/login');
   };
 
@@ -23,7 +40,7 @@ export function Header() {
       <div className="max-w-md mx-auto px-3 sm:px-4 py-3 sm:py-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-            <Logo variant="icon-simple" size="sm" />
+            <Logo variant="icon-simple" size="md" />
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-semibold text-white">Seri</h1>
               <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
@@ -47,9 +64,19 @@ export function Header() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Notification badge for urgent payment reminders */}
             <NotificationBadge />
+
+            {/* User avatar with link to settings */}
+            <Link href="/parametres" className="flex-shrink-0">
+              <UserAvatar
+                name={userName}
+                image={userImage}
+                size="sm"
+                className="hover:ring-emerald-400/50 transition-all cursor-pointer"
+              />
+            </Link>
 
             <button
               onClick={handleLogout}

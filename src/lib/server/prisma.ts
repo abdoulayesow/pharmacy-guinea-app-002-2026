@@ -8,7 +8,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { Pool, neonConfig } from '@neondatabase/serverless';
+import { neonConfig } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import ws from 'ws';
 
@@ -26,21 +26,20 @@ const globalForPrisma = globalThis as unknown as {
  * Create Prisma Client with Neon adapter (Prisma 7)
  */
 function createPrismaClient() {
-  // Create Neon connection pool
-  const connectionString = process.env.DATABASE_URL;
+  // Use unpooled connection for more reliable connections in serverless
+  const connectionString = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  const pool = new Pool({ connectionString });
-  // @ts-expect-error - Neon pool types differ between versions
-  const adapter = new PrismaNeon(pool);
+  // Create adapter with connection string (Prisma 7 / adapter-neon 7.x format)
+  const adapter = new PrismaNeon({ connectionString });
 
   // Create Prisma Client with adapter (Prisma 7 format)
   return new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 }
 

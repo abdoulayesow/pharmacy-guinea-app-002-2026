@@ -48,6 +48,23 @@ export default function LoginPage() {
   const [shake, setShake] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(true); // Default to true to avoid hydration mismatch
+
+  // Track online status after mount to avoid hydration mismatch
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Initialize database with seed data
   useEffect(() => {
@@ -161,7 +178,7 @@ export default function LoginPage() {
       let isApiSuccess = false;
       let jwtToken: string | undefined;
 
-      if (navigator.onLine) {
+      if (isOnline) {
         try {
           const response = await fetch('/api/auth/login', {
             method: 'POST',
@@ -273,7 +290,7 @@ export default function LoginPage() {
                 {/* Google Sign In Button */}
                 <button
                   onClick={handleGoogleSignIn}
-                  disabled={isGoogleLoading || !navigator.onLine}
+                  disabled={isGoogleLoading || !isOnline}
                   className="w-full flex items-center justify-center gap-3 p-4 rounded-xl transition-all duration-200 border-2 border-slate-600 bg-white hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <GoogleLogo className="w-5 h-5" />
@@ -283,7 +300,7 @@ export default function LoginPage() {
                 </button>
 
                 {/* Offline indicator */}
-                {!navigator.onLine && (
+                {!isOnline && (
                   <p className="text-center text-amber-400 text-sm">
                     Connexion Google non disponible hors ligne
                   </p>

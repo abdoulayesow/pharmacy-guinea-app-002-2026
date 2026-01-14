@@ -126,8 +126,10 @@ export async function rateLimit(
 
   try {
     // Dynamic import to avoid bundling if not needed
-    const { Ratelimit } = await import('@upstash/ratelimit');
-    const { Redis } = await import('@upstash/redis');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { Ratelimit } = (await import('@upstash/ratelimit' as any)) as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { Redis } = (await import('@upstash/redis' as any)) as any;
 
     const redis = Redis.fromEnv();
     const ratelimit = new Ratelimit({

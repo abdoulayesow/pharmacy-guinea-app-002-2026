@@ -34,6 +34,7 @@ function createPrismaClient() {
   }
 
   const pool = new Pool({ connectionString });
+  // @ts-expect-error - Neon pool types differ between versions
   const adapter = new PrismaNeon(pool);
 
   // Create Prisma Client with adapter (Prisma 7 format)

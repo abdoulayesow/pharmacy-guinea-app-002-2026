@@ -102,7 +102,7 @@ export function extractToken(authHeader: string | null): string | null {
 }
 
 /**
- * Get user from request headers
+ * Get user from request headers (PIN login JWT)
  */
 export async function getUserFromRequest(request: Request): Promise<{
   userId: string;
@@ -118,16 +118,44 @@ export async function getUserFromRequest(request: Request): Promise<{
 }
 
 /**
- * Require authentication - throws if not authenticated
+ * Get user from Auth.js session (Google OAuth)
+ * Dynamic import to avoid bundling Auth.js in all API routes
+ */
+export async function getUserFromSession(): Promise<{
+  userId: string;
+  name: string;
+  role: string;
+} | null> {
+  try {
+    const { auth } = await import('@/auth');
+    const session = await auth();
+
+    if (!session?.user?.id) return null;
+
+    return {
+      userId: session.user.id,
+      name: session.user.name || 'Unknown',
+      role: session.user.role || 'EMPLOYEE',
+    };
+  } catch (error) {
+    console.error('[Auth] Session check error:', error);
+    return null;
+  }
+}
+
+/**
+ * Require authentication - checks both PIN JWT and OAuth session
  */
 export async function requireAuth(request: Request) {
-  const user = await getUserFromRequest(request);
+  // First try PIN login JWT (Authorization header)
+  const jwtUser = await getUserFromRequest(request);
+  if (jwtUser) return jwtUser;
 
-  if (!user) {
-    throw new Error('Unauthorized');
-  }
+  // Then try Auth.js session (Google OAuth)
+  const sessionUser = await getUserFromSession();
+  if (sessionUser) return sessionUser;
 
-  return user;
+  throw new Error('Unauthorized');
 }
 
 /**

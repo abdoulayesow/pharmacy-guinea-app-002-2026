@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyPin, generateToken } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
 import { isValidPin } from '@/lib/shared/utils';
-import type { LoginRequest, LoginResponse } from '@/lib/shared/types';
+import type { LoginRequest, LoginResponse, UserRole } from '@/lib/shared/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,6 +62,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if user has PIN configured
+    if (!user.pinHash) {
+      return NextResponse.json<LoginResponse>(
+        {
+          success: false,
+          error: 'PIN non configuré. Connectez-vous avec Google.',
+        },
+        { status: 400 }
+      );
+    }
+
     // Verify PIN
     const isPinValid = await verifyPin(pin, user.pinHash);
     if (!isPinValid) {
@@ -80,7 +91,7 @@ export async function POST(request: NextRequest) {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      role: user.role,
+      role: user.role as UserRole,
       avatar: user.avatar,
       createdAt: user.createdAt,
     });
@@ -93,7 +104,7 @@ export async function POST(request: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role,
+        role: user.role as UserRole,
         avatar: user.avatar,
         createdAt: user.createdAt,
       },

@@ -15,11 +15,11 @@ export type UserRole = 'OWNER' | 'EMPLOYEE';
 export interface User {
   id: string;
   name: string;
-  email?: string;
-  phone?: string;
+  email?: string | null;
+  phone?: string | null;
   role: UserRole;
-  pinHash: string;
-  avatar?: string;
+  pinHash?: string | null; // Optional: set after OAuth login
+  avatar?: string | null;
   createdAt: Date;
 }
 

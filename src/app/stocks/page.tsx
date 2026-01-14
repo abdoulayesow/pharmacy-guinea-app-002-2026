@@ -2,6 +2,7 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
@@ -48,8 +49,14 @@ const MOVEMENT_TYPES: { value: StockMovementType; label: string }[] = [
 
 export default function StocksPage() {
   const router = useRouter();
-  const { isAuthenticated, currentUser } = useAuthStore();
+  const { data: session, status: sessionStatus } = useSession();
+  const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
   const { updatePendingCount } = useSyncStore();
+
+  // Check if user is authenticated via Zustand OR via Google session + recently active
+  const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
+  const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
+  const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>('all'); // 🆕
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,10 +82,18 @@ export default function StocksPage() {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
+
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/stocks')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isFullyAuthenticated, sessionStatus, router]);
+
+  // Show nothing while loading or redirecting
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
+    return null;
+  }
 
   // Get products from IndexedDB
   const products = useLiveQuery(() => db.products.toArray()) ?? [];

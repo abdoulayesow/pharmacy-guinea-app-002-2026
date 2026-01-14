@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 import {
   User,
@@ -42,7 +43,13 @@ interface DatabaseStats {
 
 export default function ParametresPage() {
   const router = useRouter();
-  const { currentUser, isAuthenticated, logout } = useAuthStore();
+  const { data: session, status: sessionStatus } = useSession();
+  const { currentUser, isAuthenticated, logout, isInactive, lastActivityAt } = useAuthStore();
+
+  // Check if user is authenticated via Zustand OR via Google session + recently active
+  const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
+  const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
+  const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
 
   // State
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
@@ -66,10 +73,13 @@ export default function ParametresPage() {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
+
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/parametres')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isFullyAuthenticated, sessionStatus, router]);
 
   // Load database stats
   useEffect(() => {
@@ -173,7 +183,8 @@ export default function ParametresPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  // Show nothing while loading or redirecting
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
     return null;
   }
 

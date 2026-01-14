@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 import {
   Search,
@@ -43,8 +44,14 @@ interface CompletedSale extends Sale {
 
 export default function NouvelleVentePage() {
   const router = useRouter();
-  const { isAuthenticated, currentUser } = useAuthStore();
+  const { data: session, status: sessionStatus } = useSession();
+  const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
   const { items: cartItems, addToCart, removeFromCart, updateQuantity, clearCart, getTotal } = useCartStore();
+
+  // Check if user is authenticated via Zustand OR via Google session + recently active
+  const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
+  const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
+  const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
 
   const [step, setStep] = useState<Step>('search');
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,12 +82,16 @@ export default function NouvelleVentePage() {
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, router]);
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
 
-  if (!isAuthenticated) {
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/ventes/nouvelle')}`);
+    }
+  }, [isFullyAuthenticated, sessionStatus, router]);
+
+  // Show loading while session is loading, or redirect if not authenticated
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
     return null;
   }
 

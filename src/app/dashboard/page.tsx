@@ -42,7 +42,7 @@ export default function DashboardPage() {
     // Allow access if either OAuth session or Zustand auth is valid
     const hasOAuthSession = status === 'authenticated' && !!session?.user;
     if (!isAuthenticated && !hasOAuthSession) {
-      router.push('/login');
+      router.push(`/login?callbackUrl=${encodeURIComponent('/dashboard')}`);
     }
   }, [isAuthenticated, session, status, router]);
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { signIn, useSession } from 'next-auth/react';
 import { User, ChevronLeft, KeyRound, Clock } from 'lucide-react';
@@ -66,7 +66,19 @@ function SingleUserAutoSelect({
   );
 }
 
-export default function LoginPage() {
+// Loading fallback component
+function LoginLoading() {
+  return (
+    <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+      <div className="animate-pulse">
+        <Logo variant="icon" size="lg" />
+      </div>
+    </div>
+  );
+}
+
+// Main login content component (uses useSearchParams)
+function LoginPageContent() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const {
@@ -74,7 +86,6 @@ export default function LoginPage() {
     isAuthenticated,
     isInactive,
     lastActivityAt,
-    updateActivity,
     incrementFailedAttempts,
     resetFailedAttempts,
     isLocked,
@@ -89,6 +100,22 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  // Track if we've already redirected to prevent infinite loops
+  const hasRedirectedRef = useRef(false);
+
+  // Get callback URL from query params using Next.js hook (works with client-side navigation)
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+
+  // Reset redirect ref when URL changes (for client-side navigation reuse)
+  const prevCallbackUrlRef = useRef(callbackUrl);
+  useEffect(() => {
+    if (prevCallbackUrlRef.current !== callbackUrl) {
+      hasRedirectedRef.current = false;
+      prevCallbackUrlRef.current = callbackUrl;
+    }
+  }, [callbackUrl]);
 
   // Track online status after mount to avoid hydration mismatch
   useEffect(() => {
@@ -145,39 +172,44 @@ export default function LoginPage() {
   // Handle redirects based on auth state
   useEffect(() => {
     if (sessionStatus === 'loading') return;
+    if (hasRedirectedRef.current) return; // Prevent duplicate redirects
 
     const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
 
-    // If authenticated via Zustand (PIN), go to dashboard
+    // If authenticated via Zustand (PIN), go to callback URL
     if (isAuthenticated) {
-      router.push('/dashboard');
+      hasRedirectedRef.current = true;
+      router.push(callbackUrl);
       return;
     }
 
     // If Google session but no PIN setup, go to PIN setup first
     if (hasGoogleSession && !(session.user as { hasPin?: boolean }).hasPin) {
+      hasRedirectedRef.current = true;
       router.push('/auth/setup-pin');
       return;
     }
 
-    // If Google session exists and user is still active (or first login), go to dashboard
-    // First login: lastActivityAt is null, we initialize it and go to dashboard
+    // If Google session exists and user is still active (or first login), go to callback URL
+    // First login: lastActivityAt is null, we initialize it and go to callback URL
     // Returning user: check if inactive > 5min
     if (hasGoogleSession) {
       if (!lastActivityAt) {
-        // First time after Google login - set activity and go to dashboard
-        updateActivity();
-        router.push('/dashboard');
+        // First time after Google login - set activity and go to callback URL
+        hasRedirectedRef.current = true;
+        useAuthStore.getState().updateActivity();
+        router.push(callbackUrl);
         return;
       } else if (!isInactive()) {
         // User is still active (< 5 min since last activity)
-        updateActivity();
-        router.push('/dashboard');
+        hasRedirectedRef.current = true;
+        useAuthStore.getState().updateActivity();
+        router.push(callbackUrl);
         return;
       }
       // Otherwise: inactive > 5min, stay on login page for PIN entry
     }
-  }, [sessionStatus, session, isAuthenticated, lastActivityAt, isInactive, updateActivity, router]);
+  }, [sessionStatus, session, isAuthenticated, lastActivityAt, isInactive, router, callbackUrl]);
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
@@ -316,7 +348,7 @@ export default function LoginPage() {
       // PIN is correct - reset failed attempts and log in
       resetFailedAttempts();
       login(user);
-      router.push('/dashboard');
+      router.push(callbackUrl);
     } catch (error) {
       console.error('Login error:', error);
       setError('Erreur de connexion');
@@ -663,5 +695,14 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrapper with Suspense boundary for useSearchParams
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoading />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

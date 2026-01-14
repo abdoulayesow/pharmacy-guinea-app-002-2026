@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import {
   Plus,
   Calendar,
@@ -36,7 +37,13 @@ const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
 
 export default function DepensesPage() {
   const router = useRouter();
-  const { isAuthenticated, currentUser } = useAuthStore();
+  const { data: session, status: sessionStatus } = useSession();
+  const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
+
+  // Check if user is authenticated via Zustand OR via Google session + recently active
+  const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
+  const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
+  const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
 
   const [filter, setFilter] = useState<FilterPeriod>('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -52,19 +59,23 @@ export default function DepensesPage() {
   const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray()) ?? [];
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
+
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/depenses')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isFullyAuthenticated, sessionStatus, router]);
 
   // Only owners can access expenses
   useEffect(() => {
-    if (isAuthenticated && currentUser?.role !== 'OWNER') {
+    if (isFullyAuthenticated && currentUser?.role !== 'OWNER') {
       router.push('/dashboard');
     }
-  }, [isAuthenticated, currentUser, router]);
+  }, [isFullyAuthenticated, currentUser, router]);
 
-  if (!isAuthenticated) {
+  // Show nothing while loading or redirecting
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
     return null;
   }
 

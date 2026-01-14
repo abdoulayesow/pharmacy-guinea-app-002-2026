@@ -25,7 +25,7 @@ function SetupPinLoading() {
 function SetupPinContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
+  const { data: session, status, update: updateSession } = useSession();
   
   // Check if this is a forced PIN change (default PIN)
   const isForced = searchParams.get('force') === 'true';
@@ -71,12 +71,44 @@ function SetupPinContent() {
     }
   }, [status, router]);
 
-  // If user already has PIN and not forced to change, redirect to dashboard
+  // Check database directly to verify mustChangePin status
+  // This prevents redirect loops when JWT token is stale
   useEffect(() => {
-    if (session?.user?.hasPin && !session?.user?.mustChangePin) {
-      router.push('/dashboard');
+    if (status === 'authenticated' && session?.user?.id) {
+      const checkDatabase = async () => {
+        try {
+          // Check database directly via API
+          const response = await fetch('/api/auth/check-pin-status', {
+            credentials: 'include',
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            // If database says mustChangePin is false, but session says true, refresh session
+            if (!data.mustChangePin && session?.user?.mustChangePin) {
+              console.log('[Setup PIN] Database shows PIN already changed, refreshing session...');
+              await updateSession();
+              // Wait a bit for session to update, then redirect
+              setTimeout(() => {
+                router.push('/dashboard');
+              }, 500);
+            } else if (!data.mustChangePin && !isForced) {
+              // Database says no need to change PIN, and we're not forced
+              router.push('/dashboard');
+            }
+          }
+        } catch (error) {
+          console.error('[Setup PIN] Failed to check database:', error);
+          // Fall back to session-based check
+          if (!isForced && session?.user?.hasPin && !session?.user?.mustChangePin) {
+            router.push('/dashboard');
+          }
+        }
+      };
+      
+      checkDatabase();
     }
-  }, [session, router]);
+  }, [status, session, router, isForced, updateSession]);
 
   const triggerShake = () => {
     setShake(true);
@@ -149,12 +181,37 @@ function SetupPinContent() {
         // Also call API to clear mustChangePin flag (when online)
         if (isOnline) {
           try {
-            await fetch('/api/auth/setup-pin', {
+            const response = await fetch('/api/auth/setup-pin', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               body: JSON.stringify({ pin, confirmPin, clearMustChangePin: true }),
             });
+            
+            if (response.ok) {
+              // Force session refresh to update mustChangePin in JWT token
+              await updateSession();
+              
+              // Wait for session to actually update (check multiple times)
+              let attempts = 0;
+              let sessionUpdated = false;
+              while (attempts < 10 && !sessionUpdated) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                const updatedSession = await fetch('/api/auth/session', {
+                  credentials: 'include',
+                }).then(r => r.json());
+                
+                if (updatedSession?.user && !updatedSession.user.mustChangePin) {
+                  sessionUpdated = true;
+                  break;
+                }
+                attempts++;
+              }
+              
+              if (!sessionUpdated) {
+                console.warn('[Setup PIN] Session did not update after PIN change, but continuing anyway');
+              }
+            }
           } catch (apiError) {
             // Non-blocking - PIN is saved locally, flag will sync later
             console.log('[Setup PIN] API call to clear flag failed:', apiError);

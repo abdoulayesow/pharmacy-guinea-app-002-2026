@@ -51,24 +51,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
     async jwt({ token, user, account, trigger }) {
-      // On sign in, fetch user data from database
-      if (user && user.id) {
+      // On sign in or update, fetch user data from database
+      const userId = user?.id || token.id;
+      
+      if (userId && (user || trigger === 'update')) {
         try {
           const dbUser = await prisma.user.findUnique({
-            where: { id: user.id },
+            where: { id: userId as string },
             select: { role: true, pinHash: true, mustChangePin: true },
           });
-          token.id = user.id;
+          token.id = userId as string;
           token.role = dbUser?.role || 'EMPLOYEE';
           token.hasPin = !!dbUser?.pinHash;
-          token.mustChangePin = dbUser?.mustChangePin ?? true;
+          token.mustChangePin = dbUser?.mustChangePin ?? false; // Default to false if not set
         } catch (error) {
           console.error('[Auth] JWT callback error:', error);
           // Set defaults if DB query fails
-          token.id = user.id;
-          token.role = 'EMPLOYEE';
-          token.hasPin = false;
-          token.mustChangePin = true;
+          if (user) {
+            token.id = user.id;
+            token.role = 'EMPLOYEE';
+            token.hasPin = false;
+            token.mustChangePin = true;
+          }
         }
       }
       if (account) {

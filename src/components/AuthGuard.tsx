@@ -42,9 +42,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [status, session, syncFromSession]);
 
   // Force PIN change if user has default PIN
+  // Skip if already on setup-pin page to prevent redirect loop
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.mustChangePin) {
-      router.push('/auth/setup-pin?force=true');
+      // Check if we're already on the setup-pin page
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth/setup-pin')) {
+        router.push('/auth/setup-pin?force=true');
+      }
     }
   }, [status, session, router]);
 

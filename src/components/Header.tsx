@@ -1,39 +1,25 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut } from 'lucide-react';
-import { signOut, useSession } from 'next-auth/react';
+import { Lock } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Logo } from './Logo';
 import { UserAvatar } from './UserAvatar';
 import { NotificationBadge } from './NotificationBadge';
 import { useAuthStore } from '@/stores/auth';
+import { useLockStore } from '@/stores/lock';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { cn } from '@/lib/utils';
 
 export function Header() {
-  const router = useRouter();
   const { data: session } = useSession();
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser } = useAuthStore();
   const { isOnline, pendingCount } = useSyncStatus();
+  const { isLocked, lock } = useLockStore();
 
   // Get user info from OAuth session or Zustand store
   const userName = session?.user?.name || currentUser?.name;
   const userImage = session?.user?.image || currentUser?.image;
-
-  const handleLogout = async () => {
-    // Clear Zustand auth state
-    logout();
-    // Clear localStorage JWT token
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('seri-jwt-token');
-    }
-    // Sign out from Auth.js session if exists
-    if (session) {
-      await signOut({ redirect: false });
-    }
-    router.push('/login');
-  };
 
   return (
     <header className="bg-gray-900 border-b border-gray-700 dark:bg-gray-950 dark:border-gray-800 sticky top-0 z-40">
@@ -68,6 +54,22 @@ export function Header() {
             {/* Notification badge for urgent payment reminders */}
             <NotificationBadge />
 
+            {/* Lock button */}
+            <button
+              onClick={() => lock('manual')}
+              disabled={isLocked}
+              className={cn(
+                'flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-lg transition-all duration-200',
+                'bg-transparent hover:bg-slate-700/50 active:scale-95',
+                'border-0 focus:outline-none focus:ring-2 focus:ring-slate-500/50',
+                isLocked && 'opacity-50 cursor-not-allowed'
+              )}
+              title="Verrouiller l'application"
+              aria-label="Verrouiller l'application"
+            >
+              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
+            </button>
+
             {/* User avatar with link to settings */}
             <Link href="/parametres" className="flex-shrink-0">
               <UserAvatar
@@ -77,16 +79,6 @@ export function Header() {
                 className="hover:ring-emerald-400/50 transition-all cursor-pointer"
               />
             </Link>
-
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-all duration-200 border border-gray-600"
-            >
-              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-300" />
-              <span className="text-xs sm:text-sm font-medium text-gray-300 hidden xs:inline">
-                Quitter
-              </span>
-            </button>
           </div>
         </div>
       </div>

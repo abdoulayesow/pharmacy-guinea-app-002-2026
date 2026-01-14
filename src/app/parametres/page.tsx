@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { db, clearDatabase, getDatabaseStats, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
+import { useSyncStore } from '@/stores/sync';
 import { hashPin } from '@/lib/client/auth';
 import { savePinOfflineFirst } from '@/lib/client/sync';
 import { Card } from '@/components/ui/card';
@@ -46,6 +47,15 @@ export default function ParametresPage() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const { currentUser, isAuthenticated, logout, isInactive, lastActivityAt } = useAuthStore();
+  const {
+    isOnline,
+    isSyncing,
+    pendingCount,
+    lastSyncTime,
+    lastPullTime,
+    pulledCount,
+    fullSync,
+  } = useSyncStore();
 
   // Check if user is authenticated via Zustand OR via Google session + recently active
   const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
@@ -330,42 +340,69 @@ export default function ParametresPage() {
           </div>
 
           <div className="space-y-3">
+            {/* Sync Status */}
             <div className={cn(
               'p-4 rounded-lg border ring-2',
-              pendingSyncCount > 0
+              pendingCount > 0 || !isOnline
                 ? 'bg-amber-500/10 border-amber-500/30 ring-amber-500/20'
                 : 'bg-emerald-500/10 border-emerald-500/30 ring-emerald-500/20'
             )}>
               <div className="flex items-center gap-2 mb-2">
                 <div className={cn(
                   'w-2 h-2 rounded-full',
-                  pendingSyncCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                  pendingCount > 0 || !isOnline ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
                 )} />
                 <span className={cn(
                   'text-sm font-semibold',
-                  pendingSyncCount > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  pendingCount > 0 || !isOnline ? 'text-amber-400' : 'text-emerald-400'
                 )}>
-                  {pendingSyncCount > 0 ? 'En attente' : 'Connecte'}
+                  {!isOnline ? 'Hors ligne' : pendingCount > 0 ? 'En attente' : 'Connecte'}
                 </span>
               </div>
               <p className={cn(
-                'text-sm',
-                pendingSyncCount > 0 ? 'text-amber-300' : 'text-emerald-300'
+                'text-sm mb-2',
+                pendingCount > 0 || !isOnline ? 'text-amber-300' : 'text-emerald-300'
               )}>
-                {pendingSyncCount > 0
-                  ? `${pendingSyncCount} operation${pendingSyncCount > 1 ? 's' : ''} en attente de synchronisation`
+                {!isOnline
+                  ? 'Mode hors ligne - synchronisation automatique a la reconnexion'
+                  : pendingCount > 0
+                  ? `${pendingCount} operation${pendingCount > 1 ? 's' : ''} en attente de synchronisation`
                   : 'Toutes les donnees sont synchronisees'}
               </p>
+              {lastSyncTime && (
+                <p className="text-xs text-slate-400">
+                  Derniere synchronisation (envoi): {new Date(lastSyncTime).toLocaleString('fr-FR')}
+                </p>
+              )}
+              {lastPullTime && (
+                <p className="text-xs text-slate-400">
+                  Derniere synchronisation (reception): {new Date(lastPullTime).toLocaleString('fr-FR')}
+                  {pulledCount > 0 && ` (${pulledCount} element${pulledCount > 1 ? 's' : ''} recu${pulledCount > 1 ? 's' : ''})`}
+                </p>
+              )}
             </div>
 
-            <button className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98]">
+            {/* Manual Sync Button */}
+            <button
+              onClick={() => fullSync()}
+              disabled={isSyncing || !isOnline}
+              className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:bg-slate-800 hover:border-slate-600 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center ring-1 ring-blue-500/20">
-                  <Upload className="w-4 h-4 text-blue-400" />
+                  {isSyncing ? (
+                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4 text-blue-400" />
+                  )}
                 </div>
                 <div className="text-left">
-                  <span className="text-white font-medium block">Forcer la synchronisation</span>
-                  <span className="text-xs text-slate-400">Synchroniser maintenant</span>
+                  <span className="text-white font-medium block">
+                    {isSyncing ? 'Synchronisation en cours...' : 'Synchroniser maintenant'}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Envoyer et recevoir les changements
+                  </span>
                 </div>
               </div>
             </button>

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server/auth';
+import { prisma } from '@/lib/server/prisma';
 import type { SyncPushRequest, SyncPushResponse } from '@/lib/shared/types';
 
 export async function POST(request: NextRequest) {
@@ -30,34 +31,310 @@ export async function POST(request: NextRequest) {
       creditPayments: creditPayments?.length || 0, // 🆕
     });
 
-    // In MVP (offline-first), all data stays in IndexedDB
-    // This endpoint will be implemented in Phase 2 when we add server sync
+    // Phase 2: Implement server-side sync
+    const syncedSales: Record<string, number> = {}; // Map localId -> serverId
+    const syncedExpenses: Record<string, number> = {};
+    const syncedStockMovements: Record<string, number> = {};
+    const syncedProducts: Record<string, number> = {};
+    const syncedSuppliers: Record<string, number> = {};
+    const syncedSupplierOrders: Record<string, number> = {};
+    const syncedSupplierReturns: Record<string, number> = {};
+    const syncedCreditPayments: Record<string, number> = {};
+    const errors: string[] = [];
 
-    // TODO: Phase 2 - Implement server-side sync
-    // 1. Validate all incoming data
-    // 2. Insert into PostgreSQL via Prisma
-    // 3. Return server IDs for local records
-    // 4. Handle conflicts (last-write-wins with logging)
+    // Sync Sales (with nested sale items)
+    if (sales && sales.length > 0) {
+      for (const sale of sales) {
+        try {
+          // Check if sale already exists (by serverId if provided)
+          let existingSale = null;
+          if (sale.serverId) {
+            existingSale = await prisma.sale.findUnique({
+              where: { id: sale.serverId },
+            });
+          }
 
-    return NextResponse.json<SyncPushResponse>(
-      {
-        success: true,
-        synced: {
-          sales: [],
-          expenses: [],
-          stockMovements: [],
-          products: [],
-          suppliers: [],
-          supplierOrders: [],
-          supplierReturns: [],
-          creditPayments: [], // 🆕
-        },
-        errors: ['MVP: Sync handled client-side. Server sync coming in Phase 2.'],
+          if (existingSale) {
+            // Conflict: check if server version is newer
+            const serverUpdatedAt = existingSale.modifiedAt || existingSale.createdAt;
+            const localUpdatedAt = sale.modified_at || sale.created_at;
+            
+            if (localUpdatedAt && serverUpdatedAt && new Date(localUpdatedAt) > serverUpdatedAt) {
+              // Local is newer - update server
+              const updatedSale = await prisma.sale.update({
+                where: { id: existingSale.id },
+                data: {
+                  total: sale.total,
+                  paymentMethod: sale.payment_method,
+                  paymentStatus: sale.payment_status,
+                  paymentRef: sale.payment_ref,
+                  amountPaid: sale.amount_paid,
+                  amountDue: sale.amount_due,
+                  dueDate: sale.due_date ? new Date(sale.due_date) : null,
+                  customerName: sale.customer_name,
+                  customerPhone: sale.customer_phone,
+                  modifiedAt: sale.modified_at ? new Date(sale.modified_at) : new Date(),
+                  modifiedBy: sale.modified_by || user.userId,
+                  editCount: sale.edit_count || 0,
+                },
+              });
+              syncedSales[sale.id?.toString() || ''] = updatedSale.id;
+            } else {
+              // Server wins - use existing ID
+              syncedSales[sale.id?.toString() || ''] = existingSale.id;
+            }
+          } else {
+            // New sale - create with nested items
+            const newSale = await prisma.sale.create({
+              data: {
+                total: sale.total,
+                paymentMethod: sale.payment_method,
+                paymentStatus: sale.payment_status,
+                paymentRef: sale.payment_ref,
+                amountPaid: sale.amount_paid,
+                amountDue: sale.amount_due,
+                dueDate: sale.due_date ? new Date(sale.due_date) : null,
+                customerName: sale.customer_name,
+                customerPhone: sale.customer_phone,
+                createdAt: sale.created_at ? new Date(sale.created_at) : new Date(),
+                userId: user.userId,
+                modifiedAt: sale.modified_at ? new Date(sale.modified_at) : null,
+                modifiedBy: sale.modified_by,
+                editCount: sale.edit_count || 0,
+                // Note: Sale items will be synced separately if provided
+              },
+            });
+            syncedSales[sale.id?.toString() || ''] = newSale.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync sale ${sale.id}: ${errorMsg}`);
+          console.error('[API] Sale sync error:', error);
+        }
+      }
+    }
+
+    // Sync Expenses
+    if (expenses && expenses.length > 0) {
+      for (const expense of expenses) {
+        try {
+          let existingExpense = null;
+          if (expense.serverId) {
+            existingExpense = await prisma.expense.findUnique({
+              where: { id: expense.serverId },
+            });
+          }
+
+          if (existingExpense) {
+            // Conflict resolution: last write wins
+            const serverDate = existingExpense.date;
+            const localDate = new Date(expense.date);
+            
+            if (localDate > serverDate) {
+              const updated = await prisma.expense.update({
+                where: { id: existingExpense.id },
+                data: {
+                  amount: expense.amount,
+                  category: expense.category,
+                  description: expense.description,
+                  date: localDate,
+                },
+              });
+              syncedExpenses[expense.id?.toString() || ''] = updated.id;
+            } else {
+              syncedExpenses[expense.id?.toString() || ''] = existingExpense.id;
+            }
+          } else {
+            const newExpense = await prisma.expense.create({
+              data: {
+                amount: expense.amount,
+                category: expense.category,
+                description: expense.description,
+                date: expense.date ? new Date(expense.date) : new Date(),
+                userId: user.userId,
+              },
+            });
+            syncedExpenses[expense.id?.toString() || ''] = newExpense.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync expense ${expense.id}: ${errorMsg}`);
+          console.error('[API] Expense sync error:', error);
+        }
+      }
+    }
+
+    // Sync Stock Movements
+    if (stockMovements && stockMovements.length > 0) {
+      for (const movement of stockMovements) {
+        try {
+          let existingMovement = null;
+          if (movement.serverId) {
+            existingMovement = await prisma.stockMovement.findUnique({
+              where: { id: movement.serverId },
+            });
+          }
+
+          if (!existingMovement) {
+            const newMovement = await prisma.stockMovement.create({
+              data: {
+                productId: movement.product_id,
+                type: movement.type,
+                quantityChange: movement.quantity_change,
+                reason: movement.reason || null,
+                createdAt: movement.created_at ? new Date(movement.created_at) : new Date(),
+                userId: user.userId,
+              },
+            });
+            syncedStockMovements[movement.id?.toString() || ''] = newMovement.id;
+          } else {
+            syncedStockMovements[movement.id?.toString() || ''] = existingMovement.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync stock movement ${movement.id}: ${errorMsg}`);
+          console.error('[API] Stock movement sync error:', error);
+        }
+      }
+    }
+
+    // Sync Products (upsert by name or serverId)
+    if (products && products.length > 0) {
+      for (const product of products) {
+        try {
+          let existingProduct = null;
+          
+          // Try to find by serverId first
+          if (product.serverId) {
+            existingProduct = await prisma.product.findUnique({
+              where: { id: product.serverId },
+            });
+          }
+          
+          // If not found, try to find by name
+          if (!existingProduct && product.name) {
+            const productsByName = await prisma.product.findMany({
+              where: { name: product.name },
+              orderBy: { updatedAt: 'desc' },
+              take: 1,
+            });
+            existingProduct = productsByName[0] || null;
+          }
+
+          if (existingProduct) {
+            // Conflict: check timestamps
+            const serverUpdatedAt = existingProduct.updatedAt;
+            const localUpdatedAt = product.updatedAt ? new Date(product.updatedAt) : null;
+            
+            if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
+              // Local is newer - update
+              const updated = await prisma.product.update({
+                where: { id: existingProduct.id },
+                data: {
+                  name: product.name,
+                  price: product.price,
+                  priceBuy: product.priceBuy || null,
+                  stock: product.stock,
+                  stockMin: product.minStock || 10,
+                },
+              });
+              syncedProducts[product.id?.toString() || ''] = updated.id;
+            } else {
+              syncedProducts[product.id?.toString() || ''] = existingProduct.id;
+            }
+          } else {
+            // New product
+            const newProduct = await prisma.product.create({
+              data: {
+                name: product.name,
+                price: product.price,
+                priceBuy: product.priceBuy || null,
+                stock: product.stock,
+                stockMin: product.minStock || 10,
+              },
+            });
+            syncedProducts[product.id?.toString() || ''] = newProduct.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product ${product.id}: ${errorMsg}`);
+          console.error('[API] Product sync error:', error);
+        }
+      }
+    }
+
+    // Sync Suppliers (not yet in Prisma schema - skip for now)
+    // TODO: Implement when Supplier models are added to schema
+    if (suppliers && suppliers.length > 0) {
+      errors.push(`Suppliers sync skipped: Supplier models not yet in database schema (${suppliers.length} items)`);
+    }
+
+    // Sync Supplier Orders (not yet in Prisma schema - skip for now)
+    if (supplierOrders && supplierOrders.length > 0) {
+      errors.push(`Supplier orders sync skipped: SupplierOrder models not yet in database schema (${supplierOrders.length} items)`);
+    }
+
+    // Sync Supplier Returns (not yet in Prisma schema - skip for now)
+    if (supplierReturns && supplierReturns.length > 0) {
+      errors.push(`Supplier returns sync skipped: SupplierReturn models not yet in database schema (${supplierReturns.length} items)`);
+    }
+
+    // Sync Credit Payments
+    if (creditPayments && creditPayments.length > 0) {
+      for (const payment of creditPayments) {
+        try {
+          // Find sale by serverId (should already be synced)
+          const saleServerId = syncedSales[payment.sale_id?.toString() || ''];
+          if (!saleServerId) {
+            errors.push(`Credit payment ${payment.id} references unsynced sale ${payment.sale_id}`);
+            continue;
+          }
+
+          let existingPayment = null;
+          if (payment.serverId) {
+            existingPayment = await prisma.creditPayment.findUnique({
+              where: { id: payment.serverId },
+            });
+          }
+
+          if (!existingPayment) {
+            const newPayment = await prisma.creditPayment.create({
+              data: {
+                saleId: saleServerId,
+                amount: payment.amount,
+                method: payment.payment_method,
+                reference: payment.payment_ref || null,
+                notes: payment.notes || null,
+                createdAt: payment.payment_date ? new Date(payment.payment_date) : new Date(),
+                recordedBy: user.userId,
+              },
+            });
+            syncedCreditPayments[payment.id?.toString() || ''] = newPayment.id;
+          } else {
+            syncedCreditPayments[payment.id?.toString() || ''] = existingPayment.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync credit payment ${payment.id}: ${errorMsg}`);
+          console.error('[API] Credit payment sync error:', error);
+        }
+      }
+    }
+
+    return NextResponse.json<SyncPushResponse>({
+      success: true,
+      synced: {
+        sales: syncedSales,
+        expenses: syncedExpenses,
+        stockMovements: syncedStockMovements,
+        products: syncedProducts,
+        suppliers: syncedSuppliers,
+        supplierOrders: syncedSupplierOrders,
+        supplierReturns: syncedSupplierReturns,
+        creditPayments: syncedCreditPayments,
       },
-      { status: 501 } // Not Implemented
-    );
-
-    // Phase 2 implementation (commented out for now):
+      errors: errors.length > 0 ? errors : undefined,
+    });
     /*
     const syncedSales: number[] = [];
     const syncedExpenses: number[] = [];

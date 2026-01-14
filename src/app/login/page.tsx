@@ -134,11 +134,41 @@ function LoginPageContent() {
     };
   }, []);
 
-  // Initialize database schema (no demo users - real users created via Google OAuth)
+  // Initialize database schema and sync Google session user to IndexedDB
   useEffect(() => {
     // Database schema is auto-initialized by Dexie on first access
-    // Real users are created when they log in via Google OAuth
-  }, []);
+    // Sync Google session user to IndexedDB if not already present
+    const syncSessionUserToIndexedDB = async () => {
+      if (session?.user && sessionStatus === 'authenticated') {
+        try {
+          const existingUser = await db.users.get(session.user.id);
+          if (!existingUser) {
+            // User not in IndexedDB - create it from session
+            await db.users.put({
+              id: session.user.id,
+              name: session.user.name || 'Utilisateur',
+              role: (session.user.role as 'OWNER' | 'EMPLOYEE') || 'EMPLOYEE',
+              image: session.user.image || null,
+              email: session.user.email || null,
+              createdAt: new Date(),
+            });
+            console.log('[Login] Synced Google session user to IndexedDB:', session.user.id);
+          } else {
+            // Update existing user with latest session data (name, image might have changed)
+            await db.users.update(session.user.id, {
+              name: session.user.name || existingUser.name,
+              image: session.user.image || existingUser.image,
+              role: (session.user.role as 'OWNER' | 'EMPLOYEE') || existingUser.role,
+            });
+          }
+        } catch (error) {
+          console.error('[Login] Error syncing session user to IndexedDB:', error);
+        }
+      }
+    };
+    
+    syncSessionUserToIndexedDB();
+  }, [session, sessionStatus]);
 
   // Get users from IndexedDB
   const users = useLiveQuery(() => db.users.toArray()) ?? [];
@@ -450,29 +480,42 @@ function LoginPageContent() {
           {/* ============================================ */}
           {loginMode === 'pin-only' && step === 'main' && (
             <div className="space-y-4">
-              {/* Session info card */}
-              <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-emerald-400" />
+              {/* Session User Profile - Prominent Display */}
+              {session?.user && (
+                <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 flex items-center gap-4 shadow-lg shadow-emerald-500/20 mb-4">
+                  {/* Large Avatar */}
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center bg-white/20 ring-3 ring-white/30 shadow-lg flex-shrink-0">
+                    {session.user.image ? (
+                      <img
+                        src={session.user.image}
+                        alt={session.user.name || 'User'}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="font-semibold text-white text-xl">
+                        {(session.user.name || 'Utilisateur')
+                          .split(/\s+/)
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-slate-300 text-sm">
-                      Session expiree
-                    </p>
-                    <p className="text-slate-500 text-xs">
-                      Entrez votre PIN pour continuer
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-xl mb-1 truncate">
+                      {session.user.name || 'Utilisateur'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-emerald-50 flex-shrink-0" />
+                      <p className="text-sm font-medium text-emerald-50">
+                        Session expiree - Entrez votre PIN
+                      </p>
+                    </div>
                   </div>
-                  {session?.user && (
-                    <UserAvatar
-                      name={session.user.name || ''}
-                      image={session.user.image || undefined}
-                      size="sm"
-                    />
-                  )}
                 </div>
-              </div>
+              )}
 
               {/* PIN Login Card */}
               <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6">
@@ -586,28 +629,46 @@ function LoginPageContent() {
           {/* ============================================ */}
           {step === 'pin' && selectedUserData && (
             <div>
-              {/* Selected Profile Display */}
-              <div className="mb-4">
-                <button
-                  onClick={handleBackToProfile}
-                  className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors mb-4"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                  <span className="text-sm font-medium">Changer de profil</span>
-                </button>
+              {/* Selected Profile Display - Prominent */}
+              <div className="mb-6">
+                {/* Show "Change profile" button only if multiple users */}
+                {usersWithPin.length > 1 && (
+                  <button
+                    onClick={handleBackToProfile}
+                    className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors mb-4"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                    <span className="text-sm font-medium">Changer de profil</span>
+                  </button>
+                )}
 
-                <div className="bg-emerald-500 rounded-xl p-4 flex items-center gap-4">
-                  <UserAvatar
-                    name={selectedUserData.name}
-                    image={selectedUserData.image || undefined}
-                    size="md"
-                    className="ring-2 ring-emerald-400"
-                  />
-                  <div>
-                    <div className="font-semibold text-white text-lg">
+                {/* Prominent Profile Card */}
+                <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 flex items-center gap-4 shadow-lg shadow-emerald-500/20">
+                  {/* Large Avatar */}
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center bg-white/20 ring-3 ring-white/30 shadow-lg flex-shrink-0">
+                    {selectedUserData.image ? (
+                      <img
+                        src={selectedUserData.image}
+                        alt={selectedUserData.name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="font-semibold text-white text-xl">
+                        {selectedUserData.name
+                          .split(/\s+/)
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-xl mb-1 truncate">
                       {selectedUserData.name}
                     </div>
-                    <div className="text-sm font-medium text-emerald-100">
+                    <div className="text-sm font-medium text-emerald-50">
                       {selectedUserData.role === 'OWNER' ? 'Proprietaire' : 'Employe'}
                     </div>
                   </div>

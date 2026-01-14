@@ -53,7 +53,9 @@
 - **Runtime**: Vercel Serverless Functions (Node.js 20)
 - **Database**: Neon (Serverless PostgreSQL via Vercel integration)
 - **ORM**: Prisma with `@prisma/adapter-neon`
-- **Auth**: JWT + PIN hash (bcrypt)
+- **Auth**: NextAuth v5 (Auth.js) with Google OAuth + JWT + PIN hash (bcrypt)
+- **JWT Storage**: httpOnly cookies (secure, XSS-resistant)
+- **CSRF Protection**: Origin header verification
 - **Hosting**: Vercel (Frontend + API + Database)
 
 ---
@@ -94,12 +96,17 @@ seri-app/
 │   │
 │   ├── components/
 │   │   ├── ui/                  # Reusable UI components
-│   │   └── features/            # Feature-specific components
+│   │   ├── features/            # Feature-specific components
+│   │   ├── AuthGuard.tsx        # Authentication guard (redirects, session sync)
+│   │   ├── AppLockGuard.tsx     # App lock overlay guard
+│   │   └── LockScreen.tsx       # Lock screen with PIN/biometric unlock
 │   │
 │   ├── lib/
 │   │   ├── client/              # CLIENT-SIDE ONLY (PWA)
 │   │   │   ├── db.ts           # Dexie.js (IndexedDB)
-│   │   │   ├── sync.ts         # Sync queue logic
+│   │   │   ├── sync.ts         # Sync queue logic (push/pull)
+│   │   │   ├── auth.ts         # PIN verification (client-side)
+│   │   │   ├── biometric.ts   # WebAuthn fingerprint/face ID
 │   │   │   └── utils.ts        # UI utilities (cn, debounce)
 │   │   │
 │   │   ├── server/              # SERVER-SIDE ONLY (API)
@@ -115,7 +122,9 @@ seri-app/
 │   │
 │   ├── stores/
 │   │   ├── auth.ts              # Zustand auth store
-│   │   └── cart.ts              # Zustand cart store
+│   │   ├── cart.ts              # Zustand cart store
+│   │   ├── lock.ts              # Zustand lock store (app locking)
+│   │   └── sync.ts              # Zustand sync status store
 │   │
 │   └── types/
 │       └── index.ts             # Re-exports @/lib/shared/types (compatibility)
@@ -179,7 +188,8 @@ Connection is a bonus.
 ```javascript
 {
   id: "uuid-v4",
-  type: "SALE" | "STOCK_ADJUSTMENT" | "EXPENSE",
+  type: "SALE" | "STOCK_ADJUSTMENT" | "EXPENSE" | "PRODUCT" | "STOCK_MOVEMENT" | "USER",
+  action: "CREATE" | "UPDATE" | "DELETE" | "UPDATE_PIN",
   payload: { /* transaction data */ },
   created_at: "2026-01-15T10:30:00Z",
   status: "PENDING" | "SYNCING" | "SYNCED" | "FAILED",
@@ -187,6 +197,15 @@ Connection is a bonus.
   last_error: null
 }
 ```
+
+### Multi-User Sync (Phase 2 - Implemented)
+- **Bidirectional Sync**: Push local changes to server, pull changes from other users
+- **Push Sync**: `/api/sync/push` - Sends queued transactions to PostgreSQL
+- **Pull Sync**: `/api/sync/pull` - Fetches changes since last sync timestamp
+- **Conflict Resolution**: "Last Write Wins" strategy (most recent `updatedAt` wins)
+- **Background Sync**: Automatic pull every 5 minutes when online
+- **Initial Sync**: Full data pull on first login
+- **Sync Status**: UI shows last push/pull times and pending count
 
 ---
 
@@ -196,8 +215,14 @@ Connection is a bonus.
 - PIN 4 digits with numeric keypad
 - Visual feedback (dots) for each digit
 - Profiles: OWNER (full access) / EMPLOYEE (limited)
-- Session remembered 24h
+- Session remembered 24h (configurable via `SESSION_MAX_AGE_DAYS`)
 - Lock after 5 failed attempts (30 min)
+- **Google OAuth**: First-time login via Google, then PIN-based authentication
+- **Default PIN**: New users get default PIN ("1234") and must change it on first login
+- **JWT Security**: JWT stored in httpOnly cookies (not localStorage) for XSS protection
+- **CSRF Protection**: Origin header verification for API routes
+- **App Locking**: Manual lock button + auto-lock after inactivity (5 min default)
+- **Biometric Unlock**: Fingerprint/face ID support via WebAuthn API (if device supports)
 
 ### 2. Sales (Module: Ventes)
 - Product search with autocomplete (< 500ms)
@@ -363,7 +388,12 @@ const [isLoading, setIsLoading] = useState(false);
 - PIN hashed with bcrypt + salt
 - 5 failed attempts = 30 min lockout
 - HTTPS mandatory in production
-- JWT with short duration + refresh token
+- JWT stored in httpOnly cookies (prevents XSS attacks)
+- CSRF protection via Origin header verification
+- Session duration configurable (default: 7 days)
+- Inactivity timeout configurable (default: 5 minutes)
+- App locking: Manual lock + auto-lock on inactivity
+- Biometric authentication via WebAuthn (fingerprint/face ID)
 - Sensitive data encryption at rest (V2)
 
 ---
@@ -395,21 +425,29 @@ const [isLoading, setIsLoading] = useState(false);
 
 ## Development Phases
 
-### Phase 1: MVP (Current)
-1. Project setup (Next.js, Tailwind, PWA config)
-2. Dexie.js data model (IndexedDB schema)
-3. Offline-first architecture with sync queue
-4. Login screen (PIN + profile selection)
-5. Dashboard
-6. Sales module
-7. Stock module
-8. Expenses module
-9. Settings
-10. Performance optimization & deployment
+### Phase 1: MVP (Completed)
+1. ✅ Project setup (Next.js, Tailwind, PWA config)
+2. ✅ Dexie.js data model (IndexedDB schema)
+3. ✅ Offline-first architecture with sync queue
+4. ✅ Login screen (Google OAuth + PIN authentication)
+5. ✅ Dashboard
+6. ✅ Sales module
+7. ✅ Stock module
+8. ✅ Expenses module
+9. ✅ Settings
+10. ✅ Performance optimization & deployment
 
-### Phase 2: Consolidation (Post-MVP)
+### Phase 2: Multi-User Sync & Security (Completed)
+1. ✅ Bidirectional sync (push/pull)
+2. ✅ Conflict resolution (last write wins)
+3. ✅ Background sync (periodic pull every 5 min)
+4. ✅ JWT security (httpOnly cookies)
+5. ✅ CSRF protection
+6. ✅ App locking (manual + auto-lock)
+7. ✅ Biometric unlock (WebAuthn)
+
+### Phase 3: Consolidation (Post-MVP)
 - Expiration alerts (FEFO)
-- Full multi-user
 - Advanced reports
 - 10 pharmacies
 
@@ -602,6 +640,56 @@ const products = useLiveQuery(() => db.products.toArray()) ?? [];
 - [Assumptions & Risks](docs/product-discovery/07-assumptions-risks.md)
 - [Technical Architecture](docs/product-discovery/08-technical-architecture.md)
 - [Research Log](docs/product-discovery/09-research-log.md)
+- [Offline-First Sync Flow](docs/OFFLINE_FIRST_SYNC_FLOW.md)
+
+---
+
+## Recent Updates (2026-01)
+
+### Authentication Enhancements
+- **Google OAuth Integration**: First-time login via Google, then PIN-based authentication
+- **Default PIN Flow**: New users get default PIN ("1234") and must change it immediately
+- **JWT Security**: Migrated from localStorage to httpOnly cookies for XSS protection
+- **CSRF Protection**: Origin header verification for all API routes
+- **Session Management**: Configurable session duration (`SESSION_MAX_AGE_DAYS`) and inactivity timeout (`INACTIVITY_TIMEOUT_MINUTES`)
+- **Session Sync**: Zustand store syncs with NextAuth session for consistency
+
+### Multi-User Sync (Phase 2 - Completed)
+- **Bidirectional Sync**: Implemented push and pull sync for multi-user collaboration
+- **Push Sync**: `/api/sync/push` - Sends queued transactions to PostgreSQL
+- **Pull Sync**: `/api/sync/pull` - Fetches changes since last sync timestamp
+- **Conflict Resolution**: "Last Write Wins" strategy based on `updatedAt` timestamp
+- **Background Sync**: Automatic pull every 5 minutes when online
+- **Initial Sync**: Full data pull on first login
+- **Sync Status UI**: Shows last push/pull times and pending sync count in Settings page
+
+### App Locking Feature (Completed)
+- **Manual Lock**: Lock button in header (between notification badge and avatar)
+- **Auto-Lock**: Automatically locks after 5 minutes of inactivity (configurable via `LOCK_TIMEOUT_MINUTES`)
+- **PIN Unlock**: 4-digit PIN verification to unlock
+- **Biometric Unlock**: WebAuthn fingerprint/face ID support (if device supports)
+- **Lock Screen**: Full-screen overlay (z-index 9999) blocking all app interaction
+- **Session Persistence**: Lock state persists during session (sessionStorage), clears on refresh
+- **Activity Tracking**: Updates activity on lock screen interaction to prevent immediate re-lock
+
+### Key Files Added/Modified
+
+#### New Files
+- `src/stores/lock.ts` - Lock state management (Zustand)
+- `src/components/LockScreen.tsx` - Lock screen UI with PIN/biometric unlock
+- `src/components/AppLockGuard.tsx` - Lock overlay guard component
+- `src/lib/client/biometric.ts` - WebAuthn biometric authentication
+- `src/lib/shared/config.ts` - Centralized auth configuration
+
+#### Modified Files
+- `src/hooks/useActivityMonitor.ts` - Updated for auto-lock integration
+- `src/app/api/sync/push/route.ts` - Server-side push sync implementation
+- `src/app/api/sync/pull/route.ts` - Server-side pull sync implementation
+- `src/lib/client/sync.ts` - Enhanced with pull sync logic and background sync
+- `src/components/Header.tsx` - Added lock button
+- `src/app/layout.tsx` - Added AppLockGuard wrapper
+- `src/components/AuthGuard.tsx` - Added lock state awareness
+- `src/app/parametres/page.tsx` - Added sync status UI
 
 ---
 

@@ -56,28 +56,47 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       
       if (userId && (user || trigger === 'update')) {
         try {
+          // Fetch user data with all needed fields
           const dbUser = await prisma.user.findUnique({
             where: { id: userId as string },
-            select: { role: true, pinHash: true, mustChangePin: true },
-          });
-          token.id = userId as string;
-          token.role = dbUser?.role || 'EMPLOYEE';
-          token.hasPin = !!dbUser?.pinHash;
-          token.mustChangePin = dbUser?.mustChangePin ?? false; // Default to false if not set
+            select: { 
+              role: true, 
+              pinHash: true, 
+              // @ts-expect-error - mustChangePin exists in schema but TypeScript types may be stale
+              mustChangePin: true,
+            },
+          }) as { role: string; pinHash: string | null; mustChangePin: boolean | null } | null;
+          
+          if (dbUser) {
+            // Update token with fresh data from database
+            token.id = userId as string;
+            token.role = dbUser.role || 'EMPLOYEE';
+            token.hasPin = !!dbUser.pinHash;
+            token.mustChangePin = dbUser.mustChangePin ?? false;
+          } else {
+            // User not found in database - keep existing token values
+            console.warn('[Auth] User not found in database:', userId);
+            // Don't overwrite existing token values
+          }
         } catch (error) {
           console.error('[Auth] JWT callback error:', error);
-          // Set defaults if DB query fails
+          // On error, preserve existing token values (don't overwrite)
+          // Only set defaults on initial sign-in (when user exists)
           if (user) {
             token.id = user.id;
             token.role = 'EMPLOYEE';
             token.hasPin = false;
             token.mustChangePin = true;
           }
+          // If trigger === 'update' and error, keep existing token values
         }
       }
+      
+      // Preserve access token if account exists
       if (account) {
         token.accessToken = account.access_token;
       }
+      
       return token;
     },
     async session({ session, token }) {
@@ -107,7 +126,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             role: 'EMPLOYEE',
             pinHash: defaultPinHash,
             mustChangePin: true, // Force user to change default PIN
-          },
+          } as { role: string; pinHash: string; mustChangePin: boolean },
         });
         console.log('[Auth] Created user with default PIN:', user.id);
       } catch (error) {

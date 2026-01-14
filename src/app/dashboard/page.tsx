@@ -8,6 +8,7 @@ import { useSession } from 'next-auth/react';
 import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
+import { useActivityMonitor } from '@/hooks/useActivityMonitor';
 import { Card } from '@/components/ui/card';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
@@ -19,7 +20,10 @@ import { getExpirationSummary, getExpirationStatus } from '@/lib/client/expirati
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { currentUser, isAuthenticated } = useAuthStore();
+  const { currentUser, isAuthenticated, updateActivity } = useAuthStore();
+
+  // Monitor user activity and redirect to login after 5 min inactivity
+  useActivityMonitor();
 
   // Get user info from OAuth session or Zustand store
   const userName = session?.user?.name || currentUser?.name;

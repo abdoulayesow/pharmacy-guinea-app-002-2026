@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { signIn, useSession } from 'next-auth/react';
-import { User, ChevronLeft, KeyRound } from 'lucide-react';
+import { User, ChevronLeft, KeyRound, Clock } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/db';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
 import { verifyPin } from '@/lib/client/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
+import { UserAvatar } from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 
 // Google logo SVG component
@@ -36,10 +37,49 @@ function GoogleLogo({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Login Flow States:
+ * 1. NO Google session → Show Google-only login
+ * 2. Google session + active (< 5min) → Redirect to dashboard
+ * 3. Google session + inactive (> 5min) → Show PIN-only login
+ */
+type LoginMode = 'loading' | 'google-only' | 'pin-only';
+
+// Helper component to auto-select single user
+function SingleUserAutoSelect({
+  user,
+  onSelect,
+}: {
+  user: { id: string; name: string; role: string; image?: string | null };
+  onSelect: (userId: string) => void;
+}) {
+  useEffect(() => {
+    onSelect(user.id);
+  }, [user.id, onSelect]);
+
+  return (
+    <div className="flex items-center justify-center py-4">
+      <div className="animate-pulse text-slate-400 text-sm">
+        Chargement...
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const { login, isAuthenticated, incrementFailedAttempts, resetFailedAttempts, isLocked, clearExpiredLock } = useAuthStore();
+  const {
+    login,
+    isAuthenticated,
+    isInactive,
+    lastActivityAt,
+    updateActivity,
+    incrementFailedAttempts,
+    resetFailedAttempts,
+    isLocked,
+    clearExpiredLock,
+  } = useAuthStore();
 
   const [step, setStep] = useState<'main' | 'profile' | 'pin'>('main');
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -48,7 +88,7 @@ export default function LoginPage() {
   const [shake, setShake] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(true); // Default to true to avoid hydration mismatch
+  const [isOnline, setIsOnline] = useState(true);
 
   // Track online status after mount to avoid hydration mismatch
   useEffect(() => {
@@ -74,27 +114,70 @@ export default function LoginPage() {
   // Get users from IndexedDB
   const users = useLiveQuery(() => db.users.toArray()) ?? [];
 
-  // Check if any users have PIN set (for showing PIN login option)
+  // Check if any users have PIN set
   const usersWithPin = users.filter((u) => u.pinHash);
 
-  // Handle OAuth session
-  useEffect(() => {
-    if (sessionStatus === 'authenticated' && session?.user) {
-      // Check if user needs PIN setup
-      if (!(session.user as { hasPin?: boolean }).hasPin) {
-        router.push('/auth/setup-pin');
-      } else {
-        router.push('/dashboard');
-      }
-    }
-  }, [session, sessionStatus, router]);
+  // Determine login mode based on Google session and activity
+  const loginMode: LoginMode = useMemo(() => {
+    // Still loading session
+    if (sessionStatus === 'loading') return 'loading';
 
-  // Redirect if already authenticated via Zustand (PIN login)
+    // No Google session → Google-only login
+    if (sessionStatus !== 'authenticated' || !session?.user) {
+      return 'google-only';
+    }
+
+    // Has Google session → check if this is first login or returning user
+    // First login (lastActivityAt is null): will redirect to dashboard (show loading)
+    if (!lastActivityAt) {
+      return 'loading';
+    }
+
+    // Returning user: check if inactive > 5min → PIN required
+    if (isInactive()) {
+      return 'pin-only';
+    }
+
+    // Google session + recently active → will redirect to dashboard
+    return 'loading';
+  }, [sessionStatus, session, lastActivityAt, isInactive]);
+
+  // Handle redirects based on auth state
   useEffect(() => {
+    if (sessionStatus === 'loading') return;
+
+    const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
+
+    // If authenticated via Zustand (PIN), go to dashboard
     if (isAuthenticated) {
       router.push('/dashboard');
+      return;
     }
-  }, [isAuthenticated, router]);
+
+    // If Google session but no PIN setup, go to PIN setup first
+    if (hasGoogleSession && !(session.user as { hasPin?: boolean }).hasPin) {
+      router.push('/auth/setup-pin');
+      return;
+    }
+
+    // If Google session exists and user is still active (or first login), go to dashboard
+    // First login: lastActivityAt is null, we initialize it and go to dashboard
+    // Returning user: check if inactive > 5min
+    if (hasGoogleSession) {
+      if (!lastActivityAt) {
+        // First time after Google login - set activity and go to dashboard
+        updateActivity();
+        router.push('/dashboard');
+        return;
+      } else if (!isInactive()) {
+        // User is still active (< 5 min since last activity)
+        updateActivity();
+        router.push('/dashboard');
+        return;
+      }
+      // Otherwise: inactive > 5min, stay on login page for PIN entry
+    }
+  }, [sessionStatus, session, isAuthenticated, lastActivityAt, isInactive, updateActivity, router]);
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
@@ -143,7 +226,6 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    // Check if account is locked
     clearExpiredLock();
     if (isLocked()) {
       setError('Compte verrouille. Reessayez dans 30 minutes.');
@@ -191,12 +273,10 @@ export default function LoginPage() {
             if (data.success && data.token) {
               isApiSuccess = true;
               jwtToken = data.token;
-              // Store JWT token in localStorage
               localStorage.setItem('seri-jwt-token', jwtToken!);
-              console.log('✅ Authenticated via API');
+              console.log('[Auth] Authenticated via API');
             }
           } else if (response.status === 401 || response.status === 404) {
-            // Invalid credentials from API
             incrementFailedAttempts();
             setError('Code PIN incorrect');
             triggerShake();
@@ -204,19 +284,17 @@ export default function LoginPage() {
             setIsLoading(false);
             return;
           }
-          // If other error, fall through to offline verification
         } catch (apiError) {
-          console.log('⚠️ API auth failed, falling back to offline:', apiError);
-          // Fall through to offline verification
+          console.log('[Auth] API auth failed, falling back to offline:', apiError);
         }
       }
 
-      // Fallback to offline verification (when API fails or offline)
+      // Fallback to offline verification
       if (!isApiSuccess) {
-        console.log('🔄 Using offline authentication');
+        console.log('[Auth] Using offline authentication');
 
         if (!user.pinHash) {
-          setError('PIN non configuré');
+          setError('PIN non configure');
           triggerShake();
           setIsLoading(false);
           return;
@@ -225,7 +303,6 @@ export default function LoginPage() {
         const isPinValid = await verifyPin(pin, user.pinHash);
 
         if (!isPinValid) {
-          // Incorrect PIN
           incrementFailedAttempts();
           setError('Code PIN incorrect');
           triggerShake();
@@ -233,7 +310,7 @@ export default function LoginPage() {
           setIsLoading(false);
           return;
         }
-        console.log('✅ Authenticated offline');
+        console.log('[Auth] Authenticated offline');
       }
 
       // PIN is correct - reset failed attempts and log in
@@ -258,6 +335,17 @@ export default function LoginPage() {
   // Get selected user data
   const selectedUserData = users.find((u) => u.id === selectedUser);
 
+  // Loading state
+  if (loginMode === 'loading') {
+    return (
+      <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+        <div className="animate-pulse">
+          <Logo variant="icon" size="lg" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-800 flex flex-col">
       {/* Header with Logo and Branding */}
@@ -279,8 +367,10 @@ export default function LoginPage() {
 
       <div className="flex-1 flex items-start justify-center px-4 pb-8 overflow-y-auto">
         <div className="w-full max-w-md">
-          {/* Main Login Options */}
-          {step === 'main' && (
+          {/* ============================================ */}
+          {/* GOOGLE-ONLY MODE: User not logged into Google */}
+          {/* ============================================ */}
+          {loginMode === 'google-only' && step === 'main' && (
             <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6">
               <h2 className="text-center mb-6 text-white font-semibold text-xl">
                 Connexion
@@ -305,28 +395,6 @@ export default function LoginPage() {
                     Connexion Google non disponible hors ligne
                   </p>
                 )}
-
-                {/* Divider - only show if users with PIN exist */}
-                {usersWithPin.length > 0 && (
-                  <>
-                    <div className="flex items-center gap-4 my-6">
-                      <div className="flex-1 h-px bg-slate-700" />
-                      <span className="text-slate-500 text-sm">ou</span>
-                      <div className="flex-1 h-px bg-slate-700" />
-                    </div>
-
-                    {/* PIN Login Button */}
-                    <button
-                      onClick={() => setStep('profile')}
-                      className="w-full flex items-center justify-center gap-3 p-4 rounded-xl transition-all duration-200 border-2 border-slate-700 hover:border-slate-600 bg-slate-800 hover:bg-slate-750 active:scale-[0.98]"
-                    >
-                      <KeyRound className="w-5 h-5 text-emerald-400" />
-                      <span className="font-semibold text-white">
-                        Connexion avec PIN
-                      </span>
-                    </button>
-                  </>
-                )}
               </div>
 
               {/* Error Message */}
@@ -338,8 +406,104 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Step 2: Profile Selection (for PIN login) */}
-          {step === 'profile' && (
+          {/* ============================================ */}
+          {/* PIN-ONLY MODE: User has Google session but inactive */}
+          {/* ============================================ */}
+          {loginMode === 'pin-only' && step === 'main' && (
+            <div className="space-y-4">
+              {/* Session info card */}
+              <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-slate-300 text-sm">
+                      Session expiree
+                    </p>
+                    <p className="text-slate-500 text-xs">
+                      Entrez votre PIN pour continuer
+                    </p>
+                  </div>
+                  {session?.user && (
+                    <UserAvatar
+                      name={session.user.name || ''}
+                      image={session.user.image || undefined}
+                      size="sm"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* PIN Login Card */}
+              <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6">
+                <h2 className="text-center mb-6 text-white font-semibold text-xl">
+                  Verification PIN
+                </h2>
+
+                {/* Show profile selection if multiple users, otherwise go straight to PIN */}
+                {usersWithPin.length > 1 ? (
+                  <div className="space-y-3">
+                    <p className="text-slate-400 text-sm text-center mb-4">
+                      Selectionnez votre profil
+                    </p>
+                    {usersWithPin.map((user) => (
+                      <button
+                        key={user.id}
+                        onClick={() => handleProfileSelect(user.id)}
+                        className="w-full flex items-center gap-4 p-4 rounded-xl transition-all duration-200 border-2 border-slate-700 hover:border-emerald-500/50 bg-slate-800 hover:bg-slate-750 active:scale-[0.98]"
+                      >
+                        <UserAvatar
+                          name={user.name}
+                          image={user.image || undefined}
+                          size="md"
+                        />
+                        <div className="flex-1 text-left">
+                          <div className="font-semibold text-white">
+                            {user.name}
+                          </div>
+                          <div className="text-sm text-slate-400">
+                            {user.role === 'OWNER' ? 'Proprietaire' : 'Employe'}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : usersWithPin.length === 1 ? (
+                  // Single user - show their info then PIN pad will show
+                  <SingleUserAutoSelect
+                    user={usersWithPin[0]}
+                    onSelect={handleProfileSelect}
+                  />
+                ) : (
+                  // No users with PIN - show message
+                  <div className="text-center py-8">
+                    <p className="text-slate-400 mb-4">
+                      Aucun profil avec PIN configure
+                    </p>
+                    <button
+                      onClick={handleGoogleSignIn}
+                      className="text-emerald-400 hover:text-emerald-300 text-sm font-medium"
+                    >
+                      Se reconnecter avec Google
+                    </button>
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {error && (
+                  <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm text-center">
+                    {error}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================ */}
+          {/* PROFILE SELECTION (for PIN-only mode with multiple users) */}
+          {/* ============================================ */}
+          {loginMode === 'pin-only' && step === 'profile' && (
             <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6">
               <button
                 onClick={() => setStep('main')}
@@ -359,9 +523,11 @@ export default function LoginPage() {
                     onClick={() => handleProfileSelect(user.id)}
                     className="w-full flex items-center gap-4 p-5 rounded-xl transition-all duration-200 border-2 border-slate-700 hover:border-slate-600 bg-slate-800 hover:bg-slate-750 active:scale-[0.98]"
                   >
-                    <div className="w-14 h-14 rounded-xl bg-slate-700 flex items-center justify-center">
-                      <User className="w-7 h-7 text-slate-300" />
-                    </div>
+                    <UserAvatar
+                      name={user.name}
+                      image={user.image || undefined}
+                      size="lg"
+                    />
                     <div className="flex-1 text-left">
                       <div className="font-semibold text-lg text-white">
                         {user.name}
@@ -376,7 +542,9 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Step 3: PIN Entry */}
+          {/* ============================================ */}
+          {/* PIN ENTRY */}
+          {/* ============================================ */}
           {step === 'pin' && selectedUserData && (
             <div>
               {/* Selected Profile Display */}
@@ -390,9 +558,12 @@ export default function LoginPage() {
                 </button>
 
                 <div className="bg-emerald-500 rounded-xl p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-emerald-400 flex items-center justify-center">
-                    <User className="w-6 h-6 text-emerald-900" />
-                  </div>
+                  <UserAvatar
+                    name={selectedUserData.name}
+                    image={selectedUserData.image || undefined}
+                    size="md"
+                    className="ring-2 ring-emerald-400"
+                  />
                   <div>
                     <div className="font-semibold text-white text-lg">
                       {selectedUserData.name}

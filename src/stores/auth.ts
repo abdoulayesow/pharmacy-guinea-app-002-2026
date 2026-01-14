@@ -4,15 +4,21 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types';
 
+// Inactivity timeout in milliseconds (5 minutes)
+export const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+
 interface AuthState {
   currentUser: User | null;
   isAuthenticated: boolean;
   failedAttempts: number;
   lockedUntil: Date | null;
+  lastActivityAt: number | null; // Timestamp of last user activity
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
   login: (user: User) => void;
   logout: () => void;
+  updateActivity: () => void; // Update last activity timestamp
+  isInactive: () => boolean; // Check if user has been inactive > 5 min
   incrementFailedAttempts: () => void;
   resetFailedAttempts: () => void;
   isLocked: () => boolean;
@@ -26,6 +32,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       failedAttempts: 0,
       lockedUntil: null,
+      lastActivityAt: null,
       _hasHydrated: false,
 
       setHasHydrated: (state) => {
@@ -38,13 +45,25 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
           failedAttempts: 0,
           lockedUntil: null,
+          lastActivityAt: Date.now(),
         }),
 
       logout: () =>
         set({
           currentUser: null,
           isAuthenticated: false,
+          lastActivityAt: null,
         }),
+
+      updateActivity: () => {
+        set({ lastActivityAt: Date.now() });
+      },
+
+      isInactive: () => {
+        const { lastActivityAt } = get();
+        if (!lastActivityAt) return true;
+        return Date.now() - lastActivityAt > INACTIVITY_TIMEOUT_MS;
+      },
 
       incrementFailedAttempts: () => {
         const newAttempts = get().failedAttempts + 1;
@@ -88,6 +107,7 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
         failedAttempts: state.failedAttempts,
         lockedUntil: state.lockedUntil,
+        lastActivityAt: state.lastActivityAt,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);

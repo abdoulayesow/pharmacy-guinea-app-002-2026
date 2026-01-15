@@ -6,7 +6,7 @@ import { db } from '@/lib/client/db';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
-import { Search, User, Phone, Clock, ShoppingBag, X } from 'lucide-react';
+import { Search, User, Phone, Clock, ShoppingBag, X, Plus } from 'lucide-react';
 
 interface CustomerSummary {
   name: string;
@@ -22,6 +22,28 @@ interface CustomerAutocompleteProps {
   onCustomerSelect: (name: string, phone: string) => void;
   onCustomerNameChange: (name: string) => void;
   onCustomerPhoneChange: (phone: string) => void;
+}
+
+// Format phone number as 6XX XX XX XX (Guinea format)
+function formatPhoneNumber(value: string): string {
+  // Remove all non-digits
+  const digits = value.replace(/\D/g, '');
+
+  // Limit to 9 digits (Guinea mobile format)
+  const limited = digits.slice(0, 9);
+
+  // Format as 6XX XX XX XX
+  if (limited.length === 0) return '';
+  if (limited.length <= 3) return limited;
+  if (limited.length <= 5) return `${limited.slice(0, 3)} ${limited.slice(3)}`;
+  if (limited.length <= 7) return `${limited.slice(0, 3)} ${limited.slice(3, 5)} ${limited.slice(5)}`;
+  return `${limited.slice(0, 3)} ${limited.slice(3, 5)} ${limited.slice(5, 7)} ${limited.slice(7)}`;
+}
+
+// Check if input looks like a phone number (starts with 6 and has digits)
+function isPhoneNumberInput(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length > 0 && digits[0] === '6';
 }
 
 export function CustomerAutocomplete({
@@ -104,14 +126,23 @@ export function CustomerAutocomplete({
 
   // Handle customer selection from dropdown
   const handleCustomerSelect = (customer: CustomerSummary) => {
-    onCustomerSelect(customer.name, customer.phone || '');
+    onCustomerSelect(customer.name, customer.phone ? formatPhoneNumber(customer.phone) : '');
     setSearchQuery('');
     setShowSuggestions(false);
     setManualEntry(false);
   };
 
-  // Handle manual entry mode
+  // Handle manual entry mode - pre-populate with search query
   const handleManualEntry = () => {
+    // If search query looks like a phone number, populate phone field
+    if (isPhoneNumberInput(searchQuery)) {
+      onCustomerPhoneChange(formatPhoneNumber(searchQuery));
+      onCustomerNameChange('');
+    } else {
+      // Otherwise populate name field
+      onCustomerNameChange(searchQuery);
+      onCustomerPhoneChange('');
+    }
     setManualEntry(true);
     setShowSuggestions(false);
     setSearchQuery('');
@@ -170,7 +201,7 @@ export function CustomerAutocomplete({
                             <div className="flex items-center gap-2 mb-2">
                               <Phone className="h-3 w-3 text-slate-400 flex-shrink-0" />
                               <span className="text-sm text-slate-400">
-                                {customer.phone}
+                                {formatPhoneNumber(customer.phone)}
                               </span>
                             </div>
                           )}
@@ -202,9 +233,10 @@ export function CustomerAutocomplete({
                       <p className="mb-3">Aucun client trouvé</p>
                       <button
                         onClick={handleManualEntry}
-                        className="text-emerald-500 hover:text-emerald-400 font-semibold"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors"
                       >
-                        + Ajouter comme nouveau client
+                        <Plus className="h-4 w-4" />
+                        Ajouter
                       </button>
                     </>
                   ) : (
@@ -217,9 +249,10 @@ export function CustomerAutocomplete({
               {filteredCustomers.length > 0 && (
                 <button
                   onClick={handleManualEntry}
-                  className="w-full p-4 text-center text-emerald-500 hover:bg-slate-800 font-semibold border-t border-slate-800 transition-colors"
+                  className="w-full p-4 text-center hover:bg-slate-800 font-semibold border-t border-slate-800 transition-colors flex items-center justify-center gap-2"
                 >
-                  + Nouveau client
+                  <Plus className="h-4 w-4 text-emerald-500" />
+                  <span className="text-emerald-500">Ajouter</span>
                 </button>
               )}
             </Card>
@@ -267,8 +300,8 @@ export function CustomerAutocomplete({
             <Input
               type="tel"
               value={customerPhone}
-              onChange={(e) => onCustomerPhoneChange(e.target.value)}
-              placeholder="Ex: +224 622 12 34 56"
+              onChange={(e) => onCustomerPhoneChange(formatPhoneNumber(e.target.value))}
+              placeholder="6XX XX XX XX"
               className="h-12 bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 rounded-xl text-base"
             />
           </div>

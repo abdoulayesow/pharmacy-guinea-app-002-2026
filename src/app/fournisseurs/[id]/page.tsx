@@ -33,14 +33,18 @@ export default function SupplierDetailPage() {
   const { isAuthenticated } = useAuthStore();
   const supplierId = parseInt(params.id as string);
 
-  // Redirect if not authenticated (check both OAuth session and Zustand store)
+  // Check auth status
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  const isAuthChecking = status === 'loading';
+  const isFullyAuthenticated = isAuthenticated || hasOAuthSession;
+
+  // Redirect if not authenticated (only after auth check completes)
   useEffect(() => {
-    if (status === 'loading') return;
-    const hasOAuthSession = status === 'authenticated' && !!session?.user;
-    if (!isAuthenticated && !hasOAuthSession) {
+    if (isAuthChecking) return;
+    if (!isFullyAuthenticated) {
       router.push(`/login?callbackUrl=${encodeURIComponent(`/fournisseurs/${supplierId}`)}`);
     }
-  }, [isAuthenticated, session, status, router, supplierId]);
+  }, [isAuthChecking, isFullyAuthenticated, router, supplierId]);
 
   // Get supplier and orders/returns
   const supplier = useLiveQuery(
@@ -184,8 +188,32 @@ export default function SupplierDetailPage() {
     }
   };
 
-  if (!isAuthenticated || !supplier) {
+  // Show loading while checking auth or loading supplier
+  if (isAuthChecking || supplier === undefined) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Redirect handled in useEffect, but return null if not authenticated
+  if (!isFullyAuthenticated) {
     return null;
+  }
+
+  // Supplier not found
+  if (!supplier) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        <Building2 className="w-16 h-16 text-slate-600 mb-4" />
+        <h1 className="text-xl font-bold mb-2">Fournisseur non trouvé</h1>
+        <p className="text-slate-400 mb-4">Ce fournisseur n'existe pas ou a été supprimé.</p>
+        <Button onClick={() => router.push('/fournisseurs')} className="bg-emerald-600 hover:bg-emerald-500">
+          Retour aux fournisseurs
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -270,7 +298,7 @@ export default function SupplierDetailPage() {
             className="h-20 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
           >
             <Package className="w-5 h-5" />
-            <span className="text-xs font-semibold">Nouvelle commande</span>
+            <span className="text-xs font-semibold">Commander</span>
           </Button>
           <Button
             onClick={() => router.push(`/fournisseurs/paiement?supplierId=${supplierId}`)}

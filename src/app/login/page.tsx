@@ -432,19 +432,12 @@ function LoginPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-800 flex flex-col">
-      {/* Header with Logo and Branding */}
-      <div className="relative pt-12 sm:pt-16 pb-8 sm:pb-12 px-4">
-        <div className="max-w-md mx-auto text-center space-y-6 sm:space-y-8">
-          {/* Pharmacy Logo with Full Branding */}
+      {/* Header with Logo */}
+      <div className="relative pt-8 sm:pt-10 pb-4 sm:pb-6 px-4">
+        <div className="max-w-md mx-auto text-center">
+          {/* Pharmacy Logo - Larger */}
           <div className="flex justify-center">
-            <Logo variant="full" size="lg" />
-          </div>
-
-          {/* App Name */}
-          <div>
-            <h1 className="text-4xl sm:text-5xl text-white tracking-tight font-bold">
-              Seri
-            </h1>
+            <Logo variant="full" size="xl" />
           </div>
         </div>
       </div>
@@ -599,7 +592,7 @@ function LoginPageContent() {
                   <Button
                     onClick={handleLogout}
                     variant="outline"
-                    className="w-full h-12 bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white font-medium rounded-xl active:scale-[0.98] transition-all"
+                    className="w-full h-12 bg-red-900/30 border-red-700/50 text-red-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-300 font-medium rounded-xl active:scale-[0.98] transition-all"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Se déconnecter de Google
@@ -800,7 +793,7 @@ function LoginPageContent() {
                   <Button
                     onClick={handleLogout}
                     variant="outline"
-                    className="w-full h-12 bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white font-medium rounded-xl active:scale-[0.98] transition-all"
+                    className="w-full h-12 bg-red-900/30 border-red-700/50 text-red-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-300 font-medium rounded-xl active:scale-[0.98] transition-all"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Se déconnecter de Google

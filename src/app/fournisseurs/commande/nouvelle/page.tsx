@@ -117,14 +117,18 @@ export default function NewOrderPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [productSearchQuery, products, supplierProducts, selectedSupplier]);
 
-  // Redirect if not authenticated (check both OAuth session and Zustand store)
+  // Check auth status
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  const isAuthChecking = status === 'loading';
+  const isFullyAuthenticated = isAuthenticated || hasOAuthSession;
+
+  // Redirect if not authenticated (only after auth check completes)
   useEffect(() => {
-    if (status === 'loading') return;
-    const hasOAuthSession = status === 'authenticated' && !!session?.user;
-    if (!isAuthenticated && !hasOAuthSession) {
+    if (isAuthChecking) return;
+    if (!isFullyAuthenticated) {
       router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/commande/nouvelle')}`);
     }
-  }, [isAuthenticated, session, status, router]);
+  }, [isAuthChecking, isFullyAuthenticated, router]);
 
   // Calculate due date based on supplier payment terms
   const calculateDueDate = () => {
@@ -363,9 +367,17 @@ export default function NewOrderPage() {
     }
   };
 
-  // Show nothing while checking auth or if not authenticated
-  const hasOAuthSession = status === 'authenticated' && !!session?.user;
-  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
+  // Show loading while checking auth
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Redirect handled in useEffect, return null if not authenticated
+  if (!isFullyAuthenticated) {
     return null;
   }
 
@@ -623,7 +635,7 @@ export default function NewOrderPage() {
               ) : (
                 <span className="flex items-center gap-2">
                   <Save className="w-5 h-5" />
-                  Enregistrer ({orderItems.length} {orderItems.length === 1 ? 'produit' : 'produits'})
+                  Commander
                 </span>
               )}
             </Button>

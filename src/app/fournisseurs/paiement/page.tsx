@@ -448,7 +448,7 @@ export default function PaymentPage() {
               ) : (
                 <span className="flex items-center gap-2">
                   <Save className="w-5 h-5" />
-                  Enregistrer le paiement
+                  Payer
                 </span>
               )}
             </Button>

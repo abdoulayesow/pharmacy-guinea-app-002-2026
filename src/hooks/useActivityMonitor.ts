@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth';
 import { useLockStore, LOCK_TIMEOUT_MS } from '@/stores/lock';
 
 // Check interval increased to 60s for better battery life on mobile
@@ -24,10 +23,9 @@ const CHECK_INTERVAL_MS = 60 * 1000;
  * - Only active when user has a valid Google OAuth session
  */
 export function useActivityMonitor() {
-  const router = useRouter();
   const { data: session, status } = useSession();
-  const { updateActivity, logout, lastActivityAt } = useAuthStore();
-  const { isLocked, lock, updateActivity: updateLockActivity, checkAutoLock } = useLockStore();
+  const { updateActivity, lastActivityAt } = useAuthStore();
+  const { isLocked, lock, updateActivity: updateLockActivity } = useLockStore();
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isVisibleRef = useRef(true);
 
@@ -40,21 +38,13 @@ export function useActivityMonitor() {
 
     const timeSinceActivity = Date.now() - lastActivityAt;
 
-    // First, check if we should auto-lock (shorter timeout)
+    // Check if we should trigger inactivity lock (redirects to login via AppLockGuard)
     if (!isLocked && timeSinceActivity >= LOCK_TIMEOUT_MS) {
       // Auto-lock due to inactivity
+      // AppLockGuard will handle the redirect to login page for PIN re-entry
       lock('inactivity');
-      return;
     }
-
-    // Then check if we should logout (longer timeout)
-    if (timeSinceActivity > INACTIVITY_TIMEOUT_MS) {
-      // User has been inactive for > logout timeout
-      // Logout from Zustand (requires PIN re-entry) but keep Google session
-      logout();
-      router.push('/login');
-    }
-  }, [lastActivityAt, logout, router, isLocked, lock]);
+  }, [lastActivityAt, isLocked, lock]);
 
   const handleActivity = useCallback(() => {
     const now = Date.now();

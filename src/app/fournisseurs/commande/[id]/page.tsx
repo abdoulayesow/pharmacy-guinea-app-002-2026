@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { queueTransaction } from '@/lib/client/sync';
@@ -57,6 +58,7 @@ const CATEGORIES = [
 export default function OrderDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const orderId = parseInt(params.id as string);
 
@@ -83,11 +85,14 @@ export default function OrderDetailPage() {
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
   const productSuppliers = useLiveQuery(() => db.product_suppliers.toArray()) ?? [];
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/fournisseurs/commande/${orderId}`)}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router, orderId]);
 
   // Calculate totals
   const orderTotal = useMemo(() => {
@@ -450,7 +455,9 @@ export default function OrderDetailPage() {
   // Show skeleton while loading
   const isLoading = order === undefined || supplier === undefined;
 
-  if (!isAuthenticated) {
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 

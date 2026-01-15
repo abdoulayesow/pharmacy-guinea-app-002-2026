@@ -3,6 +3,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import type { SupplierOrder } from '@/lib/shared/types';
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const supplierId = searchParams.get('supplierId');
 
@@ -48,11 +50,14 @@ export default function PaymentPage() {
     ? suppliers.find((s) => s.id === parseInt(supplierId))
     : null;
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/paiement')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   // Calculate totals
   const totalDue = selectedOrders.reduce((sum, orderId) => {
@@ -160,7 +165,9 @@ export default function PaymentPage() {
     return 'upcoming';
   };
 
-  if (!isAuthenticated) {
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 

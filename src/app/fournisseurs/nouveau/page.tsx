@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { ArrowLeft, Building2, Phone, Calendar, Save } from 'lucide-react';
 
 export default function NewSupplierPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const { isAuthenticated } = useAuthStore();
 
   const [name, setName] = useState('');
@@ -17,11 +19,14 @@ export default function NewSupplierPage() {
   const [paymentTermsDays, setPaymentTermsDays] = useState('30');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/nouveau')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,7 +52,9 @@ export default function NewSupplierPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 

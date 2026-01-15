@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
@@ -28,14 +29,18 @@ import type { Supplier, SupplierOrder } from '@/lib/shared/types';
 export default function SupplierDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated } = useAuthStore();
   const supplierId = parseInt(params.id as string);
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/fournisseurs/${supplierId}`)}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router, supplierId]);
 
   // Get supplier and orders/returns
   const supplier = useLiveQuery(

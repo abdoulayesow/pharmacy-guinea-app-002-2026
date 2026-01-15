@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'next/navigation';
@@ -27,15 +28,21 @@ type FilterType = 'all' | 'overdue' | 'upcoming';
 
 export default function FournisseursPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('all');
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Wait for session to load before redirecting
+    if (status === 'loading') return;
+
+    // Allow access if either OAuth session or Zustand auth is valid
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   // Get data from IndexedDB - useLiveQuery returns undefined while loading
   const suppliersQuery = useLiveQuery(() => db.suppliers.toArray());
@@ -157,11 +164,13 @@ export default function FournisseursPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  const { isOnline, pendingCount } = useSyncStatus();
+
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
-
-  const { isOnline, pendingCount } = useSyncStatus();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-20">

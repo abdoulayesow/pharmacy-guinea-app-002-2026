@@ -29,11 +29,15 @@ interface LockState {
   setHasHydrated: (state: boolean) => void;
 }
 
-// Get initial lock state from sessionStorage (clears on refresh per requirement)
+// Initial lock state is always false - page refresh should clear the lock
+// The lock is only meant to persist during SPA navigation, not across refreshes
 function getInitialLockState(): boolean {
-  if (typeof window === 'undefined') return false;
-  const stored = sessionStorage.getItem('seri-app-locked');
-  return stored === 'true';
+  // Always start unlocked on page load/refresh
+  // Clear any stale lock state from sessionStorage
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('seri-app-locked');
+  }
+  return false;
 }
 
 export const useLockStore = create<LockState>((set, get) => ({

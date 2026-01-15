@@ -3,6 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { queueTransaction } from '@/lib/client/sync';
@@ -56,6 +57,7 @@ const CATEGORIES = [
 export default function NewOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const preselectedSupplierId = searchParams.get('supplierId');
 
@@ -115,11 +117,14 @@ export default function NewOrderPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [productSearchQuery, products, supplierProducts, selectedSupplier]);
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/commande/nouvelle')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   // Calculate due date based on supplier payment terms
   const calculateDueDate = () => {
@@ -358,7 +363,9 @@ export default function NewOrderPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 

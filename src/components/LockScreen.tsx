@@ -62,6 +62,14 @@ export function LockScreen() {
     }
   }, [isLocked]);
 
+  // Clear PIN on unmount (e.g., page refresh)
+  useEffect(() => {
+    return () => {
+      setPin('');
+      setError('');
+    };
+  }, []);
+
   // Update activity when user interacts with lock screen
   useEffect(() => {
     if (isLocked) {

@@ -201,14 +201,20 @@ model Supplier {
 model SupplierOrder {
   id              Int       @id @default(autoincrement())
   supplierId      Int       @map("supplier_id")
-  orderDate       DateTime  @default(now()) @map("order_date")
+  type            String    @default("ORDER") // ORDER | RETURN
+  orderDate       DateTime  @default(now()) @map("order_date") // For returns, this is submission date
   deliveryDate    DateTime? @map("delivery_date")
   totalAmount     Int       @map("total_amount") // Total in GNF
   calculatedTotal Int?      @map("calculated_total") // Calculated from items
-  amountPaid      Int       @default(0) @map("amount_paid")
-  dueDate         DateTime  @map("due_date")
-  status          String    @default("PENDING") // PENDING | DELIVERED | PAID | CANCELLED
+  amountPaid      Int       @default(0) @map("amount_paid") // For orders: paid amount; for returns: refunded amount
+  dueDate         DateTime  @map("due_date") // For orders: payment due date
+  status          String    @default("PENDING") // PENDING | DELIVERED | CANCELLED
+  paymentStatus   String    @default("PENDING") // PENDING | PAID | UNPAID - for returns, tracks refund status
+  cancelledAt     DateTime? @map("cancelled_at")
   notes           String?
+  // Return-specific fields (only used when type === 'RETURN')
+  returnReason    String?   @map("return_reason") // EXPIRING | DAMAGED | OTHER
+  returnProductId Int?      @map("return_product_id") // Product being returned (for single-product returns)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -217,23 +223,26 @@ model SupplierOrder {
   items           SupplierOrderItem[]
   appliedReturns  SupplierReturn[]    @relation("AppliedToOrder")
 
+  @@index([type])
+  @@index([paymentStatus])
   @@map("supplier_orders")
 }
 
 model SupplierOrderItem {
-  id          Int       @id @default(autoincrement())
-  orderId     Int       @map("order_id")
-  productId   Int?      @map("product_id") // Null if new product not yet created
-  productName String    @map("product_name")
-  category    String?   // Category for new products
-  quantity    Int
-  unitPrice   Int       @map("unit_price")
-  subtotal    Int
-  notes       String?
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id               Int       @id @default(autoincrement())
+  orderId          Int       @map("order_id")
+  productId        Int?      @map("product_id") // Null if new product not yet created
+  productName      String    @map("product_name")
+  category         String?   // Category for new products
+  quantity         Int       // Ordered quantity
+  quantityReceived Int?      @map("quantity_received") // Received quantity (for delivery confirmation)
+  unitPrice        Int       @map("unit_price")
+  subtotal         Int
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   // Relations
-  order       SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order            SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("supplier_order_items")
 }

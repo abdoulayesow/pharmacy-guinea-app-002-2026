@@ -353,50 +353,68 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Filter Tabs - All / Stock Alerts / Expiration */}
-        <div className="flex gap-2">
+        {/* Filter Badges - All / Stock Alerts / Expiration */}
+        <div className="flex flex-wrap gap-3">
+          {/* All Filter Badge */}
           <button
             onClick={() => setSelectedFilter('all')}
+            aria-label="Tous les produits"
+            aria-pressed={selectedFilter === 'all'}
             className={cn(
-              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all',
+              'relative min-h-12 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95',
+              'flex items-center justify-center gap-2 shadow-sm',
               selectedFilter === 'all'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-900 text-slate-400 border border-slate-700'
+                ? 'bg-slate-700 text-white border-2 border-slate-600'
+                : 'bg-slate-900/50 text-slate-300 border-2 border-slate-700 hover:border-slate-600 hover:bg-slate-800/50'
             )}
           >
-            Tous
+            <span>Tous</span>
           </button>
+
+          {/* Alerts Filter Badge */}
           <button
             onClick={() => setSelectedFilter('alerts')}
+            aria-label={`Alertes de stock${lowStockCount > 0 ? ` (${lowStockCount})` : ''}`}
+            aria-pressed={selectedFilter === 'alerts'}
             className={cn(
-              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2',
+              'relative min-h-12 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95',
+              'flex items-center justify-center gap-2 shadow-sm',
               selectedFilter === 'alerts'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-900 text-slate-400 border border-slate-700'
+                ? 'bg-yellow-500/20 text-yellow-300 border-2 border-yellow-500/50 ring-2 ring-yellow-500/20'
+                : 'bg-slate-900/50 text-slate-300 border-2 border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/10'
             )}
           >
             <Clock className="w-4 h-4" />
-            Alertes
+            <span>Alertes</span>
             {lowStockCount > 0 && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="absolute -top-2 -right-2 min-w-6 h-6 flex items-center justify-center px-1.5 rounded-full text-xs font-bold shadow-lg bg-red-500 text-white">
                 {lowStockCount}
               </span>
             )}
           </button>
+
+          {/* Expiration Filter Badge */}
           <button
             onClick={() => setSelectedFilter('expiring')}
+            aria-label={`Alertes de péremption${expirationSummary.total > 0 ? ` (${expirationSummary.total})` : ''}`}
+            aria-pressed={selectedFilter === 'expiring'}
             className={cn(
-              'flex-1 h-10 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2',
-              selectedFilter === 'expiring'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-900 text-slate-400 border border-slate-700'
+              'relative min-h-12 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95',
+              'flex items-center justify-center gap-2 shadow-sm',
+              expirationSummary.expired > 0 || expirationSummary.critical > 0
+                ? selectedFilter === 'expiring'
+                  ? 'bg-red-500/20 text-red-300 border-2 border-red-500/50 ring-2 ring-red-500/20'
+                  : 'bg-slate-900/50 text-slate-300 border-2 border-red-500/30 hover:border-red-500/50 hover:bg-red-500/10'
+                : selectedFilter === 'expiring'
+                  ? 'bg-amber-500/20 text-amber-300 border-2 border-amber-500/50 ring-2 ring-amber-500/20'
+                  : 'bg-slate-900/50 text-slate-300 border-2 border-amber-500/30 hover:border-amber-500/50 hover:bg-amber-500/10'
             )}
           >
             <AlertCircle className="w-4 h-4" />
-            Péremption
+            <span>Péremption</span>
             {expirationSummary.total > 0 && (
               <span className={cn(
-                'text-xs font-bold px-2 py-0.5 rounded-full',
+                'absolute -top-2 -right-2 min-w-6 h-6 flex items-center justify-center px-1.5 rounded-full text-xs font-bold shadow-lg',
                 expirationSummary.expired > 0 || expirationSummary.critical > 0
                   ? 'bg-red-500 text-white'
                   : 'bg-amber-500 text-white'

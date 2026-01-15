@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { signIn, useSession } from 'next-auth/react';
-import { User, ChevronLeft, KeyRound, Clock } from 'lucide-react';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { User, ChevronLeft, KeyRound, Clock, LogOut } from 'lucide-react';
 import { db } from '@/lib/db';
 import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
 import { verifyPin } from '@/lib/client/auth';
@@ -84,6 +84,7 @@ function LoginPageContent() {
   const { data: session, status: sessionStatus } = useSession();
   const {
     login,
+    logout,
     isAuthenticated,
     isInactive,
     lastActivityAt,
@@ -258,6 +259,20 @@ function LoginPageContent() {
       console.error('Google sign-in error:', error);
       setError('Erreur de connexion Google');
       setIsGoogleLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Clear Zustand auth state
+      logout();
+      // Sign out from Google session
+      await signOut({ callbackUrl: '/login' });
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if signOut fails, clear local state
+      logout();
+      router.push('/login');
     }
   };
 
@@ -578,6 +593,18 @@ function LoginPageContent() {
                     {error}
                   </div>
                 )}
+
+                {/* Logout Button */}
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="w-full h-12 bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white font-medium rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Se déconnecter de Google
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -766,6 +793,18 @@ function LoginPageContent() {
                   >
                     PIN oublie?
                   </Link>
+                </div>
+
+                {/* Logout Button */}
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="w-full h-12 bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white font-medium rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Se déconnecter de Google
+                  </Button>
                 </div>
               </div>
             </div>

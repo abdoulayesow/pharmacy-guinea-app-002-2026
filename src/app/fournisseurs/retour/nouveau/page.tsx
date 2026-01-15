@@ -21,7 +21,9 @@ import {
   Save,
   Search,
 } from 'lucide-react';
-import type { ReturnReason } from '@/lib/shared/types';
+import type { ReturnReason, SupplierOrder } from '@/lib/shared/types';
+import { queueTransaction } from '@/lib/client/sync';
+import { toast } from 'sonner';
 
 const RETURN_REASONS: { value: ReturnReason; label: string; icon: string }[] = [
   { value: 'EXPIRING', label: 'Produit périmé/expirant', icon: '⏰' },
@@ -47,7 +49,8 @@ export default function NewReturnPage() {
 
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
-
+  
+  // Get supplier to calculate due date (not used for returns, but needed for structure)
   const selectedSupplier = suppliers.find((s) => s.id === parseInt(supplierId));
   const selectedProduct = selectedProductId
     ? products.find((p) => p.id === selectedProductId)
@@ -86,32 +89,49 @@ export default function NewReturnPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!selectedProductId) {
-      alert('Veuillez sélectionner un produit');
+    if (!selectedProductId || !selectedSupplier) {
+      toast.error('Veuillez sélectionner un produit et un fournisseur');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Record the return
-      await db.supplier_returns.add({
+      const returnAmount = parseInt(creditAmount);
+      const returnDateObj = new Date(returnDate);
+      
+      // Create return as a SupplierOrder with type='RETURN'
+      const returnOrder: Omit<SupplierOrder, 'id' | 'serverId'> = {
         supplierId: parseInt(supplierId),
-        productId: selectedProductId,
-        quantity: parseInt(quantity),
-        reason,
-        creditAmount: parseInt(creditAmount),
-        returnDate: new Date(returnDate),
-        applied: false, // Credit not yet applied to an order
+        type: 'RETURN',
+        orderDate: returnDateObj,
+        totalAmount: returnAmount,
+        calculatedTotal: returnAmount,
+        amountPaid: 0, // Will be updated when refund is confirmed
+        dueDate: returnDateObj, // Not used for returns, but required
+        status: 'PENDING', // Return submitted, waiting for delivery/confirmation
+        paymentStatus: 'PENDING', // Refund status: pending until confirmed
+        returnReason: reason,
+        returnProductId: selectedProductId,
+        notes: `Retour: ${products.find(p => p.id === selectedProductId)?.name || 'Produit'} - Quantité: ${quantity}`,
         createdAt: new Date(),
+        updatedAt: new Date(),
         synced: false,
-      });
+      };
 
+      // Save to IndexedDB
+      const localId = await db.supplier_orders.add(returnOrder);
+
+      // Queue for sync
+      await queueTransaction('SUPPLIER_ORDER', 'CREATE', returnOrder, localId);
+
+      toast.success('Retour enregistré');
+      
       // Navigate back to supplier detail
       router.push(`/fournisseurs/${supplierId}`);
     } catch (error) {
       console.error('Error recording return:', error);
-      alert('Erreur lors de l\'enregistrement du retour');
+      toast.error('Erreur lors de l\'enregistrement du retour');
     } finally {
       setIsSubmitting(false);
     }

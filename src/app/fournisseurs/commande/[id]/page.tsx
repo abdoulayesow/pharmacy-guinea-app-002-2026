@@ -27,6 +27,7 @@ import {
   Building2,
 } from 'lucide-react';
 import type { SupplierOrder, SupplierOrderItem, Product, ProductSupplier, StockMovement } from '@/lib/shared/types';
+import { OrderDetailSkeleton } from '@/components/ui/Skeleton';
 
 interface DeliveryItem {
   orderItemId: number;
@@ -367,8 +368,52 @@ export default function OrderDetailPage() {
   // Get current delivery item
   const currentDeliveryItem = deliveryItems[currentDeliveryIndex];
 
-  if (!isAuthenticated || !order || !supplier) {
+  // Show skeleton while loading
+  const isLoading = order === undefined || supplier === undefined;
+
+  if (!isAuthenticated) {
     return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white pb-8">
+        <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+          <div className="flex items-center gap-3 p-4 max-w-2xl mx-auto">
+            <button
+              onClick={() => router.back()}
+              className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1">
+              <div className="h-6 w-32 bg-slate-700 rounded animate-pulse mb-1" />
+              <div className="h-4 w-24 bg-slate-700 rounded animate-pulse" />
+            </div>
+          </div>
+        </div>
+        <main className="p-4 max-w-2xl mx-auto">
+          <OrderDetailSkeleton />
+        </main>
+      </div>
+    );
+  }
+
+  if (!order || !supplier) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-lg font-semibold">Commande introuvable</p>
+          <button
+            onClick={() => router.back()}
+            className="mt-4 text-emerald-400 underline"
+          >
+            Retour
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const statusConfig = getStatusConfig(order.status);

@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import type { Supplier, SupplierOrder } from '@/lib/shared/types';
+import { SupplierListSkeleton } from '@/components/ui/Skeleton';
 
 type FilterType = 'all' | 'overdue' | 'upcoming';
 
@@ -36,9 +37,14 @@ export default function FournisseursPage() {
     }
   }, [isAuthenticated, router]);
 
-  // Get data from IndexedDB
-  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
-  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? [];
+  // Get data from IndexedDB - useLiveQuery returns undefined while loading
+  const suppliersQuery = useLiveQuery(() => db.suppliers.toArray());
+  const supplierOrdersQuery = useLiveQuery(() => db.supplier_orders.toArray());
+
+  // Loading state: queries return undefined before data is ready
+  const isLoading = suppliersQuery === undefined || supplierOrdersQuery === undefined;
+  const suppliers = suppliersQuery ?? [];
+  const supplierOrders = supplierOrdersQuery ?? [];
 
   // Calculate supplier balances and status
   const getSupplierBalance = (supplierId: number) => {
@@ -299,7 +305,9 @@ export default function FournisseursPage() {
 
         {/* Supplier List */}
         <div className="space-y-3">
-          {sortedSuppliers.length === 0 ? (
+          {isLoading ? (
+            <SupplierListSkeleton count={4} />
+          ) : sortedSuppliers.length === 0 ? (
             <div className="py-20 text-center">
               <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <p className="text-white font-semibold mb-1">Aucun fournisseur</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useLockStore } from '@/stores/lock';
@@ -17,23 +17,36 @@ interface AppLockGuardProps {
  * 2. Redirects to login page when locked due to inactivity (for PIN re-entry)
  * 3. Prevents body scroll when locked
  * 4. Blocks all app interaction when locked
+ *
+ * Note: This is the ONLY place where inactivity redirects happen.
+ * AuthGuard handles auth state, AppLockGuard handles lock/inactivity.
  */
 export function AppLockGuard({ children }: AppLockGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status: sessionStatus } = useSession();
   const { isLocked, lockReason, unlock } = useLockStore();
-  const { isInactive, logout } = useAuthStore();
+  const { logout, updateActivity } = useAuthStore();
+
+  // Prevent duplicate redirects
+  const hasRedirectedRef = useRef(false);
 
   // Check if we're on an auth page
   const isAuthPage = pathname === '/login' || pathname?.startsWith('/auth/');
 
+  // Reset redirect ref when pathname changes
+  useEffect(() => {
+    hasRedirectedRef.current = false;
+  }, [pathname]);
+
   // Handle inactivity lock - redirect to login page instead of showing overlay
   const handleInactivityLock = useCallback(() => {
+    if (hasRedirectedRef.current) return;
     if (!isAuthPage && sessionStatus === 'authenticated' && session?.user) {
+      hasRedirectedRef.current = true;
       // Clear the lock state (we're redirecting instead)
       unlock();
-      // Logout from auth store to set inactive state
+      // Logout from auth store to clear auth state
       logout();
       // Redirect to login page - the login page will show PIN-only mode
       // because there's still a Google session but auth store is logged out
@@ -47,14 +60,6 @@ export function AppLockGuard({ children }: AppLockGuardProps) {
       handleInactivityLock();
     }
   }, [isLocked, lockReason, handleInactivityLock]);
-
-  // Also check auth store inactivity and redirect if needed
-  useEffect(() => {
-    if (!isAuthPage && sessionStatus === 'authenticated' && isInactive()) {
-      // User is inactive according to auth store - redirect to login
-      router.push(`/login?callbackUrl=${encodeURIComponent(pathname || '/dashboard')}`);
-    }
-  }, [isAuthPage, sessionStatus, isInactive, router, pathname]);
 
   // Prevent body scroll when manually locked
   useEffect(() => {

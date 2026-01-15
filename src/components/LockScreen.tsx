@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function LockScreen() {
-  const { isLocked, lockReason, unlock, updateActivity, _hasHydrated, setHasHydrated } = useLockStore();
-  const { currentUser } = useAuthStore();
+  const { isLocked, lockReason, unlock, _hasHydrated, setHasHydrated } = useLockStore();
+  const { currentUser, updateActivity } = useAuthStore();
   const { data: session } = useSession();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');

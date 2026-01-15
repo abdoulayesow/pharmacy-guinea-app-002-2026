@@ -26,7 +26,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
-  const { isAuthenticated, syncFromSession } = useAuthStore();
+  const { isAuthenticated, syncProfileFromSession, initializeActivity, _hasHydrated } = useAuthStore();
   const { isLocked } = useLockStore();
 
   // Monitor user activity and redirect to login after 5 min inactivity
@@ -43,17 +43,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
     }
   }, [isLocked, pathname]);
 
-  // Sync NextAuth session to Zustand store when session changes
+  // Sync NextAuth session profile to Zustand store when session changes
+  // Note: This only syncs profile data, NOT authentication state
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.id) {
-      syncFromSession({
+      syncProfileFromSession({
         id: session.user.id,
         name: session.user.name,
         role: session.user.role,
         image: session.user.image,
       });
+      // Initialize activity timestamp for first-time login
+      initializeActivity();
     }
-  }, [status, session, syncFromSession]);
+  }, [status, session, syncProfileFromSession, initializeActivity]);
 
   // Force PIN change if user has default PIN
   // Skip if already on setup-pin page to prevent redirect loop
@@ -67,18 +70,21 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [status, session, router]);
 
   // Redirect if not authenticated
+  // Wait for both NextAuth session AND Zustand hydration to complete
   useEffect(() => {
     if (status === 'loading') return;
+    if (!_hasHydrated) return; // Wait for Zustand to hydrate from localStorage
 
     const hasOAuthSession = status === 'authenticated' && !!session?.user;
     if (!isAuthenticated && !hasOAuthSession) {
       router.push('/login');
     }
-  }, [isAuthenticated, session, status, router]);
+  }, [isAuthenticated, session, status, router, _hasHydrated]);
 
   // Show loading while checking auth
+  // Wait for both NextAuth and Zustand hydration before deciding
   const hasOAuthSession = status === 'authenticated' && !!session?.user;
-  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
+  if (status === 'loading' || !_hasHydrated || (!isAuthenticated && !hasOAuthSession)) {
     return (
       <div className="min-h-screen bg-slate-800 flex items-center justify-center">
         <div className="animate-pulse">

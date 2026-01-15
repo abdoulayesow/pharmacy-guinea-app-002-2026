@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, FormEvent, useEffect, useMemo } from 'react';
+import { useState, FormEvent, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { queueTransaction } from '@/lib/client/sync';
@@ -19,15 +18,11 @@ import {
   ArrowLeft,
   Package,
   Calendar,
-  FileText,
   Save,
   Building2,
   Plus,
-  X,
   Edit3,
   Trash2,
-  Search,
-  AlertCircle,
 } from 'lucide-react';
 import type { Product, SupplierOrderItem, ProductSupplier } from '@/lib/shared/types';
 
@@ -57,13 +52,11 @@ const CATEGORIES = [
 export default function NewOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
-  const { isAuthenticated, currentUser } = useAuthStore();
+  const { currentUser } = useAuthStore();
   const preselectedSupplierId = searchParams.get('supplierId');
 
   const [supplierId, setSupplierId] = useState(preselectedSupplierId || '');
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
-  const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -75,6 +68,7 @@ export default function NewOrderPage() {
 
   // Product selection state
   const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
@@ -91,44 +85,39 @@ export default function NewOrderPage() {
   const selectedSupplier = suppliers.find(s => s.id === parseInt(supplierId));
 
   // Get products linked to selected supplier
+  // If no products are linked yet, show all products (allows ordering before links are set up)
   const supplierProducts = useMemo(() => {
     if (!selectedSupplier) return products;
     const linkedProductIds = productSuppliers
       .filter(ps => ps.supplier_id === selectedSupplier.id)
       .map(ps => ps.product_id);
+    // If no products linked to this supplier, show all products
+    if (linkedProductIds.length === 0) return products;
     return products.filter(p => linkedProductIds.includes(p.id!));
   }, [products, productSuppliers, selectedSupplier]);
 
-  // Filter products based on search
+  // Filter products based on search and category
   const filteredProducts = useMemo(() => {
     const query = productSearchQuery.toLowerCase().trim();
-    const productsToSearch = selectedSupplier ? supplierProducts : products;
-    
-    if (!query) {
-      return productsToSearch.sort((a, b) => a.name.localeCompare(b.name));
-    }
+    const productsToSearch = supplierProducts;
 
     return productsToSearch
-      .filter(
-        (product) =>
-          product.name.toLowerCase().includes(query) ||
-          product.category.toLowerCase().includes(query)
-      )
+      .filter((product) => {
+        // Category filter
+        if (selectedCategory !== 'Tous' && product.category !== selectedCategory) {
+          return false;
+        }
+        // Search filter
+        if (query) {
+          return product.name.toLowerCase().includes(query) ||
+            product.category.toLowerCase().includes(query);
+        }
+        return true;
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [productSearchQuery, products, supplierProducts, selectedSupplier]);
+  }, [productSearchQuery, selectedCategory, products, supplierProducts, selectedSupplier]);
 
-  // Check auth status
-  const hasOAuthSession = status === 'authenticated' && !!session?.user;
-  const isAuthChecking = status === 'loading';
-  const isFullyAuthenticated = isAuthenticated || hasOAuthSession;
-
-  // Redirect if not authenticated (only after auth check completes)
-  useEffect(() => {
-    if (isAuthChecking) return;
-    if (!isFullyAuthenticated) {
-      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/commande/nouvelle')}`);
-    }
-  }, [isAuthChecking, isFullyAuthenticated, router]);
+  // Auth is handled by AuthGuard wrapper - no need for duplicate check here
 
   // Calculate due date based on supplier payment terms
   const calculateDueDate = () => {
@@ -277,6 +266,7 @@ export default function NewOrderPage() {
   const handleCloseProductSelector = () => {
     setShowProductSelector(false);
     setProductSearchQuery('');
+    setSelectedCategory('Tous');
     setSelectedProduct(null);
     setQuantity(1);
     setUnitPrice(0);
@@ -296,14 +286,34 @@ export default function NewOrderPage() {
   // Handle submit order
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (orderItems.length === 0) {
       toast.error('Veuillez ajouter au moins un produit à la commande');
       return;
     }
 
-    if (!dueDate || !currentUser) {
-      toast.error('Erreur de validation');
+    // Debug logging
+    console.log('Validation check:', {
+      supplierId,
+      orderDate,
+      currentUser,
+      dueDate,
+      selectedSupplier
+    });
+
+    if (!supplierId || !orderDate || !currentUser) {
+      if (!supplierId) {
+        toast.error('Veuillez sélectionner un fournisseur');
+      } else if (!orderDate) {
+        toast.error('Veuillez sélectionner une date de commande');
+      } else if (!currentUser) {
+        toast.error('Session utilisateur non valide');
+      }
+      return;
+    }
+
+    if (!dueDate) {
+      toast.error('Erreur de calcul de la date d\'échéance');
       return;
     }
 
@@ -315,12 +325,12 @@ export default function NewOrderPage() {
         supplierId: parseInt(supplierId),
         type: 'ORDER',
         orderDate: new Date(orderDate),
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+        deliveryDate: undefined,
         totalAmount: calculatedTotal, // Keep for backward compatibility
         calculatedTotal: calculatedTotal,
         amountPaid: 0,
         dueDate: dueDate,
-        status: deliveryDate ? 'DELIVERED' : 'ORDERED',
+        status: 'ORDERED',
         paymentStatus: 'UNPAID',
         notes: notes.trim() || undefined,
         createdAt: new Date(),
@@ -348,12 +358,12 @@ export default function NewOrderPage() {
         id: orderId,
         supplierId: parseInt(supplierId),
         orderDate: new Date(orderDate),
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+        deliveryDate: undefined,
         totalAmount: calculatedTotal,
         calculatedTotal: calculatedTotal,
         amountPaid: 0,
         dueDate: dueDate,
-        status: deliveryDate ? 'DELIVERED' : 'ORDERED',
+        status: 'ORDERED',
         notes: notes.trim() || undefined,
       });
 
@@ -367,19 +377,7 @@ export default function NewOrderPage() {
     }
   };
 
-  // Show loading while checking auth
-  if (isAuthChecking) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  // Redirect handled in useEffect, return null if not authenticated
-  if (!isFullyAuthenticated) {
-    return null;
-  }
+  // Auth is handled by AuthGuard - no loading/redirect check needed here
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
@@ -533,41 +531,21 @@ export default function NewOrderPage() {
             Détails de la commande
           </h3>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Date de commande *
-              </label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <Input
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                  className="h-14 pl-12 bg-slate-800 border-slate-700 text-white rounded-xl"
-                  required
-                />
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">
+              Date de commande *
+            </label>
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
+                <Calendar className="w-5 h-5" />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Date de livraison
-              </label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <Input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  min={orderDate}
-                  className="h-14 pl-12 bg-slate-800 border-slate-700 text-white rounded-xl"
-                />
-              </div>
+              <Input
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+                className="h-14 pl-12 bg-slate-800 border-slate-700 text-white rounded-xl"
+                required
+              />
             </div>
           </div>
 
@@ -575,18 +553,13 @@ export default function NewOrderPage() {
             <label className="block text-sm font-semibold text-slate-300 mb-2">
               Notes
             </label>
-            <div className="relative">
-              <div className="absolute left-4 top-4 text-slate-500">
-                <FileText className="w-5 h-5" />
-              </div>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Ex: Commande mensuelle, livraison par camion..."
-                rows={3}
-                className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ex: Commande mensuelle, livraison par camion..."
+              rows={3}
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
           </div>
         </div>
 
@@ -701,74 +674,119 @@ export default function NewOrderPage() {
           )
         }
       >
-        <div className="p-6 space-y-4">
+        <div className="p-4 space-y-4">
+          {/* Search Bar */}
           <MobileSearchBar
             value={productSearchQuery}
             onChange={setProductSearchQuery}
             placeholder="Rechercher un produit..."
           />
 
+          {/* Category Filter - Horizontal Scroll */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('Tous')}
+              className={cn(
+                'px-3.5 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[40px]',
+                selectedCategory === 'Tous'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              )}
+            >
+              Tous
+            </button>
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={cn(
+                  'px-3.5 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[40px]',
+                  selectedCategory === cat
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {selectedSupplier && (
-            <div className="flex items-center gap-2 text-sm text-slate-400">
-              <AlertCircle className="w-4 h-4" />
-              <span>Produits de {selectedSupplier.name}</span>
+            <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/50 rounded-lg px-3 py-2">
+              <Building2 className="w-4 h-4 text-emerald-500" />
+              <span>Produits de <span className="text-white font-medium">{selectedSupplier.name}</span></span>
             </div>
           )}
 
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          {/* Product List */}
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {filteredProducts.length === 0 ? (
               <div className="py-12 text-center">
                 <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400">Aucun produit trouvé</p>
+                <p className="text-slate-400 mb-1">Aucun produit trouvé</p>
+                {selectedCategory !== 'Tous' && (
+                  <p className="text-sm text-slate-500">
+                    Essayez de changer la catégorie ou la recherche
+                  </p>
+                )}
               </div>
             ) : (
-              filteredProducts.map((product) => {
-                const productSupplier = productSuppliers.find(
-                  ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
-                );
-                const lastPrice = productSupplier?.default_price;
+              <>
+                <p className="text-xs text-slate-500 font-medium">
+                  {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''}
+                </p>
+                {filteredProducts.map((product) => {
+                  const productSupplier = productSuppliers.find(
+                    ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
+                  );
+                  const lastPrice = productSupplier?.default_price;
 
-                return (
-                  <button
-                    key={product.id}
-                    type="button"
-                    onClick={() => handleSelectProduct(product)}
-                    className={cn(
-                      'w-full p-4 bg-slate-800 rounded-xl border text-left transition-all active:scale-95',
-                      selectedProduct?.id === product.id
-                        ? 'border-emerald-500 ring-2 ring-emerald-500/20'
-                        : 'border-slate-700 hover:border-slate-600'
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-base font-semibold text-white mb-1 truncate">
-                          {product.name}
-                        </h4>
-                        <p className="text-sm text-slate-400 mb-2">{product.category}</p>
-                        {lastPrice && (
-                          <p className="text-xs text-emerald-400">
-                            Dernier prix: {formatCurrency(lastPrice)}
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => handleSelectProduct(product)}
+                      className={cn(
+                        'w-full p-4 bg-slate-800 rounded-xl border text-left transition-all active:scale-95',
+                        selectedProduct?.id === product.id
+                          ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+                          : 'border-slate-700 hover:border-slate-600'
+                      )}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-base font-semibold text-white mb-1 truncate">
+                            {product.name}
+                          </h4>
+                          <span className="inline-block px-2 py-0.5 bg-slate-700 text-slate-300 text-xs rounded mb-2">
+                            {product.category}
+                          </span>
+                          {lastPrice && (
+                            <p className="text-xs text-emerald-400 mt-1">
+                              Dernier prix: {formatCurrency(lastPrice)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right ml-3">
+                          <p className="text-lg font-bold text-white mb-1">
+                            {formatCurrency(product.priceBuy || product.price)}
                           </p>
-                        )}
-                      </div>
-                      <div className="text-right ml-3">
-                        <p className="text-lg font-bold text-white mb-1">
-                          {formatCurrency(product.priceBuy || product.price)}
-                        </p>
-                        <div className={cn(
-                          'text-xs font-semibold px-2 py-1 rounded',
-                          product.stock <= product.minStock
-                            ? 'bg-red-500/20 text-red-400'
-                            : 'bg-emerald-500/20 text-emerald-400'
-                        )}>
-                          Stock: {product.stock}
+                          <div className={cn(
+                            'text-xs font-semibold px-2 py-1 rounded',
+                            product.stock <= product.minStock
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-emerald-500/20 text-emerald-400'
+                          )}>
+                            Stock: {product.stock}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                );
-              })
+                    </button>
+                  );
+                })}
+              </>
             )}
           </div>
         </div>
@@ -778,93 +796,151 @@ export default function NewOrderPage() {
       <MobileBottomSheet
         isOpen={showNewProductForm}
         onClose={handleCloseNewProductForm}
-        title={editingItemId ? 'Modifier le nouveau produit' : 'Nouveau produit'}
+        title={editingItemId ? 'Modifier le produit' : 'Ajouter un nouveau produit'}
         footer={
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCloseNewProductForm}
-              className="flex-1 h-12 bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
-            >
-              Annuler
-            </Button>
-            <Button
-              type="button"
-              onClick={editingItemId ? handleUpdateNewProductItem : handleAddNewProduct}
-              disabled={!newProductName.trim() || !newProductUnitPrice}
-              className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
-            >
-              {editingItemId ? 'Modifier' : 'Ajouter'}
-            </Button>
+          <div className="space-y-3">
+            {/* Subtotal Preview */}
+            {newProductUnitPrice && newProductQuantity > 0 && (
+              <div className="flex items-center justify-between bg-slate-800 rounded-xl p-4">
+                <span className="text-slate-400">Sous-total</span>
+                <span className="text-xl font-bold text-emerald-400">
+                  {formatCurrency((parseInt(newProductUnitPrice) || 0) * newProductQuantity)}
+                </span>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseNewProductForm}
+                className="flex-1 h-12 bg-slate-800 border-slate-700 text-white hover:bg-slate-700 rounded-xl"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                onClick={editingItemId ? handleUpdateNewProductItem : handleAddNewProduct}
+                disabled={!newProductName.trim() || !newProductUnitPrice}
+                className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 rounded-xl"
+              >
+                {editingItemId ? 'Modifier' : 'Ajouter à la commande'}
+              </Button>
+            </div>
           </div>
         }
       >
-        <div className="p-6 space-y-4">
+        <div className="p-4 space-y-5">
+          {/* Info Banner */}
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 flex items-start gap-3">
+            <Package className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-blue-300">
+              Ce produit sera ajouté à l'inventaire lors de la réception de la commande.
+            </p>
+          </div>
+
+          {/* Product Name */}
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Nom du produit *
+              Nom du produit <span className="text-red-400">*</span>
             </label>
             <Input
               type="text"
               value={newProductName}
               onChange={(e) => setNewProductName(e.target.value)}
-              placeholder="Ex: Nouveau médicament"
-              className="h-14 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-base"
-              required
+              placeholder="Ex: Amoxicilline 500mg"
+              className="h-14 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-base focus:border-emerald-500 focus:ring-emerald-500/20"
+              autoFocus
             />
           </div>
 
+          {/* Category - Horizontal Scroll Chips */}
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
               Catégorie
             </label>
-            <select
-              value={newProductCategory}
-              onChange={(e) => setNewProductCategory(e.target.value)}
-              className="w-full h-14 px-4 bg-slate-800 border border-slate-700 text-white rounded-xl text-base"
-            >
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
               {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setNewProductCategory(cat)}
+                  className={cn(
+                    'px-4 py-2.5 rounded-xl text-sm whitespace-nowrap transition-all font-medium min-h-[44px]',
+                    newProductCategory === cat
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                  )}
+                >
                   {cat}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Price and Quantity Row */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Prix unitaire (GNF) *
+                Prix unitaire <span className="text-red-400">*</span>
               </label>
-              <Input
-                type="number"
-                value={newProductUnitPrice}
-                onChange={(e) => setNewProductUnitPrice(e.target.value)}
-                placeholder="0"
-                min="0"
-                step="1000"
-                className="h-14 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-base"
-                required
-              />
+              <div className="relative">
+                <Input
+                  type="number"
+                  value={newProductUnitPrice}
+                  onChange={(e) => setNewProductUnitPrice(e.target.value)}
+                  placeholder="0"
+                  min="0"
+                  step="1000"
+                  className="h-14 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-lg font-semibold pr-16 focus:border-emerald-500"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">
+                  GNF
+                </span>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-2">
                 Quantité
               </label>
-              <QuantitySelector
-                value={newProductQuantity}
-                onChange={setNewProductQuantity}
-                unitPrice={parseInt(newProductUnitPrice) || 0}
-                showQuickAmounts={false}
-              />
+              <div className="flex items-center h-14 bg-slate-800 border border-slate-700 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setNewProductQuantity(Math.max(1, newProductQuantity - 1))}
+                  className="w-14 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-xl transition-colors"
+                >
+                  <span className="text-2xl font-light">−</span>
+                </button>
+                <span className="flex-1 text-center text-xl font-bold text-white">
+                  {newProductQuantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNewProductQuantity(newProductQuantity + 1)}
+                  className="w-14 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-xl transition-colors"
+                >
+                  <span className="text-2xl font-light">+</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-            <p className="text-sm text-blue-400">
-              💡 Ce produit sera créé dans l'inventaire lors de la réception de la commande
-            </p>
+          {/* Quick Quantity Buttons */}
+          <div className="flex gap-2">
+            {[5, 10, 20, 50, 100].map((qty) => (
+              <button
+                key={qty}
+                type="button"
+                onClick={() => setNewProductQuantity(qty)}
+                className={cn(
+                  'flex-1 py-2 rounded-lg text-sm font-medium transition-all',
+                  newProductQuantity === qty
+                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/50'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                )}
+              >
+                {qty}
+              </button>
+            ))}
           </div>
         </div>
       </MobileBottomSheet>

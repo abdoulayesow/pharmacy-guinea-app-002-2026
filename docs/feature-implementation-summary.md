@@ -334,3 +334,4 @@ This document summarizes the implementation of three major features plus two bug
 - Dark mode is fully supported
 - No custom fonts (system-ui only)
 
+

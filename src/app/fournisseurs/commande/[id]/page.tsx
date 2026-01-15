@@ -198,6 +198,37 @@ export default function OrderDetailPage() {
     setShowDeliveryDialog(true);
   };
 
+  // Generate lot number from product name and expiration date
+  const generateLotNumber = (productName: string, expirationDate?: string) => {
+    if (!expirationDate) return undefined;
+
+    // Extract product code from product name (first letters of each word, max 6 chars)
+    const words = productName.trim().split(/\s+/);
+    let productCode = '';
+
+    for (const word of words) {
+      if (productCode.length >= 6) break;
+      const cleanWord = word.replace(/[^a-zA-Z]/g, ''); // Remove non-letters
+      if (cleanWord.length > 0) {
+        productCode += cleanWord.substring(0, 1).toUpperCase();
+      }
+    }
+
+    // If product code is too short, use more letters from first word
+    if (productCode.length < 3 && words[0]) {
+      const firstWord = words[0].replace(/[^a-zA-Z]/g, '');
+      productCode = firstWord.substring(0, Math.min(5, firstWord.length)).toUpperCase();
+    }
+
+    // Format expiration date as MM-DD-YYYY
+    const expDate = new Date(expirationDate);
+    const month = String(expDate.getMonth() + 1).padStart(2, '0');
+    const day = String(expDate.getDate()).padStart(2, '0');
+    const year = expDate.getFullYear();
+
+    return `${productCode}-LOT-${month}-${day}-${year}`;
+  };
+
   // Calculate new total from received quantities
   const calculateNewTotal = useMemo(() => {
     return deliveryItems.reduce((sum, item) => {
@@ -797,7 +828,14 @@ export default function OrderDetailPage() {
               <Input
                 type="date"
                 value={currentDeliveryItem.expirationDate || ''}
-                onChange={(e) => updateDeliveryItem(currentDeliveryIndex, { expirationDate: e.target.value })}
+                onChange={(e) => {
+                  const newExpirationDate = e.target.value;
+                  const autoLotNumber = generateLotNumber(currentDeliveryItem.productName, newExpirationDate);
+                  updateDeliveryItem(currentDeliveryIndex, {
+                    expirationDate: newExpirationDate,
+                    lotNumber: autoLotNumber,
+                  });
+                }}
                 className="h-14 bg-slate-800 border-slate-700 text-white rounded-xl"
               />
             </div>
@@ -810,9 +848,14 @@ export default function OrderDetailPage() {
                 type="text"
                 value={currentDeliveryItem.lotNumber || ''}
                 onChange={(e) => updateDeliveryItem(currentDeliveryIndex, { lotNumber: e.target.value })}
-                placeholder="LOT-2026-001"
+                placeholder="Généré automatiquement depuis la date d'expiration"
                 className="h-14 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 rounded-xl"
               />
+              {currentDeliveryItem.expirationDate && currentDeliveryItem.lotNumber && (
+                <p className="text-xs text-emerald-400 mt-2">
+                  ✓ Numéro de lot généré automatiquement
+                </p>
+              )}
             </div>
 
             {currentDeliveryItem.receivedQuantity !== currentDeliveryItem.orderedQuantity && (

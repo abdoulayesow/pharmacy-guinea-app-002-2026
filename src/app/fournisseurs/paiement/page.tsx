@@ -106,16 +106,16 @@ export default function PaymentPage() {
         const paymentForThisOrder = Math.min(remainingPayment, orderBalance);
 
         const newAmountPaid = order.amountPaid + paymentForThisOrder;
-        const newStatus =
+        const newPaymentStatus =
           newAmountPaid >= order.totalAmount
             ? 'PAID'
             : newAmountPaid > 0
             ? 'PARTIALLY_PAID'
-            : order.status;
+            : order.paymentStatus;
 
         await db.supplier_orders.update(order.id!, {
           amountPaid: newAmountPaid,
-          status: newStatus,
+          paymentStatus: newPaymentStatus,
           updatedAt: new Date(),
           synced: false,
         });

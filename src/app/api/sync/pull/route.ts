@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
-import type { SyncPullResponse } from '@/lib/shared/types';
+import type { SyncPullResponse, SupplierPaymentStatus } from '@/lib/shared/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -218,35 +218,38 @@ export async function GET(request: NextRequest) {
     }));
 
     // Transform Supplier Orders (with nested items)
-    // Note: DB uses PENDING but client type uses ORDERED - map accordingly
     const transformedSupplierOrders = supplierOrders.map((o) => {
       // Map database status to client status type
-      let clientStatus: 'ORDERED' | 'DELIVERED' | 'PARTIALLY_PAID' | 'PAID' = 'ORDERED';
+      let clientStatus: 'PENDING' | 'DELIVERED' | 'CANCELLED' = 'PENDING';
       switch (o.status) {
         case 'PENDING':
-          clientStatus = 'ORDERED';
+          clientStatus = 'PENDING';
           break;
         case 'DELIVERED':
           clientStatus = 'DELIVERED';
           break;
-        case 'PAID':
-          clientStatus = 'PAID';
-          break;
         case 'CANCELLED':
-          clientStatus = 'ORDERED'; // Map cancelled to ordered for client
+          clientStatus = 'CANCELLED';
           break;
         default:
-          clientStatus = 'ORDERED';
+          clientStatus = 'PENDING';
       }
-      // Check if partially paid
-      if (o.amountPaid > 0 && o.amountPaid < o.totalAmount) {
-        clientStatus = 'PARTIALLY_PAID';
+
+      // Determine payment status based on amountPaid
+      let paymentStatus: SupplierPaymentStatus = 'UNPAID';
+      if (o.amountPaid === 0) {
+        paymentStatus = 'UNPAID';
+      } else if (o.amountPaid >= o.totalAmount) {
+        paymentStatus = 'PAID';
+      } else {
+        paymentStatus = 'PARTIALLY_PAID';
       }
 
       return {
         id: o.id,
         serverId: o.id,
         supplierId: o.supplierId,
+        type: 'ORDER' as const, // Default to ORDER for supplier orders
         orderDate: o.orderDate,
         deliveryDate: o.deliveryDate || undefined,
         totalAmount: o.totalAmount,
@@ -254,6 +257,7 @@ export async function GET(request: NextRequest) {
         amountPaid: o.amountPaid,
         dueDate: o.dueDate,
         status: clientStatus,
+        paymentStatus,
         notes: o.notes || undefined,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,

@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Truck,
   Edit3,
+  X,
 } from 'lucide-react';
 import type { Supplier, SupplierOrder } from '@/lib/shared/types';
 
@@ -36,27 +37,46 @@ export default function SupplierDetailPage() {
     }
   }, [isAuthenticated, router]);
 
-  // Get supplier and orders
+  // Get supplier and orders/returns
   const supplier = useLiveQuery(
     () => db.suppliers.get(supplierId),
     [supplierId]
   );
-  const orders = useLiveQuery(
+  const allTransactions = useLiveQuery(
     () => db.supplier_orders.where('supplierId').equals(supplierId).reverse().toArray(),
     [supplierId]
   ) ?? [];
+  const orders = allTransactions.filter(t => t.type === 'ORDER' || !t.type); // Include legacy orders without type
+  const returns = allTransactions.filter(t => t.type === 'RETURN');
   const allOrderItems = useLiveQuery(
     () => db.supplier_order_items.toArray(),
     []
   ) ?? [];
 
-  // Calculate stats
-  const totalOwed = orders.reduce((sum, o) => sum + ((o.calculatedTotal ?? o.totalAmount) - o.amountPaid), 0);
-  const totalOrdered = orders.reduce((sum, o) => sum + (o.calculatedTotal ?? o.totalAmount), 0);
+  // Calculate stats (only for orders, not returns)
+  const totalOwed = orders.reduce((sum, o) => {
+    if (o.status === 'CANCELLED') return sum;
+    return sum + ((o.calculatedTotal ?? o.totalAmount) - o.amountPaid);
+  }, 0);
+  const totalOrdered = orders.reduce((sum, o) => {
+    if (o.status === 'CANCELLED') return sum;
+    return sum + (o.calculatedTotal ?? o.totalAmount);
+  }, 0);
   const totalPaid = orders.reduce((sum, o) => sum + o.amountPaid, 0);
 
   const getPaymentStatus = (order: SupplierOrder): 'overdue' | 'urgent' | 'upcoming' | 'paid' => {
-    if (order.status === 'PAID') return 'paid';
+    // For returns, check paymentStatus instead
+    if (order.type === 'RETURN') {
+      if (order.paymentStatus === 'PAID') return 'paid';
+      return 'upcoming'; // Returns don't have due dates
+    }
+
+    // For orders, check payment status
+    if (order.paymentStatus === 'PAID' || (order.status === 'DELIVERED' && order.amountPaid >= (order.calculatedTotal ?? order.totalAmount))) {
+      return 'paid';
+    }
+
+    if (order.status === 'CANCELLED') return 'upcoming'; // Cancelled orders don't need payment
 
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -106,8 +126,10 @@ export default function SupplierDetailPage() {
     }
   };
 
-  const getOrderStatusConfig = (status: SupplierOrder['status']) => {
-    switch (status) {
+  const getOrderStatusConfig = (order: SupplierOrder) => {
+    // First check order lifecycle status
+    switch (order.status) {
+      case 'PENDING':
       case 'ORDERED':
         return {
           label: 'Commandé',
@@ -115,26 +137,44 @@ export default function SupplierDetailPage() {
           color: 'text-blue-400',
           bgColor: 'bg-blue-500/10',
         };
+      case 'CANCELLED':
+        return {
+          label: 'Annulé',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
+        };
       case 'DELIVERED':
+        // For delivered orders, show payment status
+        switch (order.paymentStatus) {
+          case 'PAID':
+            return {
+              label: 'Payé',
+              icon: CheckCircle2,
+              color: 'text-emerald-400',
+              bgColor: 'bg-emerald-500/10',
+            };
+          case 'PARTIALLY_PAID':
+            return {
+              label: 'Partiellement payé',
+              icon: CreditCard,
+              color: 'text-amber-400',
+              bgColor: 'bg-amber-500/10',
+            };
+          default:
+            return {
+              label: 'Livré',
+              icon: Truck,
+              color: 'text-purple-400',
+              bgColor: 'bg-purple-500/10',
+            };
+        }
+      default:
         return {
-          label: 'Livré',
-          icon: Truck,
-          color: 'text-purple-400',
-          bgColor: 'bg-purple-500/10',
-        };
-      case 'PARTIALLY_PAID':
-        return {
-          label: 'Partiellement payé',
-          icon: CreditCard,
-          color: 'text-amber-400',
-          bgColor: 'bg-amber-500/10',
-        };
-      case 'PAID':
-        return {
-          label: 'Payé',
-          icon: CheckCircle2,
-          color: 'text-emerald-400',
-          bgColor: 'bg-emerald-500/10',
+          label: 'En cours',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
         };
     }
   };
@@ -244,36 +284,44 @@ export default function SupplierDetailPage() {
           </Button>
         </div>
 
-        {/* Orders List */}
+        {/* Orders and Returns List */}
         <div>
           <h3 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wide">
-            Historique des commandes
+            Historique des commandes et retours
           </h3>
 
-          {orders.length === 0 ? (
+          {allTransactions.length === 0 ? (
             <div className="bg-slate-900 rounded-xl p-8 border border-slate-700 text-center">
               <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 mb-1">Aucune commande</p>
+              <p className="text-slate-400 mb-1">Aucune commande ou retour</p>
               <p className="text-sm text-slate-500">Créez votre première commande</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => {
+              {allTransactions.map((order) => {
                 const paymentStatus = getPaymentStatus(order);
                 const statusConfig = getStatusConfig(paymentStatus);
                 const StatusIcon = statusConfig.icon;
-                const orderStatusConfig = getOrderStatusConfig(order.status);
+                const orderStatusConfig = getOrderStatusConfig(order);
                 const OrderStatusIcon = orderStatusConfig.icon;
-                const balance = (order.calculatedTotal ?? order.totalAmount) - order.amountPaid;
+                const balance = order.type === 'RETURN' 
+                  ? order.totalAmount - order.amountPaid // For returns, this is refund amount
+                  : (order.calculatedTotal ?? order.totalAmount) - order.amountPaid;
                 const orderItemsCount = allOrderItems.filter(item => item.order_id === order.id).length;
+                const isReturn = order.type === 'RETURN';
 
                 return (
                   <div
                     key={order.id}
-                    className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer active:scale-[0.98]"
-                    onClick={() => router.push(`/fournisseurs/commande/${order.id}`)}
+                    className={cn(
+                      "bg-slate-900 rounded-xl p-4 border transition-all cursor-pointer active:scale-[0.98]",
+                      isReturn ? "border-orange-700 hover:border-orange-600" : "border-slate-700 hover:border-slate-600"
+                    )}
+                    onClick={() => {
+                      router.push(`/fournisseurs/commande/${order.id}`);
+                    }}
                   >
-                    {/* Order Header */}
+                    {/* Order/Return Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <div className={cn('p-2 rounded-lg', orderStatusConfig.bgColor)}>
@@ -281,10 +329,10 @@ export default function SupplierDetailPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-white">
-                            Commande #{order.id}
+                            {isReturn ? 'Retour' : 'Commande'} #{order.id}
                           </p>
                           <p className="text-xs text-slate-500">
-                            {formatDate(order.orderDate)}
+                            {isReturn ? 'Date retour' : 'Date commande'}: {formatDate(order.orderDate)}
                           </p>
                           {orderItemsCount > 0 && (
                             <p className="text-xs text-slate-500 mt-0.5">
@@ -303,8 +351,8 @@ export default function SupplierDetailPage() {
                       </div>
                     </div>
 
-                    {/* Payment Progress */}
-                    {balance > 0 && (
+                    {/* Payment/Refund Progress */}
+                    {balance > 0 && !isReturn && (
                       <>
                         <div className="mb-2">
                           <div className="flex items-center justify-between text-xs mb-1">

@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Clock,
   Building2,
+  Loader2,
 } from 'lucide-react';
 import type { SupplierOrder, SupplierOrderItem, Product, ProductSupplier, StockMovement } from '@/lib/shared/types';
 import { OrderDetailSkeleton } from '@/components/ui/Skeleton';
@@ -64,6 +65,7 @@ export default function OrderDetailPage() {
   const [deliveryItems, setDeliveryItems] = useState<DeliveryItem[]>([]);
   const [currentDeliveryIndex, setCurrentDeliveryIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   // Get order data
   const order = useLiveQuery(
@@ -99,7 +101,7 @@ export default function OrderDetailPage() {
 
   // Get payment status
   const getPaymentStatus = (): 'overdue' | 'urgent' | 'upcoming' | 'paid' => {
-    if (!order || order.status === 'PAID') return 'paid';
+    if (!order || order.paymentStatus === 'PAID') return 'paid';
     if (balance === 0) return 'paid';
 
     const now = new Date();
@@ -115,9 +117,10 @@ export default function OrderDetailPage() {
 
   const paymentStatus = getPaymentStatus();
 
-  // Get status config
-  const getStatusConfig = (status: SupplierOrder['status']) => {
-    switch (status) {
+  // Get status config based on order lifecycle and payment status
+  const getStatusConfig = (order: SupplierOrder) => {
+    switch (order.status) {
+      case 'PENDING':
       case 'ORDERED':
         return {
           label: 'Commandé',
@@ -126,29 +129,49 @@ export default function OrderDetailPage() {
           bgColor: 'bg-blue-500/10',
           borderColor: 'border-blue-500/30',
         };
+      case 'CANCELLED':
+        return {
+          label: 'Annulé',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
+          borderColor: 'border-slate-500/30',
+        };
       case 'DELIVERED':
+        // For delivered orders, show payment status
+        switch (order.paymentStatus) {
+          case 'PAID':
+            return {
+              label: 'Payé',
+              icon: CheckCircle2,
+              color: 'text-emerald-400',
+              bgColor: 'bg-emerald-500/10',
+              borderColor: 'border-emerald-500/30',
+            };
+          case 'PARTIALLY_PAID':
+            return {
+              label: 'Partiellement payé',
+              icon: DollarSign,
+              color: 'text-amber-400',
+              bgColor: 'bg-amber-500/10',
+              borderColor: 'border-amber-500/30',
+            };
+          default:
+            return {
+              label: 'Livré',
+              icon: Truck,
+              color: 'text-purple-400',
+              bgColor: 'bg-purple-500/10',
+              borderColor: 'border-purple-500/30',
+            };
+        }
+      default:
         return {
-          label: 'Livré',
-          icon: Truck,
-          color: 'text-purple-400',
-          bgColor: 'bg-purple-500/10',
-          borderColor: 'border-purple-500/30',
-        };
-      case 'PARTIALLY_PAID':
-        return {
-          label: 'Partiellement payé',
-          icon: DollarSign,
-          color: 'text-amber-400',
-          bgColor: 'bg-amber-500/10',
-          borderColor: 'border-amber-500/30',
-        };
-      case 'PAID':
-        return {
-          label: 'Payé',
-          icon: CheckCircle2,
-          color: 'text-emerald-400',
-          bgColor: 'bg-emerald-500/10',
-          borderColor: 'border-emerald-500/30',
+          label: 'En cours',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
+          borderColor: 'border-slate-500/30',
         };
     }
   };
@@ -169,6 +192,13 @@ export default function OrderDetailPage() {
     setCurrentDeliveryIndex(0);
     setShowDeliveryDialog(true);
   };
+
+  // Calculate new total from received quantities
+  const calculateNewTotal = useMemo(() => {
+    return deliveryItems.reduce((sum, item) => {
+      return sum + (item.receivedQuantity * item.unitPrice);
+    }, 0);
+  }, [deliveryItems]);
 
   // Handle delivery confirmation
   const handleConfirmDelivery = async () => {
@@ -202,9 +232,11 @@ export default function OrderDetailPage() {
 
               productId = newProduct;
 
-              // Update order item with product ID
+              // Update order item with product ID and received quantity
               await db.supplier_order_items.update(deliveryItem.orderItemId, {
                 product_id: productId,
+                quantityReceived: deliveryItem.receivedQuantity,
+                subtotal: deliveryItem.receivedQuantity * deliveryItem.unitPrice,
                 synced: false,
               });
 
@@ -329,10 +361,24 @@ export default function OrderDetailPage() {
             }
           }
 
-          // Update order status to DELIVERED
+          // Update order items with received quantities (for existing products)
+          for (const deliveryItem of deliveryItems) {
+            if (deliveryItem.productId) {
+              // Update existing order item with received quantity
+              await db.supplier_order_items.update(deliveryItem.orderItemId, {
+                quantityReceived: deliveryItem.receivedQuantity,
+                subtotal: deliveryItem.receivedQuantity * deliveryItem.unitPrice,
+                synced: false,
+              });
+            }
+          }
+
+          // Update order status to DELIVERED and recalculate total from received quantities
           await db.supplier_orders.update(order.id!, {
             status: 'DELIVERED',
             deliveryDate: new Date(),
+            calculatedTotal: calculateNewTotal, // Update total based on received quantities
+            totalAmount: calculateNewTotal, // Also update totalAmount for backward compatibility
             updatedAt: new Date(),
             synced: false,
           });
@@ -342,6 +388,8 @@ export default function OrderDetailPage() {
             id: order.id,
             status: 'DELIVERED',
             deliveryDate: new Date(),
+            calculatedTotal: calculateNewTotal,
+            totalAmount: calculateNewTotal,
           });
         }
       );
@@ -363,6 +411,37 @@ export default function OrderDetailPage() {
       newItems[index] = { ...newItems[index], ...updates };
       return newItems;
     });
+  };
+
+  // Handle cancellation
+  const handleCancel = async () => {
+    if (!order || !currentUser) return;
+
+    setIsProcessing(true);
+
+    try {
+      await db.supplier_orders.update(order.id!, {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+        synced: false,
+      });
+
+      await queueTransaction('SUPPLIER_ORDER', 'UPDATE', {
+        id: order.id,
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+      });
+
+      toast.success('Commande annulée');
+      setShowCancelDialog(false);
+      router.back();
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      toast.error('Erreur lors de l\'annulation');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Get current delivery item
@@ -416,10 +495,11 @@ export default function OrderDetailPage() {
     );
   }
 
-  const statusConfig = getStatusConfig(order.status);
+  const statusConfig = getStatusConfig(order);
   const StatusIcon = statusConfig.icon;
-  const canEdit = order.status === 'ORDERED';
-  const canDeliver = order.status === 'ORDERED';
+  const canEdit = order.status === 'PENDING' || order.status === 'ORDERED'; // Support both old and new status
+  const canDeliver = order.status === 'PENDING' || order.status === 'ORDERED';
+  const canCancel = (order.status === 'PENDING' || order.status === 'ORDERED') && order.type !== 'RETURN'; // Can't cancel returns after submission
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
@@ -591,14 +671,27 @@ export default function OrderDetailPage() {
               Marquer comme livré
             </Button>
           )}
-          <Button
-            onClick={() => router.push(`/fournisseurs/paiement?supplierId=${supplier.id}&orderId=${order.id}`)}
-            disabled={balance === 0}
-            className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-base active:scale-95 disabled:opacity-50"
-          >
-            <DollarSign className="w-5 h-5 mr-2" />
-            Enregistrer un paiement
-          </Button>
+          {canCancel && (
+            <Button
+              onClick={() => setShowCancelDialog(true)}
+              disabled={isProcessing}
+              variant="outline"
+              className="w-full h-14 bg-slate-800 border-slate-700 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 rounded-xl font-semibold text-base active:scale-95 disabled:opacity-50"
+            >
+              <X className="w-5 h-5 mr-2" />
+              Annuler la commande
+            </Button>
+          )}
+          {order.status !== 'CANCELLED' && (
+            <Button
+              onClick={() => router.push(`/fournisseurs/paiement?supplierId=${supplier.id}&orderId=${order.id}`)}
+              disabled={balance === 0 || order.status === 'PENDING' || order.status === 'ORDERED'}
+              className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-base active:scale-95 disabled:opacity-50"
+            >
+              <DollarSign className="w-5 h-5 mr-2" />
+              Enregistrer un paiement
+            </Button>
+          )}
         </div>
       </main>
 
@@ -730,8 +823,87 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Total Summary Card */}
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">
+                Récapitulatif
+              </h4>
+
+              {/* Ordered Total */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-400">Total commandé</span>
+                <span className={cn(
+                  "font-semibold text-base",
+                  currentDeliveryItem.receivedQuantity !== currentDeliveryItem.orderedQuantity
+                    ? "text-slate-500 line-through"
+                    : "text-white"
+                )}>
+                  {formatCurrency(currentDeliveryItem.orderedQuantity * currentDeliveryItem.unitPrice)}
+                </span>
+              </div>
+
+              {/* Received Total (if different) */}
+              {currentDeliveryItem.receivedQuantity !== currentDeliveryItem.orderedQuantity && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                  <span className="text-sm font-semibold text-emerald-400">Total reçu</span>
+                  <span className="font-bold text-lg text-emerald-400">
+                    {formatCurrency(currentDeliveryItem.receivedQuantity * currentDeliveryItem.unitPrice)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
+      </MobileBottomSheet>
+
+      {/* Cancel Confirmation Dialog */}
+      <MobileBottomSheet
+        isOpen={showCancelDialog}
+        onClose={() => !isProcessing && setShowCancelDialog(false)}
+        title="Annuler la commande"
+      >
+        <div className="p-6 space-y-6">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-400 mb-1">
+                Action irréversible
+              </p>
+              <p className="text-xs text-slate-300">
+                Êtes-vous sûr de vouloir annuler cette commande ? Cette action ne peut pas être annulée.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setShowCancelDialog(false)}
+              disabled={isProcessing}
+              variant="outline"
+              className="flex-1 h-14 bg-slate-800 border-slate-700 text-white hover:bg-slate-700 rounded-xl font-semibold active:scale-95"
+            >
+              Retour
+            </Button>
+            <Button
+              onClick={handleCancel}
+              disabled={isProcessing}
+              className="flex-1 h-14 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold active:scale-95 disabled:opacity-50"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Annulation...
+                </>
+              ) : (
+                <>
+                  <X className="w-5 h-5 mr-2" />
+                  Confirmer l&apos;annulation
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </MobileBottomSheet>
     </div>
   );

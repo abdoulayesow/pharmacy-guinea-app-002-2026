@@ -192,7 +192,9 @@ export interface SyncQueueItem {
 // Supplier Types (NEW - from user research 2026-01)
 // ============================================================================
 
-export type SupplierOrderStatus = 'ORDERED' | 'DELIVERED' | 'PARTIALLY_PAID' | 'PAID';
+export type SupplierOrderStatus = 'PENDING' | 'ORDERED' | 'DELIVERED' | 'CANCELLED';
+export type SupplierTransactionType = 'ORDER' | 'RETURN';
+export type SupplierPaymentStatus = 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE';
 export type ReturnReason = 'EXPIRING' | 'DAMAGED' | 'OTHER';
 
 export interface Supplier {
@@ -210,20 +212,26 @@ export interface SupplierOrder {
   id?: number;
   serverId?: number;
   supplierId: number;
-  orderDate: Date;
-  deliveryDate?: Date;
-  totalAmount: number; // Total order amount in GNF (kept for backward compatibility)
+  type: SupplierTransactionType; // 'ORDER' or 'RETURN'
+  orderDate: Date; // For returns, this is the return submission date
+  deliveryDate?: Date; // Date when order/return was delivered
+  totalAmount: number; // Total order/return amount in GNF (kept for backward compatibility)
   calculatedTotal?: number; // Calculated from order items (preferred)
-  amountPaid: number; // Amount paid so far in GNF
-  dueDate: Date; // Calculated from orderDate + paymentTermsDays
-  status: SupplierOrderStatus;
+  amountPaid: number; // Amount paid so far in GNF (for orders) or refunded (for returns)
+  dueDate: Date; // Calculated from orderDate + paymentTermsDays (for orders only)
+  status: SupplierOrderStatus; // 'PENDING' | 'ORDERED' | 'DELIVERED' | 'CANCELLED'
+  paymentStatus: SupplierPaymentStatus; // 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE' - for returns, tracks refund status
+  cancelledAt?: Date; // Timestamp when cancelled
   notes?: string;
+  // Return-specific fields (only used when type === 'RETURN')
+  returnReason?: ReturnReason; // Reason for return
+  returnProductId?: number; // Product being returned (for single-product returns)
   createdAt: Date;
   updatedAt: Date;
   synced: boolean;
 }
 
-// 🆕 Supplier Order Item - links products to orders
+// 🆕 Supplier Order Item - links products to orders/returns
 export interface SupplierOrderItem {
   id?: number;
   serverId?: number;
@@ -231,7 +239,8 @@ export interface SupplierOrderItem {
   product_id?: number; // null if new product not yet created
   product_name: string; // Name from supplier (may differ from catalog)
   category?: string; // Category for new products (stored for creation during delivery)
-  quantity: number;
+  quantity: number; // Ordered quantity
+  quantityReceived?: number; // Received quantity (for delivery confirmation)
   unit_price: number; // Price from supplier
   subtotal: number;
   notes?: string; // Product-specific notes
@@ -252,6 +261,10 @@ export interface ProductSupplier {
   synced: boolean;
 }
 
+/**
+ * @deprecated Use SupplierOrder with type='RETURN' instead
+ * This interface is kept for backward compatibility during migration
+ */
 export interface SupplierReturn {
   id?: number;
   serverId?: number;

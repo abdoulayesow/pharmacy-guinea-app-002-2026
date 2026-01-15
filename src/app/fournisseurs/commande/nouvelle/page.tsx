@@ -304,6 +304,7 @@ export default function NewOrderPage() {
       // Create order
       const orderId = await db.supplier_orders.add({
         supplierId: parseInt(supplierId),
+        type: 'ORDER',
         orderDate: new Date(orderDate),
         deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
         totalAmount: calculatedTotal, // Keep for backward compatibility
@@ -311,6 +312,7 @@ export default function NewOrderPage() {
         amountPaid: 0,
         dueDate: dueDate,
         status: deliveryDate ? 'DELIVERED' : 'ORDERED',
+        paymentStatus: 'UNPAID',
         notes: notes.trim() || undefined,
         createdAt: new Date(),
         updatedAt: new Date(),

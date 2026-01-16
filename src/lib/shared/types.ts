@@ -44,6 +44,23 @@ export interface Product {
   updatedAt: Date;
 }
 
+// 🆕 Product Batch - FEFO tracking (Phase 3)
+export interface ProductBatch {
+  id?: number;
+  serverId?: number;
+  product_id: number;
+  lot_number: string; // e.g., "LOT-2024-001"
+  expiration_date: Date;
+  quantity: number; // Current quantity in this batch
+  initial_qty: number; // Original quantity received
+  unit_cost?: number; // Cost per unit (optional)
+  supplier_order_id?: number; // Link to supplier order (if tracked)
+  received_date: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  synced: boolean;
+}
+
 // ============================================================================
 // Cart Types (Client-only)
 // ============================================================================
@@ -64,6 +81,7 @@ export interface SaleItem {
   id?: number;
   sale_id: number;
   product_id: number;
+  product_batch_id?: number; // 🆕 Track which batch was sold (FEFO - Phase 3)
   quantity: number;
   unit_price: number;
   subtotal: number;
@@ -90,6 +108,8 @@ export interface Sale {
   modified_at?: Date; // Last modification timestamp
   modified_by?: string; // User ID who last modified
   edit_count?: number; // Number of times this sale was edited
+  // 🆕 Idempotency key for deduplication (P0/P1 improvements)
+  idempotencyKey?: string; // UUID v4 for preventing duplicate sales on retry
 }
 
 // 🆕 Credit payment tracking - records partial payments on credit sales
@@ -129,6 +149,8 @@ export interface Expense {
   supplier_order_id?: number; // 🆕 Optional link to supplier order payment
   user_id: string;
   synced: boolean;
+  // 🆕 Idempotency key for deduplication (P0/P1 improvements)
+  idempotencyKey?: string; // UUID v4 for preventing duplicate expenses on retry
 }
 
 // ============================================================================
@@ -156,6 +178,8 @@ export interface StockMovement {
   user_id: string;
   supplier_order_id?: number; // 🆕 Optional link to supplier order (for RECEIPT type)
   synced: boolean;
+  // 🆕 Idempotency key for deduplication (P0/P1 improvements)
+  idempotencyKey?: string; // UUID v4 for preventing duplicate stock movements on retry
 }
 
 // ============================================================================
@@ -167,6 +191,7 @@ export type SyncType =
   | 'SALE'
   | 'EXPENSE'
   | 'PRODUCT'
+  | 'PRODUCT_BATCH' // 🆕 Batch tracking for FEFO (Phase 3)
   | 'STOCK_MOVEMENT'
   | 'SUPPLIER' // 🆕
   | 'SUPPLIER_ORDER' // 🆕
@@ -183,6 +208,7 @@ export interface SyncQueueItem {
   action: SyncAction;
   payload: unknown;
   localId: number;
+  idempotencyKey: string; // 🆕 UUID v4 for deduplication on server
   createdAt: Date;
   status: SyncStatus;
   retryCount: number;

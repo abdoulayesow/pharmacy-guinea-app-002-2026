@@ -80,17 +80,45 @@ model Product {
   stock          Int       @default(0)
   minStock       Int       @default(10) @map("stock_min")
   category       String?   // Product category
-  expirationDate DateTime? @map("expiration_date") // Expiration tracking
-  lotNumber      String?   @map("lot_number") // Batch/lot tracking
+  expirationDate DateTime? @map("expiration_date") // Expiration tracking (deprecated - use batches)
+  lotNumber      String?   @map("lot_number") // Batch/lot tracking (deprecated - use batches)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
+  batches          ProductBatch[]
   saleItems        SaleItem[]
   stockMovements   StockMovement[]
   productSuppliers ProductSupplier[]
 
   @@map("products")
+}
+
+// ============================================================================
+// FEFO Batch Tracking (Phase 3)
+// ============================================================================
+
+model ProductBatch {
+  id              Int       @id @default(autoincrement())
+  productId       Int       @map("product_id")
+  lotNumber       String    @map("lot_number")         // e.g., "LOT-2024-001"
+  expirationDate  DateTime  @map("expiration_date")    // e.g., "2026-12-31"
+  quantity        Int       @default(0)                // Current quantity in this batch
+  initialQty      Int       @map("initial_qty")        // Original quantity received
+  unitCost        Int?      @map("unit_cost")          // Cost per unit (optional)
+  supplierOrderId Int?      @map("supplier_order_id")  // Link to supplier order
+  receivedDate    DateTime  @default(now()) @map("received_date")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  saleItems       SaleItem[]
+
+  @@index([productId])
+  @@index([expirationDate])
+  @@index([quantity])
+  @@map("product_batches")
 }
 
 model Sale {
@@ -119,16 +147,18 @@ model Sale {
 }
 
 model SaleItem {
-  id        Int   @id @default(autoincrement())
-  saleId    Int   @map("sale_id")
-  productId Int   @map("product_id")
-  quantity  Int
-  unitPrice Int   @map("unit_price")
-  subtotal  Int
+  id             Int   @id @default(autoincrement())
+  saleId         Int   @map("sale_id")
+  productId      Int   @map("product_id")
+  productBatchId Int?  @map("product_batch_id") // Optional: which batch was sold (FEFO tracking)
+  quantity       Int
+  unitPrice      Int   @map("unit_price")
+  subtotal       Int
 
   // Relations
-  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id])
+  sale         Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id])
+  productBatch ProductBatch? @relation(fields: [productBatchId], references: [id])
 
   @@map("sale_items")
 }
@@ -286,4 +316,22 @@ model SupplierReturn {
   appliedToOrder   SupplierOrder? @relation("AppliedToOrder", fields: [appliedToOrderId], references: [id])
 
   @@map("supplier_returns")
+}
+
+// ============================================================================
+// Sync Infrastructure Models
+// ============================================================================
+
+// 🆕 Idempotency key tracking - prevents duplicate transactions on retry
+model SyncIdempotencyKey {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique @map("idempotency_key")
+  entityType     String   @map("entity_type") // SALE | EXPENSE | PRODUCT | STOCK_MOVEMENT | etc.
+  entityId       Int      @map("entity_id") // Server ID of created/updated entity
+  createdAt      DateTime @default(now()) @map("created_at")
+  expiresAt      DateTime @map("expires_at") // Auto-cleanup after 24 hours
+
+  @@index([idempotencyKey])
+  @@index([expiresAt])
+  @@map("sync_idempotency_keys")
 }

@@ -23,9 +23,9 @@ Je démarre un projet d'application de gestion pour une petite pharmacie
 à Conakry, Guinée. Voici le contexte complet:
 
 ## CONTEXTE CLIENT
-- Nom: Pharmacie Thierno Mamadou
+- Nom: Pharmacie Thierno Oumar
 - Lieu: Conakry, Guinée
-- Équipe: 1 propriétaire (Mamadou, 52 ans) + 2 employés (dont Fatoumata, 27 ans)
+- Équipe: 1 propriétaire (Oumar, 52 ans) + 2 employés (dont Abdoulaye, 27 ans)
 - Système actuel: Excel + cahiers physiques
 - Devices: Smartphones Android (low-end, 2GB RAM, Android 8+)
 - Langue: Français uniquement
@@ -76,12 +76,12 @@ Je démarre un projet d'application de gestion pour une petite pharmacie
 - Pas d'emojis dans l'UI (sauf indicateurs de statut)
 
 ## PERSONAS CLÉS
-1. Mamadou (52 ans, propriétaire): 
+1. Oumar (52 ans, propriétaire): 
    - Tech faible (WhatsApp + Excel basique)
    - Veut simplicité et ROI visible
    - Utilise: Dashboard, Dépenses, Paramètres
    
-2. Fatoumata (27 ans, employée): 
+2. Abdoulaye (27 ans, employée): 
    - Tech moyenne (smartphone, apps, réseaux sociaux)
    - Veut rapidité et fiabilité
    - Utilise: Ventes, Stocks (consultation)

@@ -6,7 +6,7 @@ Les cartes d'empathie capturent la perspective de nos utilisateurs dans leur tra
 
 ---
 
-## 1. Mamadou Diallo — Propriétaire
+## 1. Oumar Diallo — Propriétaire
 
 *Le décideur qui jongle entre soins aux patients, gestion d'équipe et survie économique*
 
@@ -76,7 +76,7 @@ Les cartes d'empathie capturent la perspective de nos utilisateurs dans leur tra
 
 ---
 
-## 2. Fatoumata Camara — Employée
+## 2. Abdoulaye Camara — Employée
 
 *L'opérationnelle qui veut bien servir les clients sans se battre avec les outils*
 
@@ -148,7 +148,7 @@ Les cartes d'empathie capturent la perspective de nos utilisateurs dans leur tra
 
 ## Synthèse: Points Communs
 
-| Thème | Mamadou | Fatoumata | Implication Design |
+| Thème | Oumar | Abdoulaye | Implication Design |
 |-------|---------|-----------|-------------------|
 | **Simplicité** | Veut éviter la complexité | Veut de la rapidité | Interface minimaliste |
 | **Fiabilité** | Ne peut pas se permettre de pertes | Ne veut pas d'erreurs | Offline-first, données sécurisées |

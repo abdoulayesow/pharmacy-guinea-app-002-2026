@@ -24,7 +24,10 @@
       "Bash(npx prisma migrate:*)",
       "Bash(npx prisma:*)",
       "Bash(source .env)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run seed:*)",
+      "Bash(npm run type-check:*)"
     ]
   }
 }

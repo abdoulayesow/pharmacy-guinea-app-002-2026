@@ -90,6 +90,20 @@ export async function POST(request: NextRequest) {
     if (sales && sales.length > 0) {
       for (const sale of sales) {
         try {
+          // 🆕 Check idempotency key first (prevent duplicates on retry)
+          if (sale.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: sale.idempotencyKey },
+            });
+
+            if (existingKey) {
+              // Already processed - return existing server ID
+              syncedSales[sale.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Sale ${sale.id} already synced (idempotency key: ${sale.idempotencyKey})`);
+              continue; // Skip creation
+            }
+          }
+
           // Check if sale already exists (by serverId if provided)
           let existingSale = null;
           if (sale.serverId) {
@@ -149,6 +163,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedSales[sale.id?.toString() || ''] = newSale.id;
+
+            // 🆕 Store idempotency key (24h TTL)
+            if (sale.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: sale.idempotencyKey,
+                  entityType: 'SALE',
+                  entityId: newSale.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -201,6 +227,19 @@ export async function POST(request: NextRequest) {
     if (expenses && expenses.length > 0) {
       for (const expense of expenses) {
         try {
+          // 🆕 Check idempotency key first
+          if (expense.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: expense.idempotencyKey },
+            });
+
+            if (existingKey) {
+              syncedExpenses[expense.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Expense ${expense.id} already synced (idempotency key: ${expense.idempotencyKey})`);
+              continue;
+            }
+          }
+
           let existingExpense = null;
           if (expense.serverId) {
             existingExpense = await prisma.expense.findUnique({
@@ -238,6 +277,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedExpenses[expense.id?.toString() || ''] = newExpense.id;
+
+            // 🆕 Store idempotency key
+            if (expense.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: expense.idempotencyKey,
+                  entityType: 'EXPENSE',
+                  entityId: newExpense.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -247,10 +298,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Stock Movements
+    // 🆕 Sync Stock Movements with server-side stock validation
     if (stockMovements && stockMovements.length > 0) {
       for (const movement of stockMovements) {
         try {
+          // 🆕 Check idempotency key first
+          if (movement.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: movement.idempotencyKey },
+            });
+
+            if (existingKey) {
+              syncedStockMovements[movement.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Stock movement ${movement.id} already synced (idempotency key: ${movement.idempotencyKey})`);
+              continue;
+            }
+          }
+
           let existingMovement = null;
           if (movement.serverId) {
             existingMovement = await prisma.stockMovement.findUnique({
@@ -259,6 +323,38 @@ export async function POST(request: NextRequest) {
           }
 
           if (!existingMovement) {
+            // 🆕 CRITICAL: Validate stock before applying movement
+            if (movement.type === 'SALE' && movement.quantity_change < 0) {
+              const product = await prisma.product.findUnique({
+                where: { id: movement.product_id },
+              });
+
+              if (!product) {
+                errors.push(`Produit ${movement.product_id} introuvable`);
+                continue;
+              }
+
+              const newStock = product.stock + movement.quantity_change;
+
+              if (newStock < 0) {
+                // REJECT - insufficient stock
+                errors.push(
+                  `Stock insuffisant pour ${product.name}: ` +
+                  `${product.stock} disponible, ${-movement.quantity_change} demandé. ` +
+                  `Vente refusée.`
+                );
+                console.error(`[API] Stock validation failed for product ${product.id}: ${product.stock} + ${movement.quantity_change} = ${newStock}`);
+                continue; // Don't create movement, don't mark as synced
+              }
+
+              // Stock OK - update product stock atomically
+              await prisma.product.update({
+                where: { id: movement.product_id },
+                data: { stock: newStock },
+              });
+            }
+
+            // Create stock movement record
             const newMovement = await prisma.stockMovement.create({
               data: {
                 productId: movement.product_id,
@@ -270,6 +366,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedStockMovements[movement.id?.toString() || ''] = newMovement.id;
+
+            // 🆕 Store idempotency key
+            if (movement.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: movement.idempotencyKey,
+                  entityType: 'STOCK_MOVEMENT',
+                  entityId: newMovement.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           } else {
             syncedStockMovements[movement.id?.toString() || ''] = existingMovement.id;
           }

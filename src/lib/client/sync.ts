@@ -54,10 +54,22 @@ async function isActuallyOnline(): Promise<boolean> {
 }
 
 /**
+ * Generate a UUID v4 for idempotency keys
+ */
+function generateUUID(): string {
+  // Simple UUID v4 generator (crypto.randomUUID not available in all browsers)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
  * Add a transaction to the sync queue
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'PRODUCT_BATCH' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
   payload: any,
   localId?: string
@@ -67,6 +79,7 @@ export async function queueTransaction(
     action,
     payload,
     localId: localId ? parseInt(localId, 10) : Math.floor(Math.random() * 1000000),
+    idempotencyKey: generateUUID(), // 🆕 Generate unique key for deduplication
     createdAt: new Date() as any,
     status: 'PENDING',
     retryCount: 0,
@@ -116,28 +129,40 @@ export async function markSynced(
       case 'SALE': {
         const localSaleId = payload.id;
         if (localSaleId) {
-          await db.sales.update(localSaleId, { serverId: serverId as any });
+          await db.sales.update(localSaleId, {
+            serverId: serverId as any,
+            synced: true,
+          });
         }
         break;
       }
       case 'EXPENSE': {
         const localExpenseId = payload.id;
         if (localExpenseId) {
-          await db.expenses.update(localExpenseId, { serverId: serverId as any });
+          await db.expenses.update(localExpenseId, {
+            serverId: serverId as any,
+            synced: true,
+          });
         }
         break;
       }
       case 'PRODUCT': {
         const localProductId = payload.id;
         if (localProductId) {
-          await db.products.update(localProductId, { serverId: serverId as any });
+          await db.products.update(localProductId, {
+            serverId: serverId as any,
+            synced: true,
+          });
         }
         break;
       }
       case 'STOCK_MOVEMENT': {
         const localMovementId = payload.id;
         if (localMovementId) {
-          await db.stock_movements.update(localMovementId, { serverId: serverId as any });
+          await db.stock_movements.update(localMovementId, {
+            serverId: serverId as any,
+            synced: true, // CRITICAL: Mark as synced so we don't double-count in stock calculation
+          });
         }
         break;
       }
@@ -179,16 +204,53 @@ export async function markFailed(itemId: string | number, error: string): Promis
 }
 
 /**
- * Prepare sync payload from queue
+ * Prepare sync payload from queue with dependency ordering
+ *
+ * 🆕 Orders sync items by dependencies to prevent "entity not found" errors:
+ * 1. CREATEs before UPDATEs/DELETEs
+ * 2. Type priority: PRODUCT > SUPPLIER > SALE > EXPENSE > STOCK_MOVEMENT
+ * 3. Timestamp order (FIFO within same type)
  */
 export async function prepareSyncPayload(): Promise<{
-  sales: Array<Sale & { id: string }>;
+  sales: Array<Sale & { id: string; idempotencyKey: string }>;
   saleItems: Array<SaleItem & { id: string }>;
-  expenses: Array<Expense & { id: string }>;
-  products: Array<Product & { id: string }>;
+  expenses: Array<Expense & { id: string; idempotencyKey: string }>;
+  products: Array<Product & { id: string; idempotencyKey: string }>;
   stockMovements: any[];
 }> {
   const items = await getPendingItems();
+
+  // 🆕 Sort by dependency order
+  const sortedItems = items.sort((a, b) => {
+    // 1. CREATEs before UPDATEs/DELETEs
+    if (a.action === 'CREATE' && b.action !== 'CREATE') return -1;
+    if (a.action !== 'CREATE' && b.action === 'CREATE') return 1;
+
+    // 2. Type priority: PRODUCT > SUPPLIER > SALE > EXPENSE > STOCK_MOVEMENT
+    const typePriority: Record<string, number> = {
+      PRODUCT: 1,
+      SUPPLIER: 2,
+      SUPPLIER_ORDER: 3,
+      PRODUCT_SUPPLIER: 4,
+      SALE: 5,
+      EXPENSE: 6,
+      STOCK_MOVEMENT: 7,
+      CREDIT_PAYMENT: 8,
+      SUPPLIER_ORDER_ITEM: 9,
+      SUPPLIER_RETURN: 10,
+      USER: 11,
+    };
+
+    const priorityA = typePriority[a.type] || 99;
+    const priorityB = typePriority[b.type] || 99;
+
+    if (priorityA !== priorityB) return priorityA - priorityB;
+
+    // 3. Timestamp order (FIFO)
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeA - timeB;
+  });
 
   const sales: any[] = [];
   const saleItems: any[] = [];
@@ -196,20 +258,26 @@ export async function prepareSyncPayload(): Promise<{
   const products: any[] = [];
   const stockMovements: any[] = [];
 
-  for (const item of items) {
+  for (const item of sortedItems) {
     if (item.status === 'PENDING') {
+      // 🆕 Attach idempotency key to payload
+      const payloadWithKey = {
+        ...(item.payload as Record<string, any>),
+        idempotencyKey: item.idempotencyKey,
+      };
+
       switch (item.type) {
         case 'SALE':
-          sales.push(item.payload);
+          sales.push(payloadWithKey);
           break;
         case 'EXPENSE':
-          expenses.push(item.payload);
+          expenses.push(payloadWithKey);
           break;
         case 'PRODUCT':
-          products.push(item.payload);
+          products.push(payloadWithKey);
           break;
         case 'STOCK_MOVEMENT':
-          stockMovements.push(item.payload);
+          stockMovements.push(payloadWithKey);
           break;
       }
     }
@@ -327,6 +395,48 @@ export async function processSyncQueue(): Promise<{
   }
 
   return results;
+}
+
+/**
+ * 🆕 Debounce timer for automatic sync
+ */
+let syncDebounceTimer: NodeJS.Timeout | null = null;
+
+/**
+ * 🆕 Trigger sync asynchronously without blocking UI
+ *
+ * Priority levels:
+ * - 'high': Sync immediately (for critical operations like sales)
+ * - 'normal': Debounce for 3 seconds (batch rapid changes)
+ *
+ * @param priority - Sync priority level
+ */
+export function triggerAsyncSync(priority: 'normal' | 'high' = 'normal'): void {
+  if (typeof window === 'undefined') return;
+
+  if (priority === 'high') {
+    // High priority: sync immediately (but don't block UI)
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+
+    // Run in background, don't await
+    processSyncQueue().catch((error) => {
+      console.warn('[Sync] High-priority async sync failed:', error);
+    });
+
+    // Also try to pull changes immediately
+    pullFromServer().catch((error) => {
+      console.warn('[Sync] High-priority pull failed:', error);
+    });
+  } else {
+    // Normal priority: debounce for 3 seconds to batch rapid changes
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+
+    syncDebounceTimer = setTimeout(() => {
+      processSyncQueue().catch((error) => {
+        console.warn('[Sync] Debounced async sync failed:', error);
+      });
+    }, 3000);
+  }
 }
 
 /**
@@ -786,4 +896,222 @@ export async function performInitialSync(): Promise<{
     pulled: result.pulled,
     errors: result.errors,
   };
+}
+
+/**
+ * Perform first-time sync for new user
+ * - Detects if user has synced before (localStorage flag)
+ * - Pulls all data from /api/sync/initial (role-filtered)
+ * - Merges into IndexedDB
+ * - Sets flag to prevent re-sync
+ *
+ * @param userRole - User role (OWNER gets all data, EMPLOYEE gets filtered data)
+ */
+export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Promise<{
+  success: boolean;
+  pulled: number;
+  errors: string[];
+}> {
+  console.log('[Sync] Performing initial sync for role:', userRole);
+
+  try {
+    const response = await fetch(`/api/sync/initial?role=${userRole}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // Include cookies for auth
+      signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+
+    const { success, data, serverTime } = await response.json();
+
+    if (!success) {
+      throw new Error('Initial sync failed');
+    }
+
+    let totalMerged = 0;
+
+    // Merge products (both roles)
+    if (data.products?.length > 0) {
+      await db.products.bulkPut(data.products.map((p: any) => ({
+        name: p.name,
+        price: p.price,
+        priceBuy: p.priceBuy,
+        stock: p.stock,
+        minStock: p.minStock,
+        category: p.category,
+        expirationDate: p.expirationDate,
+        lotNumber: p.lotNumber,
+        serverId: p.id, // Map server ID
+        synced: true,
+        updatedAt: p.updatedAt,
+      })));
+      totalMerged += data.products.length;
+      console.log(`[Sync] Merged ${data.products.length} products`);
+    }
+
+    // Merge suppliers (both roles)
+    if (data.suppliers?.length > 0) {
+      await db.suppliers.bulkPut(data.suppliers.map((s: any) => ({
+        name: s.name,
+        phone: s.phone,
+        paymentTermsDays: s.paymentTermsDays,
+        serverId: s.id,
+        synced: true,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      })));
+      totalMerged += data.suppliers.length;
+      console.log(`[Sync] Merged ${data.suppliers.length} suppliers`);
+    }
+
+    // Merge supplier orders (both roles, view-only for employees)
+    if (data.supplierOrders?.length > 0) {
+      // Merge supplier orders first
+      await db.supplier_orders.bulkPut(data.supplierOrders.map((o: any) => ({
+        supplierId: o.supplierId,
+        status: o.status,
+        totalAmount: o.totalAmount,
+        dueDate: o.dueDate,
+        receivedDate: o.receivedDate,
+        serverId: o.id,
+        synced: true,
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
+      })));
+      console.log(`[Sync] Merged ${data.supplierOrders.length} supplier orders`);
+
+      // Merge supplier order items
+      const allItems: any[] = [];
+      data.supplierOrders.forEach((order: any) => {
+        if (order.items?.length > 0) {
+          order.items.forEach((item: any) => {
+            allItems.push({
+              orderServerId: order.id,
+              productServerId: item.productId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              subtotal: item.subtotal,
+              serverId: item.id,
+              synced: true,
+            });
+          });
+        }
+      });
+      if (allItems.length > 0) {
+        // Note: We'll need to map orderServerId and productServerId to local IDs
+        // For now, store with server IDs and handle mapping in UI
+        console.log(`[Sync] Found ${allItems.length} order items (mapping TBD)`);
+      }
+      totalMerged += data.supplierOrders.length;
+    }
+
+    // Merge sales (role-filtered by server)
+    if (data.sales?.length > 0) {
+      // Merge sales first
+      await db.sales.bulkPut(data.sales.map((s: any) => ({
+        total: s.total,
+        payment_method: s.paymentMethod,
+        payment_status: s.paymentStatus,
+        payment_ref: s.paymentRef,
+        customer_name: s.customerName,
+        customer_phone: s.customerPhone,
+        due_date: s.dueDate,
+        amount_paid: s.amountPaid,
+        amount_due: s.amountDue,
+        created_at: s.createdAt,
+        user_id: s.userId,
+        modified_at: s.modifiedAt,
+        modified_by: s.modifiedBy,
+        edit_count: s.editCount,
+        serverId: s.id,
+        synced: true,
+      })));
+      console.log(`[Sync] Merged ${data.sales.length} sales`);
+
+      // Merge sale items
+      const allSaleItems: any[] = [];
+      data.sales.forEach((sale: any) => {
+        if (sale.items?.length > 0) {
+          sale.items.forEach((item: any) => {
+            allSaleItems.push({
+              sale_id: sale.id, // This is server ID, will need mapping
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              subtotal: item.subtotal,
+            });
+          });
+        }
+      });
+      if (allSaleItems.length > 0) {
+        // Note: Need to map sale server IDs to local IDs
+        console.log(`[Sync] Found ${allSaleItems.length} sale items (mapping TBD)`);
+      }
+      totalMerged += data.sales.length;
+    }
+
+    // Merge expenses (empty for employees)
+    if (data.expenses?.length > 0) {
+      await db.expenses.bulkPut(data.expenses.map((e: any) => ({
+        date: e.date,
+        description: e.description,
+        amount: e.amount,
+        category: e.category,
+        user_id: e.userId,
+        supplier_order_id: e.supplierOrderId,
+        serverId: e.id,
+        synced: true,
+      })));
+      totalMerged += data.expenses.length;
+      console.log(`[Sync] Merged ${data.expenses.length} expenses`);
+    }
+
+    // Merge stock movements (role-filtered by server)
+    if (data.stockMovements?.length > 0) {
+      await db.stock_movements.bulkPut(data.stockMovements.map((m: any) => ({
+        product_id: m.productId,
+        type: m.type,
+        quantity_change: m.quantityChange,
+        reason: m.reason,
+        created_at: m.createdAt,
+        user_id: m.userId,
+        serverId: m.id,
+        synced: true,
+      })));
+      totalMerged += data.stockMovements.length;
+      console.log(`[Sync] Merged ${data.stockMovements.length} stock movements`);
+    }
+
+    // Merge credit payments (role-filtered by server)
+    if (data.creditPayments?.length > 0) {
+      await db.credit_payments.bulkPut(data.creditPayments.map((c: any) => ({
+        sale_id: c.saleId, // Will need mapping to local sale ID
+        amount: c.amount,
+        payment_method: c.paymentMethod,
+        payment_ref: c.paymentRef,
+        payment_date: c.paymentDate,
+        user_id: c.userId,
+        serverId: c.id,
+        synced: true,
+      })));
+      totalMerged += data.creditPayments.length;
+      console.log(`[Sync] Merged ${data.creditPayments.length} credit payments`);
+    }
+
+    // Set sync timestamp
+    if (serverTime) {
+      setLastSyncAt(new Date(serverTime));
+    }
+
+    console.log(`[Sync] ✅ Initial sync complete: ${totalMerged} records merged`);
+    return { success: true, pulled: totalMerged, errors: [] };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Sync] ❌ First-time sync error:', error);
+    return { success: false, pulled: 0, errors: [errorMsg] };
+  }
 }

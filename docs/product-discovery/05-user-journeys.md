@@ -6,13 +6,13 @@ Les parcours utilisateurs montrent comment nos personas interagissent avec Pharm
 
 ---
 
-## Parcours 1: Première Vente (Fatoumata)
+## Parcours 1: Première Vente (Abdoulaye)
 
 ### Contexte
-Fatoumata vient d'installer PharmGest. Un client arrive et demande du Paracétamol et du sirop contre la toux.
+Abdoulaye vient d'installer PharmGest. Un client arrive et demande du Paracétamol et du sirop contre la toux.
 
 ### Acteur
-**Fatoumata** (Employée, 27 ans, tech moyenne)
+**Abdoulaye** (Employée, 27 ans, tech moyenne)
 
 ### Pré-conditions
 - App installée et configurée
@@ -27,7 +27,7 @@ Fatoumata vient d'installer PharmGest. Un client arrive et demande du Paracétam
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ ÉTAPE 1: CONNEXION                                                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Action: Fatoumata ouvre l'app et tape son PIN                               │
+│ Action: Abdoulaye ouvre l'app et tape son PIN                               │
 │ Écran: Clavier numérique, 4 points pour le PIN                              │
 │ Durée: ~3 secondes                                                          │
 │ Émotion: 😐 Neutre                                                          │
@@ -132,13 +132,13 @@ Fatoumata vient d'installer PharmGest. Un client arrive et demande du Paracétam
 
 ---
 
-## Parcours 2: Réponse à une Alerte Stock (Mamadou)
+## Parcours 2: Réponse à une Alerte Stock (Oumar)
 
 ### Contexte
-Mamadou ouvre l'app le matin et voit une alerte: 3 produits sont en stock bas.
+Oumar ouvre l'app le matin et voit une alerte: 3 produits sont en stock bas.
 
 ### Acteur
-**Mamadou** (Propriétaire, 52 ans, tech faible)
+**Oumar** (Propriétaire, 52 ans, tech faible)
 
 ---
 
@@ -148,7 +148,7 @@ Mamadou ouvre l'app le matin et voit une alerte: 3 produits sont en stock bas.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ ÉTAPE 1: CONNEXION + ALERTE                                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Action: Mamadou se connecte                                                 │
+│ Action: Oumar se connecte                                                 │
 │ Système: Notification "⚠️ 3 produits en stock bas"                          │
 │ Écran: Dashboard avec badge rouge sur icône Stocks                          │
 │ Émotion: 😟 Inquiet mais content d'être prévenu                             │
@@ -198,13 +198,13 @@ Mamadou ouvre l'app le matin et voit une alerte: 3 produits sont en stock bas.
 
 ---
 
-## Parcours 3: Vente Hors Ligne (Fatoumata)
+## Parcours 3: Vente Hors Ligne (Abdoulaye)
 
 ### Contexte
 Coupure de courant = pas d'internet. Un client veut acheter des médicaments.
 
 ### Acteur
-**Fatoumata** (Employée)
+**Abdoulaye** (Employée)
 
 ---
 
@@ -271,13 +271,13 @@ Coupure de courant = pas d'internet. Un client veut acheter des médicaments.
 
 ---
 
-## Parcours 4: Enregistrement Dépense (Mamadou)
+## Parcours 4: Enregistrement Dépense (Oumar)
 
 ### Contexte
-Mamadou vient de payer le loyer en cash. Il veut l'enregistrer.
+Oumar vient de payer le loyer en cash. Il veut l'enregistrer.
 
 ### Acteur
-**Mamadou** (Propriétaire)
+**Oumar** (Propriétaire)
 
 ---
 
@@ -334,13 +334,13 @@ Mamadou vient de payer le loyer en cash. Il veut l'enregistrer.
 
 ---
 
-## Parcours 5: Consultation Dashboard (Mamadou)
+## Parcours 5: Consultation Dashboard (Oumar)
 
 ### Contexte
-Fin de journée, Mamadou veut voir comment s'est passée la journée.
+Fin de journée, Oumar veut voir comment s'est passée la journée.
 
 ### Acteur
-**Mamadou** (Propriétaire)
+**Oumar** (Propriétaire)
 
 ---
 
@@ -373,7 +373,7 @@ Fin de journée, Mamadou veut voir comment s'est passée la journée.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Ce que Mamadou Voit en 3 Secondes
+### Ce que Oumar Voit en 3 Secondes
 
 | Information | Valeur | Émotion |
 |-------------|--------|---------|
@@ -393,7 +393,7 @@ Fin de journée, Mamadou veut voir comment s'est passée la journée.
 
 ## Matrice des Parcours × Personas
 
-| Parcours | Mamadou | Fatoumata | Fréquence |
+| Parcours | Oumar | Abdoulaye | Fréquence |
 |----------|---------|-----------|-----------|
 | Première vente | Configure | **Exécute** | Setup |
 | Vente standard | Rarement | **Quotidien** | 20-50x/jour |

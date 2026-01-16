@@ -12,6 +12,7 @@ import Dexie, { type Table } from 'dexie';
 import type {
   User,
   Product,
+  ProductBatch, // 🆕 Batch tracking for FEFO
   Sale,
   SaleItem,
   Expense,
@@ -31,6 +32,7 @@ import type {
 class SeriDatabase extends Dexie {
   users!: Table<User>;
   products!: Table<Product>;
+  product_batches!: Table<ProductBatch>; // 🆕 Batch tracking for FEFO
   sales!: Table<Sale>;
   sale_items!: Table<SaleItem>;
   expenses!: Table<Expense>;
@@ -103,7 +105,7 @@ class SeriDatabase extends Dexie {
       credit_payments: '++id, serverId, sale_id, payment_date, synced',
     });
 
-    // Version 5: Add sale editing support (Phase 3 - modified_at index)
+    // 🆕 Version 5: Add idempotencyKey index to sync_queue + sale editing support (modified_at)
     this.version(5).stores({
       users: 'id, role',
       products: '++id, serverId, name, category, expirationDate, synced',
@@ -111,7 +113,7 @@ class SeriDatabase extends Dexie {
       sale_items: '++id, sale_id, product_id',
       expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
       stock_movements: '++id, serverId, product_id, created_at, synced',
-      sync_queue: '++id, type, status, createdAt',
+      sync_queue: '++id, type, status, idempotencyKey, localId, createdAt', // 🆕 Added idempotencyKey and localId indexes
       suppliers: '++id, serverId, name, synced',
       supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
       supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
@@ -155,7 +157,7 @@ class SeriDatabase extends Dexie {
       const orders = await tx.table('supplier_orders').toArray();
       for (const order of orders) {
         const updates: any = { type: 'ORDER' };
-        
+
         // Map old statuses to new statuses
         if (order.status === 'ORDERED') {
           updates.status = 'PENDING';
@@ -164,7 +166,7 @@ class SeriDatabase extends Dexie {
         } else if (order.status === 'PARTIALLY_PAID' || order.status === 'PAID') {
           updates.status = 'DELIVERED';
         }
-        
+
         // Set paymentStatus based on old status
         if (order.status === 'PAID') {
           updates.paymentStatus = 'PAID';
@@ -173,14 +175,212 @@ class SeriDatabase extends Dexie {
         } else {
           updates.paymentStatus = 'PENDING';
         }
-        
+
         await tx.table('supplier_orders').update(order.id, updates);
       }
+    });
+
+    // Version 8: Add product batch tracking for FEFO (Phase 3 - 2026-01-16)
+    this.version(8).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      product_batches: '++id, serverId, product_id, expiration_date, quantity, synced', // 🆕 Batch tracking
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced',
+      sale_items: '++id, sale_id, product_id, product_batch_id, synced', // 🆕 Added product_batch_id index
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, supplier_order_id, synced',
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, type, status, paymentStatus, dueDate, synced',
+      supplier_order_items: '++id, serverId, order_id, product_id, synced',
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      product_suppliers: '++id, serverId, product_id, supplier_id, is_primary, synced',
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
     });
   }
 }
 
 export const db = new SeriDatabase();
+
+// ============================================================================
+// Stock Calculation Helper (Transaction Log Pattern)
+// ============================================================================
+
+/**
+ * Calculate current stock from initial stock + all stock movements
+ * This prevents data loss from concurrent updates
+ *
+ * @param productId - Product ID to calculate stock for
+ * @returns Current stock quantity
+ */
+export async function calculateProductStock(productId: number): Promise<number> {
+  const product = await db.products.get(productId);
+  if (!product) {
+    throw new Error(`Product ${productId} not found`);
+  }
+
+  // Get all stock movements for this product
+  const movements = await db.stock_movements
+    .where('product_id')
+    .equals(productId)
+    .toArray();
+
+  // Sum all movements (positive = received, negative = sold/damaged/etc)
+  const totalMovements = movements.reduce((sum, movement) => {
+    return sum + movement.quantity_change;
+  }, 0);
+
+  // Current stock = product's base stock + all movements
+  // Note: product.stock is now a "snapshot" that we update periodically
+  // but movements are the source of truth
+  return product.stock + totalMovements;
+}
+
+/**
+ * Get products with calculated stock (from movements)
+ * Use this instead of directly reading product.stock
+ */
+export async function getProductsWithCalculatedStock(): Promise<Product[]> {
+  const products = await db.products.toArray();
+
+  // Calculate stock for each product
+  const productsWithStock = await Promise.all(
+    products.map(async (product) => {
+      if (!product.id) return product;
+
+      const calculatedStock = await calculateProductStock(product.id);
+
+      return {
+        ...product,
+        stock: calculatedStock, // Replace with calculated value
+      };
+    })
+  );
+
+  return productsWithStock;
+}
+
+// ============================================================================
+// FEFO Batch Selection (Phase 3 - First Expired First Out)
+// ============================================================================
+
+/**
+ * Batch allocation result
+ */
+export interface BatchAllocation {
+  batchId: number;
+  lotNumber: string;
+  expirationDate: Date;
+  quantity: number;
+}
+
+/**
+ * Select batches for a sale using FEFO (First Expired First Out) algorithm
+ *
+ * @param productId - Product ID to select batches for
+ * @param requestedQty - Quantity requested
+ * @returns Array of batch allocations (earliest expiring first)
+ * @throws Error if insufficient stock available
+ */
+export async function selectBatchForSale(
+  productId: number,
+  requestedQty: number
+): Promise<BatchAllocation[]> {
+  // 1. Get all non-empty batches for this product, sorted by expiration (earliest first)
+  const batches = await db.product_batches
+    .where('product_id')
+    .equals(productId)
+    .filter((batch) => batch.quantity > 0)
+    .sortBy('expiration_date'); // FEFO: First Expired First Out
+
+  // 2. Allocate quantity across batches (earliest first)
+  const allocations: BatchAllocation[] = [];
+  let remainingQty = requestedQty;
+
+  for (const batch of batches) {
+    if (remainingQty <= 0) break;
+
+    const qtyFromBatch = Math.min(batch.quantity, remainingQty);
+    allocations.push({
+      batchId: batch.id!,
+      lotNumber: batch.lot_number,
+      expirationDate: batch.expiration_date,
+      quantity: qtyFromBatch,
+    });
+
+    remainingQty -= qtyFromBatch;
+  }
+
+  // 3. Check if we have enough stock
+  if (remainingQty > 0) {
+    throw new Error(
+      `Stock insuffisant: besoin de ${requestedQty}, disponible ${requestedQty - remainingQty}`
+    );
+  }
+
+  return allocations;
+}
+
+/**
+ * Get batches expiring within a given number of days
+ *
+ * @param daysThreshold - Number of days until expiration
+ * @returns Array of batches expiring within threshold
+ */
+export async function getExpiringBatches(daysThreshold: number): Promise<ProductBatch[]> {
+  const now = new Date();
+  const thresholdDate = new Date(now);
+  thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
+
+  const batches = await db.product_batches
+    .filter((batch) => {
+      return (
+        batch.quantity > 0 &&
+        batch.expiration_date >= now &&
+        batch.expiration_date <= thresholdDate
+      );
+    })
+    .sortBy('expiration_date');
+
+  return batches;
+}
+
+/**
+ * Get expiration alert level for a batch
+ *
+ * @param expirationDate - Expiration date of the batch
+ * @returns 'critical' | 'warning' | 'notice' | 'ok'
+ */
+export function getExpirationAlertLevel(
+  expirationDate: Date
+): 'critical' | 'warning' | 'notice' | 'ok' {
+  const now = new Date();
+  const daysUntilExpiry = Math.floor(
+    (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysUntilExpiry < 0) return 'critical'; // Already expired
+  if (daysUntilExpiry < 7) return 'critical'; // < 7 days
+  if (daysUntilExpiry < 30) return 'warning'; // < 30 days
+  if (daysUntilExpiry < 90) return 'notice'; // < 90 days
+  return 'ok';
+}
+
+/**
+ * Get total available stock for a product across all batches
+ *
+ * @param productId - Product ID
+ * @returns Total quantity across all non-empty batches
+ */
+export async function getTotalBatchStock(productId: number): Promise<number> {
+  const batches = await db.product_batches
+    .where('product_id')
+    .equals(productId)
+    .filter((batch) => batch.quantity > 0)
+    .toArray();
+
+  return batches.reduce((total, batch) => total + batch.quantity, 0);
+}
 
 // ============================================================================
 // Seed Demo Data (Products, Suppliers - NOT Users)
@@ -387,7 +587,118 @@ export async function seedInitialData() {
         },
       ]);
 
-      console.log('[Seri DB] Demo data seeding complete (products + suppliers)');
+      // 🆕 Add demo product batches for FEFO testing (Phase 3)
+      await db.product_batches.bulkAdd([
+        // Paracetamol 500mg (Product ID: 1) - Multiple batches with different expiration dates
+        {
+          product_id: 1,
+          lot_number: 'LOT-2024-001',
+          expiration_date: new Date('2026-02-28'), // Expires in ~1.5 months (WARNING)
+          quantity: 15,
+          initial_qty: 50,
+          unit_cost: 10000,
+          received_date: new Date('2024-12-01'),
+          createdAt: new Date('2024-12-01'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+        {
+          product_id: 1,
+          lot_number: 'LOT-2024-015',
+          expiration_date: new Date('2026-06-15'), // Expires in 5 months (OK)
+          quantity: 30,
+          initial_qty: 100,
+          unit_cost: 10000,
+          received_date: new Date('2025-11-15'),
+          createdAt: new Date('2025-11-15'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+
+        // Amoxicilline 250mg (Product ID: 2) - Near expiry batch
+        {
+          product_id: 2,
+          lot_number: 'LOT-2024-002',
+          expiration_date: new Date('2026-01-25'), // Expires in ~9 days (CRITICAL)
+          quantity: 8,
+          initial_qty: 20,
+          unit_cost: 18000,
+          received_date: new Date('2024-11-10'),
+          createdAt: new Date('2024-11-10'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+
+        // Ibuprofène 400mg (Product ID: 3) - Good stock with far expiry
+        {
+          product_id: 3,
+          lot_number: 'LOT-2024-003',
+          expiration_date: new Date('2027-01-20'), // Expires in 12 months (OK)
+          quantity: 32,
+          initial_qty: 50,
+          unit_cost: 12000,
+          received_date: new Date('2025-10-05'),
+          createdAt: new Date('2025-10-05'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+
+        // Vitamine C 1000mg (Product ID: 4) - Multiple batches with different expiration
+        {
+          product_id: 4,
+          lot_number: 'LOT-2024-004A',
+          expiration_date: new Date('2026-03-10'), // Expires in ~2 months (WARNING)
+          quantity: 35,
+          initial_qty: 50,
+          unit_cost: 8000,
+          received_date: new Date('2024-09-10'),
+          createdAt: new Date('2024-09-10'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+        {
+          product_id: 4,
+          lot_number: 'LOT-2025-012',
+          expiration_date: new Date('2026-08-20'), // Expires in 7 months (OK)
+          quantity: 25,
+          initial_qty: 40,
+          unit_cost: 8000,
+          received_date: new Date('2025-12-01'),
+          createdAt: new Date('2025-12-01'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+
+        // Oméprazole 20mg (Product ID: 7) - Good batch
+        {
+          product_id: 7,
+          lot_number: 'LOT-2024-006',
+          expiration_date: new Date('2026-08-05'), // Expires in 7 months (OK)
+          quantity: 18,
+          initial_qty: 30,
+          unit_cost: 15000,
+          received_date: new Date('2025-08-05'),
+          createdAt: new Date('2025-08-05'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+
+        // Aspirine 100mg (Product ID: 8) - CRITICAL expiry
+        {
+          product_id: 8,
+          lot_number: 'LOT-2024-007',
+          expiration_date: new Date('2026-01-25'), // Expires in ~9 days (CRITICAL)
+          quantity: 3,
+          initial_qty: 10,
+          unit_cost: 5000,
+          received_date: new Date('2024-10-15'),
+          createdAt: new Date('2024-10-15'),
+          updatedAt: new Date(),
+          synced: true,
+        },
+      ]);
+
+      console.log('[Seri DB] Demo data seeding complete (products + suppliers + batches)');
       seedingComplete = true;
     } catch (error: any) {
       // Ignore ConstraintError (duplicate key) - data already exists
@@ -417,6 +728,7 @@ export async function seedInitialData() {
 export async function clearDatabase() {
   await db.users.clear();
   await db.products.clear();
+  await db.product_batches.clear(); // 🆕
   await db.sales.clear();
   await db.sale_items.clear();
   await db.expenses.clear();
@@ -438,6 +750,7 @@ export async function getDatabaseStats() {
   return {
     users: await db.users.count(),
     products: await db.products.count(),
+    productBatches: await db.product_batches.count(), // 🆕
     sales: await db.sales.count(),
     expenses: await db.expenses.count(),
     stockMovements: await db.stock_movements.count(),

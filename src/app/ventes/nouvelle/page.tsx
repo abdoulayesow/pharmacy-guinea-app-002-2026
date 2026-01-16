@@ -23,8 +23,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
-import { db } from '@/lib/client/db';
-import { queueTransaction } from '@/lib/client/sync';
+import { db, selectBatchForSale, type BatchAllocation } from '@/lib/client/db';
+import { queueTransaction, processSyncQueue } from '@/lib/client/sync';
 import { formatCurrency } from '@/lib/shared/utils';
 import type { Product, Sale, SaleItem, CartItem, StockMovement } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
@@ -78,8 +78,41 @@ export default function NouvelleVentePage() {
     new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // Default: 3 days from now
   );
 
-  // Get products from IndexedDB
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // Get products from IndexedDB with calculated stock
+  // Note: Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
+  // Synced movements are already reflected in product.stock from the server
+  const products = useLiveQuery(async () => {
+    const allProducts = await db.products.toArray();
+
+    // Calculate stock for each product from UNSYNCED movements only
+    const productsWithStock = await Promise.all(
+      allProducts.map(async (product) => {
+        if (!product.id) return product;
+
+        // Get UNSYNCED stock movements for this product
+        const movements = await db.stock_movements
+          .where('product_id')
+          .equals(product.id)
+          .filter(m => !m.synced) // CRITICAL: Only unsynced movements
+          .toArray();
+
+        // Sum all unsynced movements
+        const totalMovements = movements.reduce((sum, movement) => {
+          return sum + movement.quantity_change;
+        }, 0);
+
+        // Return product with calculated stock
+        // product.stock = server value (includes synced movements)
+        // + unsynced local movements
+        return {
+          ...product,
+          stock: product.stock + totalMovements,
+        };
+      })
+    );
+
+    return productsWithStock;
+  }) ?? [];
 
   useEffect(() => {
     // Wait for session to load before checking auth
@@ -145,7 +178,10 @@ export default function NouvelleVentePage() {
   };
 
   const handlePayment = async (method: PaymentMethod) => {
-    if (!currentUser || cartItems.length === 0) {
+    // Use session user if available, fallback to Zustand currentUser
+    const activeUser = session?.user || currentUser;
+
+    if (!activeUser || cartItems.length === 0) {
       toast.error('Erreur: Utilisateur ou panier non valide');
       return;
     }
@@ -179,7 +215,7 @@ export default function NouvelleVentePage() {
         total: cartTotal,
         payment_method: method,
         payment_ref: method === 'ORANGE_MONEY' ? orangeMoneyRef || `OM-${Date.now()}` : null,
-        user_id: currentUser.id,
+        user_id: activeUser.id,
         synced: false,
         // 🆕 Customer info (optional)
         customer_name: customerName || undefined,
@@ -194,37 +230,92 @@ export default function NouvelleVentePage() {
       // Add sale to database
       const saleId = await db.sales.add(sale);
 
-      // Create sale items records
-      const saleItemsToAdd: SaleItem[] = saleItems.map((item) => ({
-        sale_id: saleId as number,
-        product_id: item.product.id!,
-        quantity: item.quantity,
-        unit_price: item.product.price,
-        subtotal: item.product.price * item.quantity,
-      }));
+      // 🆕 FEFO: Allocate batches for each product before creating sale items
+      const batchAllocationsMap = new Map<number, BatchAllocation[]>();
+
+      try {
+        for (const item of saleItems) {
+          if (!item.product.id) continue;
+
+          // Allocate batches using FEFO (First Expired First Out)
+          const allocations = await selectBatchForSale(item.product.id, item.quantity);
+          batchAllocationsMap.set(item.product.id, allocations);
+        }
+      } catch (error) {
+        // Rollback sale if batch allocation fails
+        await db.sales.delete(saleId);
+
+        const errorMsg = error instanceof Error ? error.message : 'Erreur inconnue';
+        toast.error(
+          `Impossible de compléter la vente: ${errorMsg}`,
+          { duration: 6000 }
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      // Create sale items records with batch tracking
+      const saleItemsToAdd: SaleItem[] = [];
+
+      for (const item of saleItems) {
+        if (!item.product.id) continue;
+
+        const allocations = batchAllocationsMap.get(item.product.id) || [];
+
+        // Create one sale item per batch allocation (may span multiple batches)
+        for (const allocation of allocations) {
+          saleItemsToAdd.push({
+            sale_id: saleId as number,
+            product_id: item.product.id,
+            product_batch_id: allocation.batchId,
+            quantity: allocation.quantity,
+            unit_price: item.product.price,
+            subtotal: item.product.price * allocation.quantity,
+          });
+        }
+      }
 
       await db.sale_items.bulkAdd(saleItemsToAdd);
 
-      // Update product stock and create stock movements
+      // 🆕 Update batch quantities (decrement from allocated batches)
+      for (const item of saleItems) {
+        if (!item.product.id) continue;
+
+        const allocations = batchAllocationsMap.get(item.product.id) || [];
+
+        for (const allocation of allocations) {
+          const batch = await db.product_batches.get(allocation.batchId);
+          if (batch) {
+            // Decrement batch quantity
+            await db.product_batches.update(allocation.batchId, {
+              quantity: batch.quantity - allocation.quantity,
+              updatedAt: new Date(),
+            });
+
+            // Queue batch update for sync
+            await queueTransaction(
+              'PRODUCT_BATCH',
+              'UPDATE',
+              { ...batch, quantity: batch.quantity - allocation.quantity, updatedAt: new Date() },
+              String(allocation.batchId)
+            );
+          }
+        }
+      }
+
+      // Create stock movements (don't update product.stock directly)
+      // Stock is calculated from movements to prevent concurrent update conflicts
       for (const item of saleItems) {
         const product = await db.products.get(item.product.id!);
         if (product) {
-          // Update stock
-          const newStock = product.stock - item.quantity;
-          await db.products.update(item.product.id!, {
-            stock: newStock,
-            synced: false,
-            updatedAt: new Date(),
-          });
-
-          // Create stock movement record for audit trail
+          // Create stock movement record (source of truth for stock changes)
           const movement: StockMovement = {
             product_id: item.product.id!,
             type: 'SALE',
             quantity_change: -item.quantity,
             reason: `Vente #${saleId}`,
             created_at: new Date(),
-            user_id: currentUser.id,
+            user_id: activeUser.id,
             synced: false,
           };
 
@@ -232,11 +323,98 @@ export default function NouvelleVentePage() {
 
           // Queue stock movement for sync
           await queueTransaction('STOCK_MOVEMENT', 'CREATE', { ...movement, id: movementId }, String(movementId));
+
+          // Mark product as unsynced (for background sync to pick up)
+          await db.products.update(item.product.id!, {
+            synced: false,
+            updatedAt: new Date(),
+          });
         }
       }
 
       // Queue sale for sync
       await queueTransaction('SALE', 'CREATE', { ...sale, id: saleId }, String(saleId));
+
+      // 🆕 OPTIMISTIC LOCKING: Try immediate sync with 5s timeout
+      let syncFailed = false;
+      let stockError: string | null = null;
+
+      try {
+        const syncResult = await Promise.race([
+          processSyncQueue(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Sync timeout')), 5000)
+          ),
+        ]);
+
+        // Check if sync failed due to stock validation
+        if (syncResult && typeof syncResult === 'object' && 'failed' in syncResult && (syncResult as any).failed > 0) {
+          const errors = (syncResult as any).errors || [];
+          stockError = errors.find((e: string) => e.includes('Stock insuffisant'));
+
+          if (stockError) {
+            syncFailed = true;
+          }
+        }
+      } catch (error) {
+        console.warn('[Sale] Immediate sync failed, will retry in background', error);
+        // Not a critical error - background sync will retry
+      }
+
+      // 🆕 If stock validation failed, rollback the sale
+      if (syncFailed && stockError) {
+        console.error('[Sale] Stock validation failed on server, rolling back local sale');
+
+        // Delete sale and sale items from IndexedDB
+        await db.sales.delete(saleId);
+        await db.sale_items.where('sale_id').equals(saleId).delete();
+
+        // Delete stock movements created for this sale
+        const saleMovements = await db.stock_movements
+          .where('reason')
+          .equals(`Vente #${saleId}`)
+          .toArray();
+
+        for (const movement of saleMovements) {
+          if (movement.id) {
+            await db.stock_movements.delete(movement.id);
+          }
+        }
+
+        // Remove from sync queue (sale + stock movements)
+        const queueItems = await db.sync_queue
+          .where('localId')
+          .equals(parseInt(String(saleId), 10))
+          .toArray();
+        for (const qi of queueItems) {
+          if (qi.id) {
+            await db.sync_queue.delete(qi.id);
+          }
+        }
+
+        // Also remove stock movement queue items
+        const movementQueueItems = await db.sync_queue
+          .where('entity_type')
+          .equals('STOCK_MOVEMENT')
+          .toArray();
+
+        for (const item of movementQueueItems) {
+          const payload = item.payload as any;
+          if (payload?.reason === `Vente #${saleId}`) {
+            await db.sync_queue.delete(item.id!);
+          }
+        }
+
+        // Show error to user
+        toast.error(
+          'Stock insuffisant sur le serveur. La vente a été annulée. ' +
+          'Veuillez synchroniser et réessayer.',
+          { duration: 6000 }
+        );
+
+        setIsProcessing(false);
+        return; // Don't proceed to receipt
+      }
 
       // Set last sale for receipt (with stored items)
       setLastSale({

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useLockStore } from '@/stores/lock';
 import { useActivityMonitor } from '@/hooks/useActivityMonitor';
 import { Logo } from '@/components/Logo';
+import { performFirstTimeSync } from '@/lib/client/sync';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -57,6 +58,43 @@ export function AuthGuard({ children }: AuthGuardProps) {
       initializeActivity();
     }
   }, [status, session, syncProfileFromSession, initializeActivity]);
+
+  // Perform initial sync on Google OAuth login
+  // This ensures IndexedDB is always synced with PostgreSQL (single source of truth)
+  // Triggers when:
+  // 1. First login (no localStorage flag)
+  // 2. User cleared browser data (empty IndexedDB)
+  // 3. Every Google OAuth login (to ensure fresh data)
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.id && session?.user?.role) {
+      // Always sync on Google login to ensure data consistency across devices/browsers
+      console.log('[AuthGuard] User authenticated - checking if initial sync needed');
+
+      // Check IndexedDB to see if it's empty (user cleared data)
+      import('@/lib/client/db').then(({ db }) => {
+        db.products.count().then(productCount => {
+          const shouldSync = productCount === 0; // Empty IndexedDB = need sync
+
+          if (shouldSync) {
+            console.log('[AuthGuard] IndexedDB is empty - starting initial sync');
+            performFirstTimeSync(session.user.role as 'OWNER' | 'EMPLOYEE')
+              .then(result => {
+                if (result.success) {
+                  console.log(`[AuthGuard] ✅ Initial sync success: ${result.pulled} records`);
+                } else {
+                  console.error('[AuthGuard] ❌ Initial sync failed:', result.errors);
+                }
+              })
+              .catch(err => {
+                console.error('[AuthGuard] ❌ Initial sync error:', err);
+              });
+          } else {
+            console.log(`[AuthGuard] IndexedDB has data (${productCount} products) - skipping initial sync`);
+          }
+        });
+      });
+    }
+  }, [status, session]);
 
   // Force PIN change if user has default PIN
   // Skip if already on setup-pin page to prevent redirect loop

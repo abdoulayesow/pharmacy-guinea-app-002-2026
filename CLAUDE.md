@@ -7,7 +7,7 @@
 **Seri** is a mobile-first PWA for managing small independent pharmacies in Guinea, West Africa. The pilot client is "Pharmacie Thierno Mamadou" in Conakry.
 
 ### Key Context
-- **Client**: Small pharmacy with 1 owner (Mamadou, 52) + 2 employees (including Fatoumata, 27)
+- **Client**: Small pharmacy with 1 owner (Oumar, 52) + 2 employees (including Abdoulaye, 27)
 - **Current system**: Excel + physical notebooks
 - **Target devices**: Low-end Android smartphones (2GB RAM, Android 8+)
 - **Language**: French only
@@ -304,14 +304,14 @@ const formatDate = (date) => {
 
 ## Personas
 
-### Mamadou (Owner, 52 years)
+### Oumar (Owner, 52 years)
 - **Tech level**: Low (WhatsApp + basic Excel)
 - **Wants**: Simplicity and visible ROI
 - **Uses**: Dashboard, Expenses, Settings
 - **Training tolerance**: < 1 hour
 - **Quote**: "I need something simple, like my notebook but better"
 
-### Fatoumata (Employee, 27 years)
+### Abdoulaye (Employee, 27 years)
 - **Tech level**: Medium (smartphone, apps, social media)
 - **Wants**: Speed and reliability
 - **Uses**: Sales, Stock (view only)

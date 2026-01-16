@@ -16,6 +16,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { db } from '@/lib/client/db';
+import { queueTransaction } from '@/lib/client/sync';
 import type { Sale, SaleItem, Product } from '@/lib/shared/types';
 
 // Edit item structure (includes product reference for UI)
@@ -274,15 +275,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
       });
 
       // Step 5: Add to sync queue
-      await db.sync_queue.add({
-        type: 'SALE',
-        action: 'UPDATE',
-        payload: { id: sale.id },
-        localId: sale.id!,
-        createdAt: new Date(),
-        status: 'PENDING',
-        retryCount: 0,
-      });
+      await queueTransaction('SALE', 'UPDATE', { id: sale.id }, String(sale.id!));
 
       toast.success('Vente modifiée avec succès');
       setIsEditMode(false);

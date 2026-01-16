@@ -142,7 +142,8 @@ export type StockMovementType =
   | 'INVENTORY'
   | 'RECEIPT'
   | 'DAMAGED'
-  | 'EXPIRED';
+  | 'EXPIRED'
+  | 'SUPPLIER_RETURN'; // 🆕 Phase 2: Return to supplier
 
 export interface StockMovement {
   id?: number;

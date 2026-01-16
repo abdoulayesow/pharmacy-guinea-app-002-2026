@@ -145,7 +145,10 @@ export default function NouvelleVentePage() {
   };
 
   const handlePayment = async (method: PaymentMethod) => {
-    if (!currentUser || cartItems.length === 0) return;
+    if (!currentUser || cartItems.length === 0) {
+      toast.error('Erreur: Utilisateur ou panier non valide');
+      return;
+    }
 
     // For cash, validate amount received
     if (method === 'CASH' && showCashCalculator) {
@@ -154,6 +157,14 @@ export default function NouvelleVentePage() {
         toast.error('Montant reçu insuffisant');
         return;
       }
+    }
+
+    // 🆕 For credit sales, enforce customer name requirement
+    if (method === 'CREDIT' && !customerName.trim()) {
+      toast.error('Veuillez entrer le nom du client pour un paiement à crédit');
+      setShowCreditDialog(false);
+      setStep('customer_info'); // Redirect to customer info step
+      return;
     }
 
     setIsProcessing(true);
@@ -252,7 +263,7 @@ export default function NouvelleVentePage() {
       setStep('receipt');
     } catch (error) {
       console.error('Error completing sale:', error);
-      toast.error('Erreur lors de la vente. Veuillez réessayer.');
+      toast.error(`Erreur lors de la vente: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -709,6 +720,36 @@ export default function NouvelleVentePage() {
             </div>
           </Card>
 
+          {/* Customer Info Display - Show if customer info was entered */}
+          {customerName && (
+            <Card className="p-5 sm:p-6 rounded-xl shadow-md border border-blue-700/50 bg-gradient-to-br from-blue-900/30 to-blue-900/10">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">
+                    Client
+                  </div>
+                  <div className="text-white font-bold text-lg mb-0.5 truncate" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {customerName}
+                  </div>
+                  {customerPhone && (
+                    <div className="text-sm text-blue-300/70 font-medium">{customerPhone}</div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setStep('customer_info')}
+                  className="text-blue-400 hover:text-blue-300 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-500/10 transition-all"
+                >
+                  Modifier
+                </button>
+              </div>
+            </Card>
+          )}
+
           <div className="space-y-4">
             <h3 className="text-white font-semibold text-lg sm:text-xl lg:col-span-2">Méthode de paiement</h3>
 
@@ -1033,13 +1074,16 @@ export default function NouvelleVentePage() {
                         1
                       </span>
                       Référence de Transaction
+                      <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700">
+                        OPTIONNEL
+                      </span>
                     </label>
                     <div className="relative">
                       <Input
                         type="text"
                         value={orangeMoneyRef}
                         onChange={(e) => setOrangeMoneyRef(e.target.value.toUpperCase())}
-                        placeholder="OM202601131234"
+                        placeholder="OM202601131234 (optionnel)"
                         className="h-16 bg-slate-950 border-2 border-orange-900/50 focus:border-orange-500 rounded-xl text-lg font-bold text-center text-white placeholder:text-slate-700 tracking-wider"
                         style={{
                           fontVariantNumeric: 'tabular-nums',
@@ -1060,7 +1104,11 @@ export default function NouvelleVentePage() {
                         <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50" />
                       </div>
                       <p className="font-medium leading-relaxed">
-                        Entrez le code de confirmation envoyé par Orange Money après validation du paiement
+                        {orangeMoneyRef ? (
+                          "Code de confirmation saisi - sera enregistré avec la vente"
+                        ) : (
+                          "Laisser vide pour générer automatiquement une référence (OM-timestamp)"
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1095,21 +1143,21 @@ export default function NouvelleVentePage() {
                         setShowOrangeMoneyDialog(false);
                         handlePayment('ORANGE_MONEY');
                       }}
-                      disabled={!orangeMoneyRef || isProcessing}
+                      disabled={isProcessing}
                       className="relative flex-[2] h-14 bg-gradient-to-r from-orange-600 via-orange-500 to-orange-600 hover:from-orange-500 hover:via-orange-400 hover:to-orange-500 text-white font-black rounded-xl shadow-xl shadow-orange-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-orange-400 overflow-hidden"
                       style={{
-                        boxShadow: orangeMoneyRef ? '0 8px 24px rgba(249, 115, 22, 0.5)' : undefined,
+                        boxShadow: '0 8px 24px rgba(249, 115, 22, 0.5)',
                       }}
                     >
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                          Vérification...
+                          Traitement...
                         </>
                       ) : (
                         <>
                           <Check className="w-6 h-6 mr-2 drop-shadow-lg" />
-                          <span className="uppercase tracking-wider">Vérifier &amp; Payer</span>
+                          <span className="uppercase tracking-wider">{orangeMoneyRef ? 'Confirmer Paiement' : 'Payer Sans Réf.'}</span>
                         </>
                       )}
                       {/* Shine effect */}
@@ -1267,23 +1315,52 @@ export default function NouvelleVentePage() {
                     </div>
                   </div>
 
-                  {/* Customer signature */}
-                  {customerName && (
-                    <div className="bg-slate-950/50 rounded-xl p-4 border-2 border-amber-700/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="text-xs font-bold text-amber-400 uppercase tracking-widest">
-                          Client Signataire
-                        </div>
-                        <div className="w-1 h-1 rounded-full bg-amber-500" />
+                  {/* Customer name requirement - Always show for credit */}
+                  <div className={cn(
+                    "rounded-xl p-4 border-2 transition-all",
+                    customerName
+                      ? "bg-slate-950/50 border-amber-700/30"
+                      : "bg-red-950/30 border-red-700/50 animate-pulse"
+                  )}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <span className={cn(
+                          "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border",
+                          customerName
+                            ? "bg-amber-500/20 border-amber-500/50 text-amber-400"
+                            : "bg-red-500/20 border-red-500/50 text-red-400"
+                        )}>
+                          2
+                        </span>
+                        <span className={customerName ? "text-amber-400" : "text-red-400"}>
+                          {customerName ? "Client Signataire" : "Nom du Client Requis"}
+                        </span>
                       </div>
-                      <div className="text-white font-bold text-lg" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {customerName}
-                      </div>
-                      {customerPhone && (
-                        <div className="text-sm text-amber-300/70 mt-1 font-medium">{customerPhone}</div>
-                      )}
+                      {customerName && <div className="w-1 h-1 rounded-full bg-amber-500" />}
+                      {!customerName && <AlertCircle className="w-4 h-4 text-red-400 animate-pulse" />}
                     </div>
-                  )}
+                    {customerName ? (
+                      <>
+                        <div className="text-white font-bold text-lg" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {customerName}
+                        </div>
+                        {customerPhone && (
+                          <div className="text-sm text-amber-300/70 mt-1 font-medium">{customerPhone}</div>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowCreditDialog(false);
+                          setStep('customer_info');
+                        }}
+                        className="w-full mt-2 px-4 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        <AlertCircle className="w-5 h-5" />
+                        <span>Ajouter les informations du client</span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Legal notice */}
                   <div className="bg-amber-900/10 rounded-xl p-4 border border-amber-700/30">
@@ -1314,16 +1391,21 @@ export default function NouvelleVentePage() {
                         setShowCreditDialog(false);
                         handlePayment('CREDIT');
                       }}
-                      disabled={isProcessing}
+                      disabled={isProcessing || !customerName.trim()}
                       className="relative flex-[2] h-12 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:via-amber-400 hover:to-amber-500 text-white font-black rounded-xl shadow-xl shadow-amber-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-amber-400 overflow-hidden"
                       style={{
-                        boxShadow: '0 8px 24px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
+                        boxShadow: customerName.trim() ? '0 8px 24px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)' : undefined,
                       }}
                     >
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-6 h-6 mr-2 animate-spin" />
                           Confirmation...
+                        </>
+                      ) : !customerName.trim() ? (
+                        <>
+                          <AlertCircle className="w-6 h-6 mr-2" />
+                          <span className="uppercase tracking-wider">Nom client requis</span>
                         </>
                       ) : (
                         <>
@@ -1332,7 +1414,9 @@ export default function NouvelleVentePage() {
                         </>
                       )}
                       {/* Shine effect */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
+                      {customerName.trim() && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
+                      )}
                     </Button>
                   </div>
                   </div>

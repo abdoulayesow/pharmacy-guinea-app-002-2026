@@ -22,6 +22,7 @@ import {
   Building2,
 } from 'lucide-react';
 import type { SupplierOrder } from '@/lib/shared/types';
+import { toast } from 'sonner';
 
 export default function PaymentPage() {
   const router = useRouter();
@@ -34,16 +35,29 @@ export default function PaymentPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [applyCreditFirst, setApplyCreditFirst] = useState(true); // Auto-apply credit by default
 
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
   const allOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? [];
 
-  // Filter orders: only show unpaid/partially paid orders
+  // Filter orders: only show unpaid/partially paid orders (exclude returns)
   const pendingOrders = allOrders.filter(
     (o) =>
+      (o.type === 'ORDER' || !o.type) && // Only orders, not returns
       o.totalAmount > o.amountPaid &&
       (!supplierId || o.supplierId === parseInt(supplierId))
   );
+
+  // Calculate available credit from approved returns (DELIVERED status)
+  const availableCredit = allOrders
+    .filter(
+      (o) =>
+        o.type === 'RETURN' &&
+        o.status === 'DELIVERED' &&
+        o.paymentStatus !== 'PAID' && // Return credit not yet applied
+        (!supplierId || o.supplierId === parseInt(supplierId))
+    )
+    .reduce((sum, r) => sum + (r.totalAmount - r.amountPaid), 0);
 
   // Get selected supplier if filtered
   const selectedSupplier = supplierId
@@ -80,26 +94,71 @@ export default function PaymentPage() {
     e.preventDefault();
 
     if (selectedOrders.length === 0) {
-      alert('Sélectionnez au moins une commande');
+      toast.error('Sélectionnez au moins une commande');
       return;
     }
 
-    if (paymentAmountNum <= 0) {
-      alert('Le montant du paiement doit être supérieur à 0');
+    // Validate payment (either cash or credit must be applied)
+    const totalPaymentPower = paymentAmountNum + (applyCreditFirst ? Math.min(availableCredit, totalDue) : 0);
+
+    if (totalPaymentPower <= 0) {
+      toast.error('Le montant du paiement ou crédit doit être supérieur à 0');
       return;
     }
 
+    // Overpayment validation
     if (paymentAmountNum > totalDue) {
-      alert('Le montant du paiement ne peut pas dépasser le total dû');
+      const overpayment = paymentAmountNum - totalDue;
+      toast.error(
+        `Le montant du paiement (${formatCurrency(paymentAmountNum)}) dépasse le total dû (${formatCurrency(totalDue)}). Surpaiement: ${formatCurrency(overpayment)}`,
+        { duration: 5000 }
+      );
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      let remainingPayment = paymentAmountNum;
+      let totalPayment = paymentAmountNum;
+      let creditApplied = 0;
 
-      // Distribute payment across selected orders (oldest first)
+      // Step 1: Apply available credit first (if enabled)
+      if (applyCreditFirst && availableCredit > 0) {
+        const creditToApply = Math.min(availableCredit, totalDue);
+
+        // Get approved returns to mark as paid
+        const approvedReturns = allOrders.filter(
+          (o) =>
+            o.type === 'RETURN' &&
+            o.status === 'DELIVERED' &&
+            o.paymentStatus !== 'PAID' &&
+            (!supplierId || o.supplierId === parseInt(supplierId))
+        );
+
+        let remainingCreditToApply = creditToApply;
+
+        // Mark returns as paid (oldest first)
+        for (const returnOrder of approvedReturns) {
+          if (remainingCreditToApply <= 0) break;
+
+          const returnBalance = returnOrder.totalAmount - returnOrder.amountPaid;
+          const creditFromThisReturn = Math.min(remainingCreditToApply, returnBalance);
+
+          await db.supplier_orders.update(returnOrder.id!, {
+            amountPaid: returnOrder.amountPaid + creditFromThisReturn,
+            paymentStatus: (returnOrder.amountPaid + creditFromThisReturn >= returnOrder.totalAmount) ? 'PAID' : 'PARTIALLY_PAID',
+            updatedAt: new Date(),
+            synced: false,
+          });
+
+          remainingCreditToApply -= creditFromThisReturn;
+          creditApplied += creditFromThisReturn;
+        }
+      }
+
+      // Step 2: Distribute cash payment across selected orders (oldest first)
+      let remainingPayment = totalPayment + creditApplied; // Total payment power (cash + credit)
+
       const ordersToUpdate = selectedOrders
         .map((id) => pendingOrders.find((o) => o.id === id)!)
         .sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
@@ -128,16 +187,24 @@ export default function PaymentPage() {
         remainingPayment -= paymentForThisOrder;
       }
 
-      // Record expense
-      await db.expenses.add({
-        date: new Date(paymentDate),
-        description: `Paiement ${selectedSupplier?.name || 'fournisseur'} - ${selectedOrders.length} commande(s)`,
-        amount: paymentAmountNum,
-        category: 'SUPPLIER_PAYMENT',
-        supplier_order_id: selectedOrders[0], // Link to first order
-        user_id: currentUser?.id || 'unknown',
-        synced: false,
-      });
+      // Step 3: Record expense (only for cash payment, not credit)
+      if (paymentAmountNum > 0) {
+        await db.expenses.add({
+          date: new Date(paymentDate),
+          description: `Paiement ${selectedSupplier?.name || 'fournisseur'} - ${selectedOrders.length} commande(s)${creditApplied > 0 ? ` (Crédit: ${formatCurrency(creditApplied)})` : ''}`,
+          amount: paymentAmountNum,
+          category: 'SUPPLIER_PAYMENT',
+          supplier_order_id: selectedOrders[0], // Link to first order
+          user_id: currentUser?.id || 'unknown',
+          synced: false,
+        });
+      }
+
+      const successMessage = creditApplied > 0
+        ? `Paiement enregistré: ${formatCurrency(paymentAmountNum)} + crédit ${formatCurrency(creditApplied)}`
+        : 'Paiement enregistré avec succès';
+
+      toast.success(successMessage);
 
       // Navigate back
       if (supplierId) {
@@ -147,7 +214,7 @@ export default function PaymentPage() {
       }
     } catch (error) {
       console.error('Error recording payment:', error);
-      alert('Erreur lors de l\'enregistrement du paiement');
+      toast.error('Erreur lors de l\'enregistrement du paiement');
     } finally {
       setIsSubmitting(false);
     }
@@ -272,6 +339,47 @@ export default function PaymentPage() {
               </div>
             )}
           </div>
+
+          {/* Available Credit Section */}
+          {availableCredit > 0 && (
+            <div className="bg-gradient-to-br from-emerald-900/30 to-emerald-800/20 rounded-2xl p-5 border border-emerald-500/30">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                    Crédit disponible
+                  </h4>
+                  <p className="text-xs text-emerald-400/70">
+                    Retours approuvés prêts à appliquer
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-emerald-400">
+                    {formatCurrency(availableCredit)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Credit Application Toggle */}
+              <div className="flex items-center justify-between pt-3 border-t border-emerald-500/20">
+                <span className="text-sm text-emerald-300">Appliquer le crédit automatiquement</span>
+                <button
+                  type="button"
+                  onClick={() => setApplyCreditFirst(!applyCreditFirst)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    applyCreditFirst ? 'bg-emerald-600' : 'bg-slate-700'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      applyCreditFirst ? 'translate-x-6' : 'translate-x-1'
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Select Orders to Pay */}
           <div>
@@ -399,11 +507,19 @@ export default function PaymentPage() {
                   <span className="text-slate-400">Total dû</span>
                   <span className="text-white font-bold">{formatCurrency(totalDue)}</span>
                 </div>
+                {applyCreditFirst && availableCredit > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-emerald-400">Crédit appliqué</span>
+                    <span className="text-emerald-400 font-bold">
+                      - {formatCurrency(Math.min(availableCredit, totalDue))}
+                    </span>
+                  </div>
+                )}
                 {paymentAmountNum > 0 && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-emerald-400">Paiement</span>
-                      <span className="text-emerald-400 font-bold">
+                      <span className="text-blue-400">Paiement comptant</span>
+                      <span className="text-blue-400 font-bold">
                         - {formatCurrency(paymentAmountNum)}
                       </span>
                     </div>
@@ -412,10 +528,10 @@ export default function PaymentPage() {
                       <span
                         className={cn(
                           'text-xl font-bold',
-                          remainingAfterPayment === 0 ? 'text-emerald-400' : 'text-white'
+                          (totalDue - (applyCreditFirst ? Math.min(availableCredit, totalDue) : 0) - paymentAmountNum) === 0 ? 'text-emerald-400' : 'text-white'
                         )}
                       >
-                        {formatCurrency(remainingAfterPayment)}
+                        {formatCurrency(Math.max(0, totalDue - (applyCreditFirst ? Math.min(availableCredit, totalDue) : 0) - paymentAmountNum))}
                       </span>
                     </div>
                   </>
@@ -437,7 +553,11 @@ export default function PaymentPage() {
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || selectedOrders.length === 0 || !paymentAmount || paymentAmountNum <= 0}
+              disabled={
+                isSubmitting ||
+                selectedOrders.length === 0 ||
+                (paymentAmountNum <= 0 && (!applyCreditFirst || availableCredit <= 0))
+              }
               className="flex-1 h-14 text-base bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

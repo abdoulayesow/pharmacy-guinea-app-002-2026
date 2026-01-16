@@ -15,9 +15,47 @@ export async function POST(request: NextRequest) {
     // Require authentication
     const user = await requireAuth(request);
 
-    // Parse request body
+    // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
     const { sales, saleItems, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+
+    // Basic validation: ensure arrays are actually arrays
+    const validationErrors: string[] = [];
+    if (sales && !Array.isArray(sales)) validationErrors.push('sales must be an array');
+    if (saleItems && !Array.isArray(saleItems)) validationErrors.push('saleItems must be an array');
+    if (expenses && !Array.isArray(expenses)) validationErrors.push('expenses must be an array');
+    if (stockMovements && !Array.isArray(stockMovements)) validationErrors.push('stockMovements must be an array');
+    if (products && !Array.isArray(products)) validationErrors.push('products must be an array');
+    if (suppliers && !Array.isArray(suppliers)) validationErrors.push('suppliers must be an array');
+    if (supplierOrders && !Array.isArray(supplierOrders)) validationErrors.push('supplierOrders must be an array');
+    if (supplierOrderItems && !Array.isArray(supplierOrderItems)) validationErrors.push('supplierOrderItems must be an array');
+    if (supplierReturns && !Array.isArray(supplierReturns)) validationErrors.push('supplierReturns must be an array');
+    if (productSuppliers && !Array.isArray(productSuppliers)) validationErrors.push('productSuppliers must be an array');
+    if (creditPayments && !Array.isArray(creditPayments)) validationErrors.push('creditPayments must be an array');
+
+    if (validationErrors.length > 0) {
+      console.error('[API] Sync push validation errors:', validationErrors);
+      return NextResponse.json<SyncPushResponse>(
+        {
+          success: false,
+          errors: validationErrors,
+          synced: {
+            sales: {},
+            saleItems: {},
+            expenses: {},
+            stockMovements: {},
+            products: {},
+            suppliers: {},
+            supplierOrders: {},
+            supplierOrderItems: {},
+            supplierReturns: {},
+            productSuppliers: {},
+            creditPayments: {},
+          },
+        },
+        { status: 400 }
+      );
+    }
 
     console.log('[API] Sync push request from:', user.userId);
     console.log('[API] Items to sync:', {
@@ -280,7 +318,7 @@ export async function POST(request: NextRequest) {
                   price: product.price,
                   priceBuy: product.priceBuy || null,
                   stock: product.stock,
-                  stockMin: product.minStock || 10,
+                  minStock: product.minStock || 10,
                   category: product.category || null,
                   expirationDate: product.expirationDate ? new Date(product.expirationDate) : null,
                   lotNumber: product.lotNumber || null,
@@ -298,7 +336,7 @@ export async function POST(request: NextRequest) {
                 price: product.price,
                 priceBuy: product.priceBuy || null,
                 stock: product.stock,
-                stockMin: product.minStock || 10,
+                minStock: product.minStock || 10,
                 category: product.category || null,
                 expirationDate: product.expirationDate ? new Date(product.expirationDate) : null,
                 lotNumber: product.lotNumber || null,

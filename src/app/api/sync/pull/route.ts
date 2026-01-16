@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
       price: p.price,
       priceBuy: p.priceBuy || undefined,
       stock: p.stock,
-      minStock: p.stockMin,
+      minStock: p.minStock,
       expirationDate: p.expirationDate || undefined,
       lotNumber: p.lotNumber || undefined,
       synced: true,

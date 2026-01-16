@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { signIn, useSession } from 'next-auth/react';
-import { User, ChevronLeft, KeyRound, Clock } from 'lucide-react';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { User, ChevronLeft, KeyRound, Clock, LogOut } from 'lucide-react';
 import { db } from '@/lib/db';
 import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
 import { verifyPin } from '@/lib/client/auth';
@@ -84,6 +84,7 @@ function LoginPageContent() {
   const { data: session, status: sessionStatus } = useSession();
   const {
     login,
+    logout,
     isAuthenticated,
     isInactive,
     lastActivityAt,
@@ -261,6 +262,20 @@ function LoginPageContent() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      // Clear Zustand auth state
+      logout();
+      // Sign out from Google session
+      await signOut({ callbackUrl: '/login' });
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if signOut fails, clear local state
+      logout();
+      router.push('/login');
+    }
+  };
+
   const triggerShake = () => {
     setShake(true);
     setTimeout(() => setShake(false), 500);
@@ -417,19 +432,12 @@ function LoginPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-800 flex flex-col">
-      {/* Header with Logo and Branding */}
-      <div className="relative pt-12 sm:pt-16 pb-8 sm:pb-12 px-4">
-        <div className="max-w-md mx-auto text-center space-y-6 sm:space-y-8">
-          {/* Pharmacy Logo with Full Branding */}
+      {/* Header with Logo */}
+      <div className="relative pt-8 sm:pt-10 pb-4 sm:pb-6 px-4">
+        <div className="max-w-md mx-auto text-center">
+          {/* Pharmacy Logo - Larger */}
           <div className="flex justify-center">
-            <Logo variant="full" size="lg" />
-          </div>
-
-          {/* App Name */}
-          <div>
-            <h1 className="text-4xl sm:text-5xl text-white tracking-tight font-bold">
-              Seri
-            </h1>
+            <Logo variant="full" size="xl" />
           </div>
         </div>
       </div>
@@ -578,6 +586,18 @@ function LoginPageContent() {
                     {error}
                   </div>
                 )}
+
+                {/* Logout Button */}
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="w-full h-12 bg-red-900/30 border-red-700/50 text-red-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-300 font-medium rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Se déconnecter de Google
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -766,6 +786,18 @@ function LoginPageContent() {
                   >
                     PIN oublie?
                   </Link>
+                </div>
+
+                {/* Logout Button */}
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="w-full h-12 bg-red-900/30 border-red-700/50 text-red-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-300 font-medium rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Se déconnecter de Google
+                  </Button>
                 </div>
               </div>
             </div>

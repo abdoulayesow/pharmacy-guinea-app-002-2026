@@ -97,7 +97,7 @@ export default function DashboardPage() {
   });
 
   // 🆕 Supplier debts
-  const pendingOrders = supplierOrders.filter(o => o.status !== 'PAID');
+  const pendingOrders = supplierOrders.filter(o => o.paymentStatus !== 'PAID');
   const totalOwed = pendingOrders.reduce((sum, o) => sum + (o.totalAmount - o.amountPaid), 0);
   const nextPayment = pendingOrders
     .filter(o => o.totalAmount > o.amountPaid)

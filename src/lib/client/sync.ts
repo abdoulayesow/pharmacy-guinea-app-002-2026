@@ -4,7 +4,7 @@
  */
 
 import { db } from './db';
-import type { SyncQueueItem, Sale, Expense, Product } from '@/lib/shared/types';
+import type { SyncQueueItem, Sale, SaleItem, Expense, Product } from '@/lib/shared/types';
 import { generateLocalId } from '@/lib/shared/utils';
 
 // Constants
@@ -17,7 +17,7 @@ const SYNC_TIMEOUT_MS = 30000; // 30 seconds per sync request
  * Add a transaction to the sync queue
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
   payload: any,
   localId?: string
@@ -143,6 +143,7 @@ export async function markFailed(itemId: string | number, error: string): Promis
  */
 export async function prepareSyncPayload(): Promise<{
   sales: Array<Sale & { id: string }>;
+  saleItems: Array<SaleItem & { id: string }>;
   expenses: Array<Expense & { id: string }>;
   products: Array<Product & { id: string }>;
   stockMovements: any[];
@@ -150,6 +151,7 @@ export async function prepareSyncPayload(): Promise<{
   const items = await getPendingItems();
 
   const sales: any[] = [];
+  const saleItems: any[] = [];
   const expenses: any[] = [];
   const products: any[] = [];
   const stockMovements: any[] = [];
@@ -173,7 +175,18 @@ export async function prepareSyncPayload(): Promise<{
     }
   }
 
-  return { sales, expenses, products, stockMovements };
+  // Fetch sale items for each sale
+  for (const sale of sales) {
+    if (sale.id) {
+      const items = await db.sale_items
+        .where('sale_id')
+        .equals(sale.id)
+        .toArray();
+      saleItems.push(...items);
+    }
+  }
+
+  return { sales, saleItems, expenses, products, stockMovements };
 }
 
 /**

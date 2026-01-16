@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'next/navigation';
@@ -21,24 +22,36 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import type { Supplier, SupplierOrder } from '@/lib/shared/types';
+import { SupplierListSkeleton } from '@/components/ui/Skeleton';
 
 type FilterType = 'all' | 'overdue' | 'upcoming';
 
 export default function FournisseursPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('all');
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, router]);
+    // Wait for session to load before redirecting
+    if (status === 'loading') return;
 
-  // Get data from IndexedDB
-  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
-  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? [];
+    // Allow access if either OAuth session or Zustand auth is valid
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs')}`);
+    }
+  }, [isAuthenticated, session, status, router]);
+
+  // Get data from IndexedDB - useLiveQuery returns undefined while loading
+  const suppliersQuery = useLiveQuery(() => db.suppliers.toArray());
+  const supplierOrdersQuery = useLiveQuery(() => db.supplier_orders.toArray());
+
+  // Loading state: queries return undefined before data is ready
+  const isLoading = suppliersQuery === undefined || supplierOrdersQuery === undefined;
+  const suppliers = suppliersQuery ?? [];
+  const supplierOrders = supplierOrdersQuery ?? [];
 
   // Calculate supplier balances and status
   const getSupplierBalance = (supplierId: number) => {
@@ -151,11 +164,13 @@ export default function FournisseursPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  const { isOnline, pendingCount } = useSyncStatus();
+
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
-
-  const { isOnline, pendingCount } = useSyncStatus();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-20">
@@ -299,7 +314,9 @@ export default function FournisseursPage() {
 
         {/* Supplier List */}
         <div className="space-y-3">
-          {sortedSuppliers.length === 0 ? (
+          {isLoading ? (
+            <SupplierListSkeleton count={4} />
+          ) : sortedSuppliers.length === 0 ? (
             <div className="py-20 text-center">
               <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <p className="text-white font-semibold mb-1">Aucun fournisseur</p>
@@ -322,7 +339,7 @@ export default function FournisseursPage() {
               return (
                 <div
                   key={supplier.id}
-                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer group"
+                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer group active:scale-[0.98]"
                   onClick={() => router.push(`/fournisseurs/${supplier.id}`)}
                 >
                   <div className="flex items-start justify-between mb-3">

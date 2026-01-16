@@ -25,8 +25,10 @@ interface AuthState {
   resetFailedAttempts: () => void;
   isLocked: () => boolean;
   clearExpiredLock: () => void;
-  // Sync from NextAuth session to keep states aligned
-  syncFromSession: (sessionUser: { id: string; name?: string | null; role?: string; image?: string | null }) => void;
+  // Sync profile data from NextAuth session (does NOT set isAuthenticated)
+  syncProfileFromSession: (sessionUser: { id: string; name?: string | null; role?: string; image?: string | null }) => void;
+  // Initialize activity for first-time login (called when Google session is new)
+  initializeActivity: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -65,7 +67,9 @@ export const useAuthStore = create<AuthState>()(
 
       isInactive: () => {
         const { lastActivityAt } = get();
-        if (!lastActivityAt) return true;
+        // If no activity recorded yet, user is NOT inactive (assume fresh session)
+        // This prevents redirect loops when lastActivityAt is null
+        if (!lastActivityAt) return false;
         return Date.now() - lastActivityAt > INACTIVITY_TIMEOUT_MS;
       },
 
@@ -104,11 +108,11 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      syncFromSession: (sessionUser) => {
-        const { isAuthenticated, currentUser } = get();
-        
-        // Only sync if not already authenticated or user changed
-        if (!isAuthenticated || currentUser?.id !== sessionUser.id) {
+      syncProfileFromSession: (sessionUser: { id: string; name?: string | null; role?: string; image?: string | null }) => {
+        const { currentUser } = get();
+
+        // Only sync if user changed (profile data sync only, NOT auth state)
+        if (currentUser?.id !== sessionUser.id) {
           set({
             currentUser: {
               id: sessionUser.id,
@@ -117,9 +121,16 @@ export const useAuthStore = create<AuthState>()(
               image: sessionUser.image || undefined,
               createdAt: new Date(),
             },
-            isAuthenticated: true,
-            lastActivityAt: Date.now(),
+            // Note: Does NOT set isAuthenticated - that requires PIN verification
           });
+        }
+      },
+
+      initializeActivity: () => {
+        const { lastActivityAt } = get();
+        // Only initialize if no activity recorded yet (first-time login)
+        if (!lastActivityAt) {
+          set({ lastActivityAt: Date.now() });
         }
       },
     }),

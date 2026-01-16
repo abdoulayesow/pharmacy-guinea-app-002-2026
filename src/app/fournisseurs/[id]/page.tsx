@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
@@ -21,38 +22,70 @@ import {
   CheckCircle2,
   Truck,
   Edit3,
+  X,
 } from 'lucide-react';
 import type { Supplier, SupplierOrder } from '@/lib/shared/types';
 
 export default function SupplierDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated } = useAuthStore();
   const supplierId = parseInt(params.id as string);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, router]);
+  // Check auth status
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  const isAuthChecking = status === 'loading';
+  const isFullyAuthenticated = isAuthenticated || hasOAuthSession;
 
-  // Get supplier and orders
+  // Redirect if not authenticated (only after auth check completes)
+  useEffect(() => {
+    if (isAuthChecking) return;
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/fournisseurs/${supplierId}`)}`);
+    }
+  }, [isAuthChecking, isFullyAuthenticated, router, supplierId]);
+
+  // Get supplier and orders/returns
   const supplier = useLiveQuery(
     () => db.suppliers.get(supplierId),
     [supplierId]
   );
-  const orders = useLiveQuery(
+  const allTransactions = useLiveQuery(
     () => db.supplier_orders.where('supplierId').equals(supplierId).reverse().toArray(),
     [supplierId]
   ) ?? [];
+  const orders = allTransactions.filter(t => t.type === 'ORDER' || !t.type); // Include legacy orders without type
+  const returns = allTransactions.filter(t => t.type === 'RETURN');
+  const allOrderItems = useLiveQuery(
+    () => db.supplier_order_items.toArray(),
+    []
+  ) ?? [];
 
-  // Calculate stats
-  const totalOwed = orders.reduce((sum, o) => sum + (o.totalAmount - o.amountPaid), 0);
-  const totalOrdered = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+  // Calculate stats (only for orders, not returns)
+  const totalOwed = orders.reduce((sum, o) => {
+    if (o.status === 'CANCELLED') return sum;
+    return sum + ((o.calculatedTotal ?? o.totalAmount) - o.amountPaid);
+  }, 0);
+  const totalOrdered = orders.reduce((sum, o) => {
+    if (o.status === 'CANCELLED') return sum;
+    return sum + (o.calculatedTotal ?? o.totalAmount);
+  }, 0);
   const totalPaid = orders.reduce((sum, o) => sum + o.amountPaid, 0);
 
   const getPaymentStatus = (order: SupplierOrder): 'overdue' | 'urgent' | 'upcoming' | 'paid' => {
-    if (order.status === 'PAID') return 'paid';
+    // For returns, check paymentStatus instead
+    if (order.type === 'RETURN') {
+      if (order.paymentStatus === 'PAID') return 'paid';
+      return 'upcoming'; // Returns don't have due dates
+    }
+
+    // For orders, check payment status
+    if (order.paymentStatus === 'PAID' || (order.status === 'DELIVERED' && order.amountPaid >= (order.calculatedTotal ?? order.totalAmount))) {
+      return 'paid';
+    }
+
+    if (order.status === 'CANCELLED') return 'upcoming'; // Cancelled orders don't need payment
 
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -102,8 +135,10 @@ export default function SupplierDetailPage() {
     }
   };
 
-  const getOrderStatusConfig = (status: SupplierOrder['status']) => {
-    switch (status) {
+  const getOrderStatusConfig = (order: SupplierOrder) => {
+    // First check order lifecycle status
+    switch (order.status) {
+      case 'PENDING':
       case 'ORDERED':
         return {
           label: 'Commandé',
@@ -111,32 +146,74 @@ export default function SupplierDetailPage() {
           color: 'text-blue-400',
           bgColor: 'bg-blue-500/10',
         };
+      case 'CANCELLED':
+        return {
+          label: 'Annulé',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
+        };
       case 'DELIVERED':
+        // For delivered orders, show payment status
+        switch (order.paymentStatus) {
+          case 'PAID':
+            return {
+              label: 'Payé',
+              icon: CheckCircle2,
+              color: 'text-emerald-400',
+              bgColor: 'bg-emerald-500/10',
+            };
+          case 'PARTIALLY_PAID':
+            return {
+              label: 'Partiellement payé',
+              icon: CreditCard,
+              color: 'text-amber-400',
+              bgColor: 'bg-amber-500/10',
+            };
+          default:
+            return {
+              label: 'Livré',
+              icon: Truck,
+              color: 'text-purple-400',
+              bgColor: 'bg-purple-500/10',
+            };
+        }
+      default:
         return {
-          label: 'Livré',
-          icon: Truck,
-          color: 'text-purple-400',
-          bgColor: 'bg-purple-500/10',
-        };
-      case 'PARTIALLY_PAID':
-        return {
-          label: 'Partiellement payé',
-          icon: CreditCard,
-          color: 'text-amber-400',
-          bgColor: 'bg-amber-500/10',
-        };
-      case 'PAID':
-        return {
-          label: 'Payé',
-          icon: CheckCircle2,
-          color: 'text-emerald-400',
-          bgColor: 'bg-emerald-500/10',
+          label: 'En cours',
+          icon: Package,
+          color: 'text-slate-400',
+          bgColor: 'bg-slate-500/10',
         };
     }
   };
 
-  if (!isAuthenticated || !supplier) {
+  // Show loading while checking auth or loading supplier
+  if (isAuthChecking || supplier === undefined) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Redirect handled in useEffect, but return null if not authenticated
+  if (!isFullyAuthenticated) {
     return null;
+  }
+
+  // Supplier not found
+  if (!supplier) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        <Building2 className="w-16 h-16 text-slate-600 mb-4" />
+        <h1 className="text-xl font-bold mb-2">Fournisseur non trouvé</h1>
+        <p className="text-slate-400 mb-4">Ce fournisseur n'existe pas ou a été supprimé.</p>
+        <Button onClick={() => router.push('/fournisseurs')} className="bg-emerald-600 hover:bg-emerald-500">
+          Retour aux fournisseurs
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -146,7 +223,7 @@ export default function SupplierDetailPage() {
         <div className="flex items-center gap-3 p-4 max-w-2xl mx-auto">
           <button
             onClick={() => router.back()}
-            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors active:scale-95"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -156,7 +233,7 @@ export default function SupplierDetailPage() {
           </div>
           <button
             onClick={() => {/* TODO: Edit supplier */}}
-            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+            className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors active:scale-95"
           >
             <Edit3 className="w-4 h-4" />
           </button>
@@ -218,57 +295,66 @@ export default function SupplierDetailPage() {
         <div className="grid grid-cols-3 gap-2">
           <Button
             onClick={() => router.push(`/fournisseurs/commande/nouvelle?supplierId=${supplierId}`)}
-            className="h-20 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center gap-1"
+            className="h-20 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
           >
             <Package className="w-5 h-5" />
-            <span className="text-xs font-semibold">Nouvelle commande</span>
+            <span className="text-xs font-semibold">Commander</span>
           </Button>
           <Button
             onClick={() => router.push(`/fournisseurs/paiement?supplierId=${supplierId}`)}
             disabled={totalOwed === 0}
-            className="h-20 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-20 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
           >
             <CreditCard className="w-5 h-5" />
             <span className="text-xs font-semibold">Paiement</span>
           </Button>
           <Button
             onClick={() => router.push(`/fournisseurs/retour/nouveau?supplierId=${supplierId}`)}
-            className="h-20 bg-orange-600 hover:bg-orange-500 text-white rounded-xl flex flex-col items-center justify-center gap-1"
+            className="h-20 bg-orange-600 hover:bg-orange-500 text-white rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"
           >
             <RotateCcw className="w-5 h-5" />
             <span className="text-xs font-semibold">Retour produit</span>
           </Button>
         </div>
 
-        {/* Orders List */}
+        {/* Orders and Returns List */}
         <div>
           <h3 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wide">
-            Historique des commandes
+            Historique des commandes et retours
           </h3>
 
-          {orders.length === 0 ? (
+          {allTransactions.length === 0 ? (
             <div className="bg-slate-900 rounded-xl p-8 border border-slate-700 text-center">
               <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 mb-1">Aucune commande</p>
+              <p className="text-slate-400 mb-1">Aucune commande ou retour</p>
               <p className="text-sm text-slate-500">Créez votre première commande</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => {
+              {allTransactions.map((order) => {
                 const paymentStatus = getPaymentStatus(order);
                 const statusConfig = getStatusConfig(paymentStatus);
                 const StatusIcon = statusConfig.icon;
-                const orderStatusConfig = getOrderStatusConfig(order.status);
+                const orderStatusConfig = getOrderStatusConfig(order);
                 const OrderStatusIcon = orderStatusConfig.icon;
-                const balance = order.totalAmount - order.amountPaid;
+                const balance = order.type === 'RETURN' 
+                  ? order.totalAmount - order.amountPaid // For returns, this is refund amount
+                  : (order.calculatedTotal ?? order.totalAmount) - order.amountPaid;
+                const orderItemsCount = allOrderItems.filter(item => item.order_id === order.id).length;
+                const isReturn = order.type === 'RETURN';
 
                 return (
                   <div
                     key={order.id}
-                    className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer"
-                    onClick={() => router.push(`/fournisseurs/paiement/${order.id}`)}
+                    className={cn(
+                      "bg-slate-900 rounded-xl p-4 border transition-all cursor-pointer active:scale-[0.98]",
+                      isReturn ? "border-orange-700 hover:border-orange-600" : "border-slate-700 hover:border-slate-600"
+                    )}
+                    onClick={() => {
+                      router.push(`/fournisseurs/commande/${order.id}`);
+                    }}
                   >
-                    {/* Order Header */}
+                    {/* Order/Return Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <div className={cn('p-2 rounded-lg', orderStatusConfig.bgColor)}>
@@ -276,16 +362,21 @@ export default function SupplierDetailPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-white">
-                            Commande #{order.id}
+                            {isReturn ? 'Retour' : 'Commande'} #{order.id}
                           </p>
                           <p className="text-xs text-slate-500">
-                            {formatDate(order.orderDate)}
+                            {isReturn ? 'Date retour' : 'Date commande'}: {formatDate(order.orderDate)}
                           </p>
+                          {orderItemsCount > 0 && (
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {orderItemsCount} {orderItemsCount === 1 ? 'produit' : 'produits'}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-white">
-                          {formatCurrency(order.totalAmount)}
+                          {formatCurrency(order.calculatedTotal ?? order.totalAmount)}
                         </p>
                         <p className={cn('text-xs font-semibold', orderStatusConfig.color)}>
                           {orderStatusConfig.label}
@@ -293,20 +384,20 @@ export default function SupplierDetailPage() {
                       </div>
                     </div>
 
-                    {/* Payment Progress */}
-                    {balance > 0 && (
+                    {/* Payment/Refund Progress */}
+                    {balance > 0 && !isReturn && (
                       <>
                         <div className="mb-2">
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="text-slate-500">Paiement</span>
                             <span className="text-slate-400 font-medium">
-                              {Math.round((order.amountPaid / order.totalAmount) * 100)}%
+                              {Math.round((order.amountPaid / (order.calculatedTotal ?? order.totalAmount)) * 100)}%
                             </span>
                           </div>
                           <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-emerald-500 transition-all"
-                              style={{ width: `${(order.amountPaid / order.totalAmount) * 100}%` }}
+                              style={{ width: `${(order.amountPaid / (order.calculatedTotal ?? order.totalAmount)) * 100}%` }}
                             />
                           </div>
                         </div>

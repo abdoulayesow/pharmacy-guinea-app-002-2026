@@ -1,16 +1,15 @@
 'use client';
 
 import { useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAuthStore, INACTIVITY_TIMEOUT_MS } from '@/stores/auth';
-import { useLockStore, LOCK_TIMEOUT_MS } from '@/stores/lock';
+import { useLockStore } from '@/stores/lock';
 
 // Check interval increased to 60s for better battery life on mobile
 const CHECK_INTERVAL_MS = 60 * 1000;
 
 /**
- * Hook to monitor user activity and redirect to login after inactivity.
+ * Hook to monitor user activity and trigger lock after inactivity.
  *
  * Optimizations for mobile battery life:
  * - Uses visibility API to pause checks when tab is hidden
@@ -19,15 +18,15 @@ const CHECK_INTERVAL_MS = 60 * 1000;
  *
  * Flow:
  * - Tracks user interactions (clicks, key presses, touches, scrolls)
- * - Updates lastActivityAt in Zustand store on activity
- * - Redirects to /login after 5 minutes of inactivity (PIN re-entry required)
+ * - Updates lastActivityAt in auth store (single source of truth)
+ * - Triggers lock('inactivity') after 5 minutes of inactivity
+ * - AppLockGuard handles the redirect to /login for PIN re-entry
  * - Only active when user has a valid Google OAuth session
  */
 export function useActivityMonitor() {
-  const router = useRouter();
   const { data: session, status } = useSession();
-  const { updateActivity, logout, lastActivityAt } = useAuthStore();
-  const { isLocked, lock, updateActivity: updateLockActivity, checkAutoLock } = useLockStore();
+  const { updateActivity, lastActivityAt } = useAuthStore();
+  const { isLocked, lock } = useLockStore();
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isVisibleRef = useRef(true);
 
@@ -36,35 +35,27 @@ export function useActivityMonitor() {
   const THROTTLE_MS = 30 * 1000;
 
   const checkInactivity = useCallback(() => {
+    // Don't check if no activity recorded yet (fresh session)
     if (!lastActivityAt) return;
 
     const timeSinceActivity = Date.now() - lastActivityAt;
 
-    // First, check if we should auto-lock (shorter timeout)
-    if (!isLocked && timeSinceActivity >= LOCK_TIMEOUT_MS) {
+    // Check if we should trigger inactivity lock (redirects to login via AppLockGuard)
+    if (!isLocked && timeSinceActivity >= INACTIVITY_TIMEOUT_MS) {
       // Auto-lock due to inactivity
+      // AppLockGuard will handle the redirect to login page for PIN re-entry
       lock('inactivity');
-      return;
     }
-
-    // Then check if we should logout (longer timeout)
-    if (timeSinceActivity > INACTIVITY_TIMEOUT_MS) {
-      // User has been inactive for > logout timeout
-      // Logout from Zustand (requires PIN re-entry) but keep Google session
-      logout();
-      router.push('/login');
-    }
-  }, [lastActivityAt, logout, router, isLocked, lock]);
+  }, [lastActivityAt, isLocked, lock]);
 
   const handleActivity = useCallback(() => {
     const now = Date.now();
     if (now - lastUpdateRef.current > THROTTLE_MS) {
       lastUpdateRef.current = now;
+      // Update auth store only (single source of truth for activity)
       updateActivity();
-      // Also update lock store activity (for auto-lock timing)
-      updateLockActivity();
     }
-  }, [updateActivity, updateLockActivity]);
+  }, [updateActivity]);
 
   // Set up activity listeners
   useEffect(() => {
@@ -75,7 +66,6 @@ export function useActivityMonitor() {
 
     // Initialize activity on mount
     updateActivity();
-    updateLockActivity();
 
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
 

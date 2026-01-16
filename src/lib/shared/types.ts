@@ -153,6 +153,7 @@ export interface StockMovement {
   reason: string;
   created_at: Date;
   user_id: string;
+  supplier_order_id?: number; // 🆕 Optional link to supplier order (for RECEIPT type)
   synced: boolean;
 }
 
@@ -168,7 +169,9 @@ export type SyncType =
   | 'STOCK_MOVEMENT'
   | 'SUPPLIER' // 🆕
   | 'SUPPLIER_ORDER' // 🆕
+  | 'SUPPLIER_ORDER_ITEM' // 🆕 Order line items
   | 'SUPPLIER_RETURN' // 🆕
+  | 'PRODUCT_SUPPLIER' // 🆕 Product-supplier links
   | 'CREDIT_PAYMENT' // 🆕 Partial payment tracking
   | 'USER'; // 🆕 User PIN updates
 export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN';
@@ -189,7 +192,9 @@ export interface SyncQueueItem {
 // Supplier Types (NEW - from user research 2026-01)
 // ============================================================================
 
-export type SupplierOrderStatus = 'ORDERED' | 'DELIVERED' | 'PARTIALLY_PAID' | 'PAID';
+export type SupplierOrderStatus = 'PENDING' | 'ORDERED' | 'DELIVERED' | 'CANCELLED';
+export type SupplierTransactionType = 'ORDER' | 'RETURN';
+export type SupplierPaymentStatus = 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE';
 export type ReturnReason = 'EXPIRING' | 'DAMAGED' | 'OTHER';
 
 export interface Supplier {
@@ -207,18 +212,59 @@ export interface SupplierOrder {
   id?: number;
   serverId?: number;
   supplierId: number;
-  orderDate: Date;
-  deliveryDate?: Date;
-  totalAmount: number; // Total order amount in GNF
-  amountPaid: number; // Amount paid so far in GNF
-  dueDate: Date; // Calculated from orderDate + paymentTermsDays
-  status: SupplierOrderStatus;
+  type: SupplierTransactionType; // 'ORDER' or 'RETURN'
+  orderDate: Date; // For returns, this is the return submission date
+  deliveryDate?: Date; // Date when order/return was delivered
+  totalAmount: number; // Total order/return amount in GNF (kept for backward compatibility)
+  calculatedTotal?: number; // Calculated from order items (preferred)
+  amountPaid: number; // Amount paid so far in GNF (for orders) or refunded (for returns)
+  dueDate: Date; // Calculated from orderDate + paymentTermsDays (for orders only)
+  status: SupplierOrderStatus; // 'PENDING' | 'ORDERED' | 'DELIVERED' | 'CANCELLED'
+  paymentStatus: SupplierPaymentStatus; // 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE' - for returns, tracks refund status
+  cancelledAt?: Date; // Timestamp when cancelled
   notes?: string;
+  // Return-specific fields (only used when type === 'RETURN')
+  returnReason?: ReturnReason; // Reason for return
+  returnProductId?: number; // Product being returned (for single-product returns)
   createdAt: Date;
   updatedAt: Date;
   synced: boolean;
 }
 
+// 🆕 Supplier Order Item - links products to orders/returns
+export interface SupplierOrderItem {
+  id?: number;
+  serverId?: number;
+  order_id: number;
+  product_id?: number; // null if new product not yet created
+  product_name: string; // Name from supplier (may differ from catalog)
+  category?: string; // Category for new products (stored for creation during delivery)
+  quantity: number; // Ordered quantity
+  quantityReceived?: number; // Received quantity (for delivery confirmation)
+  unit_price: number; // Price from supplier
+  subtotal: number;
+  notes?: string; // Product-specific notes
+  synced: boolean;
+}
+
+// 🆕 Product-Supplier Relationship
+export interface ProductSupplier {
+  id?: number;
+  serverId?: number;
+  product_id: number;
+  supplier_id: number;
+  supplier_product_code?: string; // Supplier's product code/SKU
+  supplier_product_name?: string; // How supplier names it
+  default_price?: number; // Default price from this supplier
+  is_primary: boolean; // Primary supplier for this product
+  last_ordered_date?: Date;
+  synced: boolean;
+}
+
+/**
+ * @deprecated Use SupplierOrder with type='RETURN' instead
+ * This interface is kept for backward compatibility during migration
+ */
 export interface SupplierReturn {
   id?: number;
   serverId?: number;
@@ -253,12 +299,15 @@ export interface LoginResponse {
 
 export interface SyncPushRequest {
   sales?: Sale[];
+  saleItems?: SaleItem[]; // Sale line items
   expenses?: Expense[];
   stockMovements?: StockMovement[];
   products?: Product[];
   suppliers?: Supplier[]; // 🆕
   supplierOrders?: SupplierOrder[]; // 🆕
+  supplierOrderItems?: SupplierOrderItem[]; // 🆕 Order line items
   supplierReturns?: SupplierReturn[]; // 🆕
+  productSuppliers?: ProductSupplier[]; // 🆕 Product-supplier links
   creditPayments?: CreditPayment[]; // 🆕 Partial payment tracking
 }
 
@@ -266,12 +315,15 @@ export interface SyncPushResponse {
   success: boolean;
   synced: {
     sales: Record<string, number>; // Map localId -> serverId
+    saleItems: Record<string, number>; // Map localId -> serverId
     expenses: Record<string, number>;
     stockMovements: Record<string, number>;
     products: Record<string, number>;
     suppliers: Record<string, number>; // 🆕
     supplierOrders: Record<string, number>; // 🆕
+    supplierOrderItems: Record<string, number>; // 🆕 Order line items
     supplierReturns: Record<string, number>; // 🆕
+    productSuppliers: Record<string, number>; // 🆕 Product-supplier links
     creditPayments: Record<string, number>; // 🆕 Partial payment tracking
   };
   errors?: string[];
@@ -290,7 +342,9 @@ export interface SyncPullResponse {
     stockMovements: StockMovement[];
     suppliers: Supplier[]; // 🆕
     supplierOrders: SupplierOrder[]; // 🆕
+    supplierOrderItems: SupplierOrderItem[]; // 🆕 Order line items
     supplierReturns: SupplierReturn[]; // 🆕
+    productSuppliers: ProductSupplier[]; // 🆕 Product-supplier links
     creditPayments: CreditPayment[]; // 🆕 Partial payment tracking
   };
   serverTime: Date;

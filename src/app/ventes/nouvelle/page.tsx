@@ -759,22 +759,22 @@ export default function NouvelleVentePage() {
                 </div>
               </button>
 
-              {/* Cash Calculator Panel - REGISTER TACTILE INTERFACE */}
+              {/* Cash Calculator Panel - COMPACT REGISTER INTERFACE */}
               {showCashCalculator && (
                 <div
-                  className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/20 rounded-2xl p-6 border-2 border-emerald-700/30 shadow-2xl space-y-5 animate-in slide-in-from-top duration-300"
+                  className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/20 rounded-xl p-4 border-2 border-emerald-700/30 shadow-xl space-y-3 animate-in slide-in-from-top duration-300"
                   style={{
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)',
                   }}
                 >
-                  {/* Register display */}
+                  {/* Register display - Compact */}
                   <div className="relative">
-                    <label className="block text-xs font-bold text-emerald-400 mb-2 uppercase tracking-widest">
+                    <label className="block text-xs font-bold text-emerald-400 mb-1.5 uppercase tracking-widest">
                       Montant Reçu
                     </label>
-                    <div className="relative bg-slate-950 rounded-lg p-4 border-2 border-emerald-900/50"
+                    <div className="relative bg-slate-950 rounded-lg p-3 border-2 border-emerald-900/50"
                       style={{
-                        boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)',
+                        boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5)',
                       }}
                     >
                       <Input
@@ -783,12 +783,13 @@ export default function NouvelleVentePage() {
                         value={amountReceived}
                         onChange={(e) => setAmountReceived(e.target.value.replace(/[^0-9]/g, ''))}
                         placeholder={cartTotal.toString()}
-                        className="h-16 text-3xl font-bold text-center bg-transparent border-none text-emerald-400 placeholder:text-emerald-900/50 focus-visible:ring-0"
+                        className="h-12 text-2xl font-bold text-center bg-transparent border-none text-emerald-400 placeholder:text-emerald-900/50 focus-visible:ring-0"
                         style={{
                           fontVariantNumeric: 'tabular-nums',
                           textShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
                           letterSpacing: '0.05em',
                         }}
+                        autoFocus
                       />
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">
                         GNF
@@ -796,114 +797,70 @@ export default function NouvelleVentePage() {
                     </div>
                   </div>
 
-                  {/* Quick amount chips - embossed button style */}
-                  <div>
-                    <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
-                      Montants Rapides
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {smartAmounts.map((amount, index) => (
-                        <button
-                          key={amount}
-                          onClick={() => setAmountReceived(amount.toString())}
-                          className={cn(
-                            'relative px-4 py-3 rounded-lg text-sm font-bold transition-all active:scale-95 border-2 overflow-hidden',
-                            parseFloat(amountReceived) === amount
-                              ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-500/50'
-                              : index === 0
-                              ? 'bg-gradient-to-b from-emerald-900/40 to-emerald-900/20 text-emerald-300 border-emerald-700/50 hover:border-emerald-600 shadow-inner'
-                              : 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-300 border-slate-700/50 hover:border-slate-600 shadow-inner'
-                          )}
-                          style={{
-                            fontVariantNumeric: 'tabular-nums',
-                            boxShadow: parseFloat(amountReceived) === amount
-                              ? '0 4px 12px rgba(16, 185, 129, 0.4), inset 0 -1px 2px rgba(0,0,0,0.3)'
-                              : 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 2px rgba(0,0,0,0.3)',
-                          }}
-                        >
-                          {index === 0 && <span className="mr-1">✓</span>}
-                          {formatCurrency(amount)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Change display - receipt print style */}
+                  {/* Change display - Compact receipt style */}
                   {amountReceived && parseFloat(amountReceived) >= cartTotal && (
                     <div
-                      className="relative bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 rounded-xl p-5 border-2 border-emerald-600/50 animate-in slide-in-from-bottom duration-300"
+                      className="relative bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 rounded-lg p-3 border-2 border-emerald-600/50 animate-in slide-in-from-bottom duration-200"
                       style={{
-                        boxShadow: '0 4px 16px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)',
                       }}
                     >
-                      {/* Decorative receipt perforation */}
-                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex gap-2">
-                        {[...Array(8)].map((_, i) => (
-                          <div key={i} className="w-2 h-2 rounded-full bg-slate-950 border border-emerald-700/50" />
-                        ))}
-                      </div>
-
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between">
                         <span className="text-sm font-bold text-emerald-400 uppercase tracking-wider">Monnaie</span>
                         <div className="flex items-center gap-2">
                           {changeAmount === 0 && (
-                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded border border-emerald-500/50">
+                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/50">
                               EXACT
                             </span>
                           )}
+                          <span className="text-2xl font-black text-emerald-400"
+                            style={{
+                              fontVariantNumeric: 'tabular-nums',
+                              textShadow: '0 0 15px rgba(16, 185, 129, 0.4)',
+                            }}
+                          >
+                            {formatCurrency(changeAmount)}
+                          </span>
                         </div>
-                      </div>
-                      <div className="text-4xl font-black text-emerald-400 text-right"
-                        style={{
-                          fontVariantNumeric: 'tabular-nums',
-                          textShadow: '0 0 20px rgba(16, 185, 129, 0.4)',
-                          letterSpacing: '-0.02em',
-                        }}
-                      >
-                        {formatCurrency(changeAmount)}
                       </div>
                     </div>
                   )}
 
                   {amountReceived && parseFloat(amountReceived) < cartTotal && (
-                    <div className="bg-red-950/50 rounded-xl p-4 border-2 border-red-700/50 animate-in slide-in-from-bottom duration-300">
-                      <div className="flex items-center gap-3 text-red-400">
-                        <AlertCircle className="w-6 h-6 flex-shrink-0" />
-                        <div>
-                          <div className="font-bold text-sm">Montant insuffisant</div>
-                          <div className="text-xs text-red-300 mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                            Manque {formatCurrency(cartTotal - parseFloat(amountReceived))}
-                          </div>
+                    <div className="bg-red-950/50 rounded-lg p-3 border-2 border-red-700/50 animate-in slide-in-from-bottom duration-200">
+                      <div className="flex items-center gap-2 text-red-400">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <span className="font-bold text-sm">Montant insuffisant</span>
+                          <span className="text-xs text-red-300 ml-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            (Manque {formatCurrency(cartTotal - parseFloat(amountReceived))})
+                          </span>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Confirmation button - receipt print action */}
-                  {amountReceived && parseFloat(amountReceived) >= cartTotal && (
-                    <Button
-                      onClick={() => handlePayment('CASH')}
-                      disabled={isProcessing}
-                      className="relative w-full h-16 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-400 hover:to-emerald-500 text-white font-black text-lg rounded-xl shadow-xl shadow-emerald-500/50 active:scale-95 transition-all animate-in zoom-in duration-300 border-2 border-emerald-400 overflow-hidden"
-                      style={{
-                        boxShadow: '0 8px 24px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
-                      }}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Loader2 className="w-6 h-6 mr-2 animate-spin" />
-                          Traitement en cours...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-7 h-7 mr-2 drop-shadow-lg" />
-                          <span className="uppercase tracking-wider">Confirmer Paiement</span>
-                        </>
-                      )}
-                      {/* Shine effect */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] animate-shimmer" />
-                    </Button>
-                  )}
+                  {/* Confirmation button - Always visible when calculator is open */}
+                  <Button
+                    onClick={() => handlePayment('CASH')}
+                    disabled={isProcessing || !amountReceived || parseFloat(amountReceived) < cartTotal}
+                    className="relative w-full h-14 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-400 hover:to-emerald-500 text-white font-black text-base rounded-xl shadow-lg shadow-emerald-500/40 active:scale-95 transition-all border-2 border-emerald-400 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    style={{
+                      boxShadow: (!amountReceived || parseFloat(amountReceived) < cartTotal) ? undefined : '0 6px 20px rgba(16, 185, 129, 0.4)',
+                    }}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Traitement...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-6 h-6 mr-2" />
+                        <span className="uppercase tracking-wider">Confirmer Paiement</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
             </div>

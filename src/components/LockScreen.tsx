@@ -12,14 +12,19 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function LockScreen() {
-  const { isLocked, lockReason, unlock, updateActivity } = useLockStore();
-  const { currentUser } = useAuthStore();
+  const { isLocked, lockReason, unlock, _hasHydrated, setHasHydrated } = useLockStore();
+  const { currentUser, updateActivity } = useAuthStore();
   const { data: session } = useSession();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [hasBiometric, setHasBiometric] = useState(false);
+
+  // Hydrate on mount
+  useEffect(() => {
+    setHasHydrated(true);
+  }, [setHasHydrated]);
 
   // Get current user ID
   const userId = session?.user?.id || currentUser?.id;
@@ -56,6 +61,14 @@ export function LockScreen() {
       setError('');
     }
   }, [isLocked]);
+
+  // Clear PIN on unmount (e.g., page refresh)
+  useEffect(() => {
+    return () => {
+      setPin('');
+      setError('');
+    };
+  }, []);
 
   // Update activity when user interacts with lock screen
   useEffect(() => {
@@ -150,6 +163,9 @@ export function LockScreen() {
     }
   }, [pin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Wait for hydration before rendering to prevent hydration mismatch
+  if (!_hasHydrated) return null;
+  
   if (!isLocked) return null;
 
   const lockMessage = lockReason === 'inactivity' 
@@ -180,7 +196,7 @@ export function LockScreen() {
         className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl border border-slate-700 w-full max-w-sm shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e: React.TouchEvent) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
       >
         <div className="p-6">
           {/* Lock Icon */}

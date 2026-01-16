@@ -19,7 +19,9 @@ import type {
   SyncQueueItem,
   Supplier,
   SupplierOrder,
+  SupplierOrderItem, // 🆕 Order line items
   SupplierReturn,
+  ProductSupplier, // 🆕 Product-supplier links
   CreditPayment, // 🆕 Credit payment tracking
 } from '@/lib/shared/types';
 
@@ -37,7 +39,9 @@ class SeriDatabase extends Dexie {
   // 🆕 Supplier tables (from user research 2026-01)
   suppliers!: Table<Supplier>;
   supplier_orders!: Table<SupplierOrder>;
+  supplier_order_items!: Table<SupplierOrderItem>; // 🆕 Order line items
   supplier_returns!: Table<SupplierReturn>;
+  product_suppliers!: Table<ProductSupplier>; // 🆕 Product-supplier links
   credit_payments!: Table<CreditPayment>; // 🆕 Partial payment tracking
 
   constructor() {
@@ -112,6 +116,66 @@ class SeriDatabase extends Dexie {
       supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
       supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
       credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    });
+
+    // Version 6: Add supplier order items and product-supplier links (2026-01)
+    this.version(6).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced',
+      sale_items: '++id, sale_id, product_id',
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, supplier_order_id, synced', // 🆕 Added supplier_order_id index
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, status, dueDate, synced',
+      supplier_order_items: '++id, serverId, order_id, product_id, synced', // 🆕 New table for order line items
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced',
+      product_suppliers: '++id, serverId, product_id, supplier_id, is_primary, synced', // 🆕 New table for product-supplier links
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    });
+
+    // Version 7: Unify orders and returns, add payment status and delivery confirmation (2026-01)
+    this.version(7).stores({
+      users: 'id, role',
+      products: '++id, serverId, name, category, expirationDate, synced',
+      sales: '++id, serverId, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced',
+      sale_items: '++id, sale_id, product_id',
+      expenses: '++id, serverId, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '++id, serverId, product_id, created_at, supplier_order_id, synced',
+      sync_queue: '++id, type, status, createdAt',
+      suppliers: '++id, serverId, name, synced',
+      supplier_orders: '++id, serverId, supplierId, type, status, paymentStatus, dueDate, synced', // 🆕 Added type and paymentStatus indexes
+      supplier_order_items: '++id, serverId, order_id, product_id, synced',
+      supplier_returns: '++id, serverId, supplierId, productId, applied, synced', // Keep for backward compatibility
+      product_suppliers: '++id, serverId, product_id, supplier_id, is_primary, synced',
+      credit_payments: '++id, serverId, sale_id, payment_date, synced',
+    }).upgrade(async (tx) => {
+      // Migrate existing orders: set type='ORDER' and status mapping
+      const orders = await tx.table('supplier_orders').toArray();
+      for (const order of orders) {
+        const updates: any = { type: 'ORDER' };
+        
+        // Map old statuses to new statuses
+        if (order.status === 'ORDERED') {
+          updates.status = 'PENDING';
+        } else if (order.status === 'DELIVERED') {
+          updates.status = 'DELIVERED';
+        } else if (order.status === 'PARTIALLY_PAID' || order.status === 'PAID') {
+          updates.status = 'DELIVERED';
+        }
+        
+        // Set paymentStatus based on old status
+        if (order.status === 'PAID') {
+          updates.paymentStatus = 'PAID';
+        } else if (order.status === 'PARTIALLY_PAID') {
+          updates.paymentStatus = 'PENDING'; // Partial payment still pending
+        } else {
+          updates.paymentStatus = 'PENDING';
+        }
+        
+        await tx.table('supplier_orders').update(order.id, updates);
+      }
     });
   }
 }
@@ -293,12 +357,14 @@ export async function seedInitialData() {
       await db.supplier_orders.bulkAdd([
         {
           supplierId: 1, // Sopharma
+          type: 'ORDER',
           orderDate: new Date('2026-01-05'),
           deliveryDate: new Date('2026-01-08'),
           totalAmount: 2500000, // 2.5M GNF
           amountPaid: 0,
           dueDate: new Date('2026-02-04'), // 30 days from order
           status: 'DELIVERED',
+          paymentStatus: 'UNPAID',
           notes: 'Commande mensuelle',
           createdAt: new Date('2026-01-05'),
           updatedAt: new Date('2026-01-08'),
@@ -306,12 +372,14 @@ export async function seedInitialData() {
         },
         {
           supplierId: 2, // Pharmaguinée
+          type: 'ORDER',
           orderDate: new Date('2025-12-20'),
           deliveryDate: new Date('2025-12-22'),
           totalAmount: 1800000, // 1.8M GNF
           amountPaid: 800000, // Partially paid
           dueDate: new Date('2026-02-03'), // 45 days from order
-          status: 'PARTIALLY_PAID',
+          status: 'DELIVERED',
+          paymentStatus: 'PARTIALLY_PAID',
           notes: 'Antibiotiques et vitamines',
           createdAt: new Date('2025-12-20'),
           updatedAt: new Date('2026-01-10'),
@@ -356,7 +424,9 @@ export async function clearDatabase() {
   await db.sync_queue.clear();
   await db.suppliers.clear(); // 🆕
   await db.supplier_orders.clear(); // 🆕
+  await db.supplier_order_items.clear(); // 🆕
   await db.supplier_returns.clear(); // 🆕
+  await db.product_suppliers.clear(); // 🆕
   await db.credit_payments.clear(); // 🆕
   console.log('[Seri DB] Database cleared');
 }
@@ -373,7 +443,9 @@ export async function getDatabaseStats() {
     stockMovements: await db.stock_movements.count(),
     suppliers: await db.suppliers.count(), // 🆕
     supplierOrders: await db.supplier_orders.count(), // 🆕
+    supplierOrderItems: await db.supplier_order_items.count(), // 🆕
     supplierReturns: await db.supplier_returns.count(), // 🆕
+    productSuppliers: await db.product_suppliers.count(), // 🆕
     creditPayments: await db.credit_payments.count(), // 🆕
     pendingSync: await db.sync_queue.where('status').equals('PENDING').count(),
   };

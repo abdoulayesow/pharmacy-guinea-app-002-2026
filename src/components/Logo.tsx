@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 
 interface LogoProps {
   variant?: 'icon' | 'icon-simple' | 'horizontal' | 'full';
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 
@@ -12,6 +12,7 @@ export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProp
     sm: { width: 40, height: 40 },
     md: { width: 60, height: 60 },
     lg: { width: 100, height: 100 },
+    xl: { width: 140, height: 140 },
   };
 
   // Icon simple variant dimensions (simple medical cross)
@@ -19,6 +20,7 @@ export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProp
     sm: { width: 36, height: 36 },
     md: { width: 56, height: 56 },
     lg: { width: 90, height: 90 },
+    xl: { width: 120, height: 120 },
   };
 
   // Horizontal variant dimensions (logo + text + location)
@@ -26,6 +28,7 @@ export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProp
     sm: { width: 120, height: 36 },
     md: { width: 180, height: 54 },
     lg: { width: 250, height: 75 },
+    xl: { width: 320, height: 96 },
   };
 
   // Full variant dimensions (complete branding with logo + pharmacy name + location)
@@ -34,6 +37,7 @@ export function Logo({ variant = 'icon', size = 'md', className = '' }: LogoProp
     sm: { width: 120, height: 150 },
     md: { width: 160, height: 200 },
     lg: { width: 200, height: 250 },
+    xl: { width: 260, height: 325 },
   };
 
   // Select dimensions based on variant

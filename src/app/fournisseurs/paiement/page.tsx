@@ -1,10 +1,9 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
@@ -27,6 +26,7 @@ import type { SupplierOrder } from '@/lib/shared/types';
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
   const supplierId = searchParams.get('supplierId');
 
@@ -50,11 +50,14 @@ export default function PaymentPage() {
     ? suppliers.find((s) => s.id === parseInt(supplierId))
     : null;
 
+  // Redirect if not authenticated (check both OAuth session and Zustand store)
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (status === 'loading') return;
+    const hasOAuthSession = status === 'authenticated' && !!session?.user;
+    if (!isAuthenticated && !hasOAuthSession) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/fournisseurs/paiement')}`);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, session, status, router]);
 
   // Calculate totals
   const totalDue = selectedOrders.reduce((sum, orderId) => {
@@ -108,16 +111,16 @@ export default function PaymentPage() {
         const paymentForThisOrder = Math.min(remainingPayment, orderBalance);
 
         const newAmountPaid = order.amountPaid + paymentForThisOrder;
-        const newStatus =
+        const newPaymentStatus =
           newAmountPaid >= order.totalAmount
             ? 'PAID'
             : newAmountPaid > 0
             ? 'PARTIALLY_PAID'
-            : order.status;
+            : order.paymentStatus;
 
         await db.supplier_orders.update(order.id!, {
           amountPaid: newAmountPaid,
-          status: newStatus,
+          paymentStatus: newPaymentStatus,
           updatedAt: new Date(),
           synced: false,
         });
@@ -162,7 +165,9 @@ export default function PaymentPage() {
     return 'upcoming';
   };
 
-  if (!isAuthenticated) {
+  // Show nothing while checking auth or if not authenticated
+  const hasOAuthSession = status === 'authenticated' && !!session?.user;
+  if (status === 'loading' || (!isAuthenticated && !hasOAuthSession)) {
     return null;
   }
 
@@ -253,14 +258,14 @@ export default function PaymentPage() {
                 <button
                   type="button"
                   onClick={() => setPaymentAmount(Math.floor(totalDue / 2).toString())}
-                  className="h-10 rounded-lg font-semibold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  className="h-12 rounded-xl font-semibold text-sm bg-slate-800 text-slate-400 hover:bg-slate-700 active:scale-95 transition-all"
                 >
                   50% ({formatCurrency(Math.floor(totalDue / 2))})
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaymentAmount(totalDue.toString())}
-                  className="h-10 rounded-lg font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-500"
+                  className="h-12 rounded-xl font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-500 active:scale-95 transition-all"
                 >
                   Tout payer ({formatCurrency(totalDue)})
                 </button>
@@ -443,7 +448,7 @@ export default function PaymentPage() {
               ) : (
                 <span className="flex items-center gap-2">
                   <Save className="w-5 h-5" />
-                  Enregistrer le paiement
+                  Payer
                 </span>
               )}
             </Button>

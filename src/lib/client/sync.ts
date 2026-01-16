@@ -12,6 +12,46 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // 1 second base delay
 const EXPONENTIAL_BACKOFF = 2; // Double delay each retry
 const SYNC_TIMEOUT_MS = 30000; // 30 seconds per sync request
+const CONNECTIVITY_CHECK_TIMEOUT_MS = 5000; // 5 seconds for connectivity check
+
+/**
+ * Check if we have actual internet connectivity (not just network interface)
+ *
+ * This function verifies that:
+ * - Network interface is connected (navigator.onLine)
+ * - Server is actually reachable (HEAD request to /api/health)
+ * - Response is received within 5 seconds
+ *
+ * Benefits for Guinea context:
+ * - Avoids failed sync attempts on poor 3G connections
+ * - Saves data costs when WiFi is connected but has no internet
+ * - Prevents wasted battery on unreachable server
+ *
+ * @returns {Promise<boolean>} True if actually connected to internet
+ */
+async function isActuallyOnline(): Promise<boolean> {
+  // Quick check: if network interface is down, no need to ping server
+  if (!navigator.onLine) {
+    return false;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONNECTIVITY_CHECK_TIMEOUT_MS);
+
+    const response = await fetch('/api/health', {
+      method: 'HEAD',
+      signal: controller.signal,
+      cache: 'no-store', // Always check, never use cached response
+    });
+
+    clearTimeout(timeoutId);
+    return response.ok; // Returns true only if status 200-299
+  } catch (error) {
+    // Network error, timeout, or abort
+    return false;
+  }
+}
 
 /**
  * Add a transaction to the sync queue
@@ -197,8 +237,8 @@ export async function processSyncQueue(): Promise<{
   failed: number;
   errors: string[];
 }> {
-  // Check if online
-  if (!navigator.onLine) {
+  // Check if actually online (not just network interface)
+  if (!(await isActuallyOnline())) {
     return { synced: 0, failed: 0, errors: ['Device is offline'] };
   }
 
@@ -306,19 +346,18 @@ export function setupBackgroundSync(): void {
   });
 
   // Check periodically if online and sync push queue
-  setInterval(() => {
-    if (navigator.onLine) {
-      getPendingCount().then((count) => {
-        if (count > 0) {
-          processSyncQueue();
-        }
-      });
+  setInterval(async () => {
+    if (await isActuallyOnline()) {
+      const count = await getPendingCount();
+      if (count > 0) {
+        processSyncQueue();
+      }
     }
-  }, 30000); // Check every 30 seconds
+  }, 60000); // Check every 1 minute
 
   // Periodic pull sync (every 5 minutes)
-  setInterval(() => {
-    if (navigator.onLine) {
+  setInterval(async () => {
+    if (await isActuallyOnline()) {
       pullFromServer().catch((error) => {
         console.warn('[Sync] Periodic pull failed:', error);
       });
@@ -359,9 +398,9 @@ export async function getSyncStats(): Promise<{
  */
 export async function queuePinUpdate(userId: string, pinHash: string): Promise<void> {
   await queueTransaction('USER', 'UPDATE_PIN', { userId, pinHash }, userId);
-  
+
   // Try to sync immediately if online
-  if (navigator.onLine) {
+  if (await isActuallyOnline()) {
     try {
       const response = await fetch('/api/auth/setup-pin', {
         method: 'POST',
@@ -663,7 +702,7 @@ export async function pullFromServer(): Promise<{
   errors: string[];
   serverTime: Date | null;
 }> {
-  if (!navigator.onLine) {
+  if (!(await isActuallyOnline())) {
     return {
       success: false,
       pulled: 0,

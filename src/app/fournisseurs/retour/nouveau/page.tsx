@@ -104,7 +104,14 @@ export default function NewReturnPage() {
     try {
       const returnAmount = parseInt(creditAmount);
       const returnDateObj = new Date(returnDate);
-      
+      const returnQty = parseInt(quantity);
+
+      // Validate return quantity doesn't exceed stock
+      if (selectedProduct && returnQty > selectedProduct.stock) {
+        toast.error(`Quantité de retour (${returnQty}) dépasse le stock disponible (${selectedProduct.stock})`);
+        return;
+      }
+
       // Create return as a SupplierOrder with type='RETURN'
       const returnOrder: Omit<SupplierOrder, 'id' | 'serverId'> = {
         supplierId: parseInt(supplierId),
@@ -127,11 +134,31 @@ export default function NewReturnPage() {
       // Save to IndexedDB
       const localId = await db.supplier_orders.add(returnOrder);
 
+      // Reduce stock immediately
+      await db.products.update(selectedProductId, {
+        stock: selectedProduct!.stock - returnQty,
+        updatedAt: new Date(),
+        synced: false,
+      });
+
+      // Create stock movement record
+      await db.stock_movements.add({
+        product_id: selectedProductId,
+        type: 'SUPPLIER_RETURN',
+        quantity_change: -returnQty,
+        reason: `Retour fournisseur: ${RETURN_REASONS.find(r => r.value === reason)?.label || reason}`,
+        supplier_order_id: localId,
+        user_id: session?.user?.email || 'unknown',
+        created_at: returnDateObj,
+        synced: false,
+      });
+
       // Queue for sync
       await queueTransaction('SUPPLIER_ORDER', 'CREATE', returnOrder, localId);
+      await queueTransaction('PRODUCT', 'UPDATE', selectedProduct!, String(selectedProductId));
 
-      toast.success('Retour enregistré');
-      
+      toast.success('Retour enregistré - Stock réduit');
+
       // Navigate back to supplier detail
       router.push(`/fournisseurs/${supplierId}`);
     } catch (error) {
@@ -175,44 +202,64 @@ export default function NewReturnPage() {
             </div>
           </div>
 
-          {/* Supplier Selection */}
-          <div className="bg-slate-900 rounded-2xl p-5 border border-slate-700">
-            <h3 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">
-              Fournisseur
-            </h3>
+          {/* Supplier Selection - Only show if not pre-selected */}
+          {!preselectedSupplierId ? (
+            <div className="bg-slate-900 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">
+                Fournisseur
+              </h3>
 
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Retour à quel fournisseur? *
-              </label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 z-10">
-                  <Building2 className="w-5 h-5" />
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-2">
+                  Retour à quel fournisseur? *
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 z-10">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <select
+                    value={supplierId}
+                    onChange={(e) => setSupplierId(e.target.value)}
+                    className="w-full h-14 pl-12 pr-4 bg-slate-800 border border-slate-700 text-white rounded-xl text-base appearance-none cursor-pointer"
+                    required
+                  >
+                    <option value="">Choisir un fournisseur...</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <select
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full h-14 pl-12 pr-4 bg-slate-800 border border-slate-700 text-white rounded-xl text-base appearance-none cursor-pointer"
-                  required
-                >
-                  <option value="">Choisir un fournisseur...</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                </select>
+
+                {selectedSupplier && (
+                  <div className="mt-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                    <p className="text-sm text-slate-400">
+                      Le crédit sera déduit de vos prochains paiements à {selectedSupplier.name}
+                    </p>
+                  </div>
+                )}
               </div>
-
-              {selectedSupplier && (
-                <div className="mt-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
-                  <p className="text-sm text-slate-400">
-                    Le crédit sera déduit de vos prochains paiements à {selectedSupplier.name}
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
+          ) : (
+            /* Show selected supplier as read-only when pre-selected */
+            selectedSupplier && (
+              <div className="bg-slate-900 rounded-2xl p-5 border border-slate-700">
+                <h3 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">
+                  Fournisseur
+                </h3>
+                <div className="flex items-center gap-3 p-4 bg-slate-800 rounded-xl border border-emerald-500/30">
+                  <Building2 className="w-6 h-6 text-emerald-400" />
+                  <div>
+                    <p className="text-white font-semibold">{selectedSupplier.name}</p>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Le crédit sera déduit de vos prochains paiements
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )
+          )}
 
           {/* Product Selection */}
           <div className="bg-slate-900 rounded-2xl p-5 border border-slate-700 space-y-4">

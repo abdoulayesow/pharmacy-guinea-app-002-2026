@@ -73,15 +73,17 @@ model VerificationToken {
 }
 
 model Product {
-  id            Int       @id @default(autoincrement())
-  name          String
-  price         Int       // Stored in GNF
-  priceBuy      Int?      @map("price_buy")
-  stock         Int       @default(0)
-  stockMin      Int       @default(10) @map("stock_min")
-  category      String?   // Product category
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             Int       @id @default(autoincrement())
+  name           String
+  price          Int       // Stored in GNF
+  priceBuy       Int?      @map("price_buy")
+  stock          Int       @default(0)
+  stockMin       Int       @default(10) @map("stock_min")
+  category       String?   // Product category
+  expirationDate DateTime? @map("expiration_date") // Expiration tracking
+  lotNumber      String?   @map("lot_number") // Batch/lot tracking
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
   saleItems        SaleItem[]

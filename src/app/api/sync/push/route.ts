@@ -17,11 +17,12 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body: SyncPushRequest = await request.json();
-    const { sales, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+    const { sales, saleItems, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
 
     console.log('[API] Sync push request from:', user.userId);
     console.log('[API] Items to sync:', {
       sales: sales?.length || 0,
+      saleItems: saleItems?.length || 0,
       expenses: expenses?.length || 0,
       stockMovements: stockMovements?.length || 0,
       products: products?.length || 0,
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
 
     // Phase 2: Implement server-side sync
     const syncedSales: Record<string, number> = {}; // Map localId -> serverId
+    const syncedSaleItems: Record<string, number> = {};
     const syncedExpenses: Record<string, number> = {};
     const syncedStockMovements: Record<string, number> = {};
     const syncedProducts: Record<string, number> = {};
@@ -114,6 +116,45 @@ export async function POST(request: NextRequest) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           errors.push(`Failed to sync sale ${sale.id}: ${errorMsg}`);
           console.error('[API] Sale sync error:', error);
+        }
+      }
+    }
+
+    // Sync Sale Items
+    if (saleItems && saleItems.length > 0) {
+      for (const item of saleItems) {
+        try {
+          // Check if sale item already exists
+          let existingItem = null;
+          if (item.id) {
+            existingItem = await prisma.saleItem.findUnique({
+              where: { id: item.id },
+            });
+          }
+
+          if (!existingItem) {
+            // Get the server sale ID (map from local sale_id to server ID)
+            const serverSaleId = syncedSales[item.sale_id?.toString() || ''] || item.sale_id;
+
+            // Create new sale item
+            const newItem = await prisma.saleItem.create({
+              data: {
+                saleId: serverSaleId,
+                productId: item.product_id,
+                quantity: item.quantity,
+                unitPrice: item.unit_price,
+                subtotal: item.subtotal,
+              },
+            });
+            syncedSaleItems[item.id?.toString() || ''] = newItem.id;
+          } else {
+            // Item already exists
+            syncedSaleItems[item.id?.toString() || ''] = existingItem.id;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync sale item ${item.id}: ${errorMsg}`);
+          console.error('[API] Sale item sync error:', error);
         }
       }
     }
@@ -241,6 +282,8 @@ export async function POST(request: NextRequest) {
                   stock: product.stock,
                   stockMin: product.minStock || 10,
                   category: product.category || null,
+                  expirationDate: product.expirationDate ? new Date(product.expirationDate) : null,
+                  lotNumber: product.lotNumber || null,
                 },
               });
               syncedProducts[product.id?.toString() || ''] = updated.id;
@@ -257,6 +300,8 @@ export async function POST(request: NextRequest) {
                 stock: product.stock,
                 stockMin: product.minStock || 10,
                 category: product.category || null,
+                expirationDate: product.expirationDate ? new Date(product.expirationDate) : null,
+                lotNumber: product.lotNumber || null,
               },
             });
             syncedProducts[product.id?.toString() || ''] = newProduct.id;
@@ -595,6 +640,7 @@ export async function POST(request: NextRequest) {
       success: true,
       synced: {
         sales: syncedSales,
+        saleItems: syncedSaleItems,
         expenses: syncedExpenses,
         stockMovements: syncedStockMovements,
         products: syncedProducts,
@@ -733,6 +779,7 @@ export async function POST(request: NextRequest) {
           success: false,
           synced: {
             sales: {},
+            saleItems: {},
             expenses: {},
             stockMovements: {},
             products: {},
@@ -754,6 +801,7 @@ export async function POST(request: NextRequest) {
         success: false,
         synced: {
           sales: {},
+          saleItems: {},
           expenses: {},
           stockMovements: {},
           products: {},

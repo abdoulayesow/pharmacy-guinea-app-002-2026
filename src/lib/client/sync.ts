@@ -4,7 +4,7 @@
  */
 
 import { db } from './db';
-import type { SyncQueueItem, Sale, Expense, Product } from '@/lib/shared/types';
+import type { SyncQueueItem, Sale, SaleItem, Expense, Product } from '@/lib/shared/types';
 import { generateLocalId } from '@/lib/shared/utils';
 
 // Constants
@@ -143,6 +143,7 @@ export async function markFailed(itemId: string | number, error: string): Promis
  */
 export async function prepareSyncPayload(): Promise<{
   sales: Array<Sale & { id: string }>;
+  saleItems: Array<SaleItem & { id: string }>;
   expenses: Array<Expense & { id: string }>;
   products: Array<Product & { id: string }>;
   stockMovements: any[];
@@ -150,6 +151,7 @@ export async function prepareSyncPayload(): Promise<{
   const items = await getPendingItems();
 
   const sales: any[] = [];
+  const saleItems: any[] = [];
   const expenses: any[] = [];
   const products: any[] = [];
   const stockMovements: any[] = [];
@@ -173,7 +175,18 @@ export async function prepareSyncPayload(): Promise<{
     }
   }
 
-  return { sales, expenses, products, stockMovements };
+  // Fetch sale items for each sale
+  for (const sale of sales) {
+    if (sale.id) {
+      const items = await db.sale_items
+        .where('sale_id')
+        .equals(sale.id)
+        .toArray();
+      saleItems.push(...items);
+    }
+  }
+
+  return { sales, saleItems, expenses, products, stockMovements };
 }
 
 /**

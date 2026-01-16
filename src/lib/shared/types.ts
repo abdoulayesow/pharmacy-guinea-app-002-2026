@@ -299,6 +299,7 @@ export interface LoginResponse {
 
 export interface SyncPushRequest {
   sales?: Sale[];
+  saleItems?: SaleItem[]; // Sale line items
   expenses?: Expense[];
   stockMovements?: StockMovement[];
   products?: Product[];
@@ -314,6 +315,7 @@ export interface SyncPushResponse {
   success: boolean;
   synced: {
     sales: Record<string, number>; // Map localId -> serverId
+    saleItems: Record<string, number>; // Map localId -> serverId
     expenses: Record<string, number>;
     stockMovements: Record<string, number>;
     products: Record<string, number>;

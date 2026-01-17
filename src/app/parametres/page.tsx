@@ -30,7 +30,7 @@ import {
 import { db, clearDatabase, getDatabaseStats, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
-import { savePinOfflineFirst } from '@/lib/client/sync';
+import { savePinOfflineFirst, performFirstTimeSync } from '@/lib/client/sync';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
@@ -223,11 +223,12 @@ export default function ParametresPage() {
       // Clear IndexedDB
       await clearDatabase();
 
-      // Re-seed initial data (schema, etc.)
-      await seedInitialData();
+      // Get user role from session
+      const userRole = (session?.user?.role || 'EMPLOYEE') as 'OWNER' | 'EMPLOYEE';
 
-      // Trigger full sync from server
-      await fullSync();
+      // Perform first-time sync (uses /api/sync/initial for full data pull)
+      // This is required after clearDatabase() because there's no lastSyncAt timestamp
+      await performFirstTimeSync(userRole);
 
       toast.success('Base de donnees actualisee avec succes');
       setShowRefreshDialog(false);

@@ -104,6 +104,29 @@ export async function GET(request: NextRequest) {
         });
     console.log('[API] Fetched credit payments:', creditPayments.length, `(role: ${userRole})`);
 
+    // Fetch product batches - FEFO Phase 3 (all batches for both roles)
+    const productBatches = await prisma.productBatch.findMany({
+      orderBy: { expirationDate: 'asc' }, // FEFO order
+    });
+    console.log('[API] Fetched product batches:', productBatches.length);
+
+    // Transform product batches to client format (match ProductBatch interface)
+    const transformedProductBatches = productBatches.map((b) => ({
+      id: b.id,
+      serverId: b.id,
+      product_id: b.productId,
+      lot_number: b.lotNumber,
+      expiration_date: b.expirationDate,
+      quantity: b.quantity,
+      initial_qty: b.initialQty,
+      unit_cost: b.unitCost,
+      supplier_order_id: b.supplierOrderId,
+      received_date: b.receivedDate,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      synced: true,
+    }));
+
     // Return all data
     return NextResponse.json({
       success: true,
@@ -114,6 +137,7 @@ export async function GET(request: NextRequest) {
         sales,
         stockMovements,
         creditPayments,
+        productBatches: transformedProductBatches, // 🆕 FEFO Phase 3
         expenses,
       },
       serverTime: now.toISOString(),

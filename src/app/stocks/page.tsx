@@ -403,7 +403,11 @@ export default function StocksPage() {
   const getBatchesForProduct = (productId: number): ProductBatch[] => {
     return allBatches
       .filter(b => b.product_id === productId && b.quantity > 0)
-      .sort((a, b) => a.expiration_date.getTime() - b.expiration_date.getTime());
+      .sort((a, b) => {
+        const dateA = a.expiration_date instanceof Date ? a.expiration_date : new Date(a.expiration_date);
+        const dateB = b.expiration_date instanceof Date ? b.expiration_date : new Date(b.expiration_date);
+        return dateA.getTime() - dateB.getTime();
+      });
   };
 
   // Submit stock adjustment

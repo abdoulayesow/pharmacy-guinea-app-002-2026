@@ -330,6 +330,7 @@ export interface SyncPushRequest {
   expenses?: Expense[];
   stockMovements?: StockMovement[];
   products?: Product[];
+  productBatches?: ProductBatch[]; // 🆕 FEFO batch tracking
   suppliers?: Supplier[]; // 🆕
   supplierOrders?: SupplierOrder[]; // 🆕
   supplierOrderItems?: SupplierOrderItem[]; // 🆕 Order line items
@@ -346,6 +347,7 @@ export interface SyncPushResponse {
     expenses: Record<string, number>;
     stockMovements: Record<string, number>;
     products: Record<string, number>;
+    productBatches: Record<string, number>; // 🆕 FEFO batch tracking
     suppliers: Record<string, number>; // 🆕
     supplierOrders: Record<string, number>; // 🆕
     supplierOrderItems: Record<string, number>; // 🆕 Order line items
@@ -372,6 +374,7 @@ export interface SyncPullResponse {
     supplierOrderItems: SupplierOrderItem[]; // 🆕 Order line items
     supplierReturns: SupplierReturn[]; // 🆕
     productSuppliers: ProductSupplier[]; // 🆕 Product-supplier links
+    productBatches: ProductBatch[]; // 🆕 FEFO Phase 3
     creditPayments: CreditPayment[]; // 🆕 Partial payment tracking
   };
   serverTime: Date;

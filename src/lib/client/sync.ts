@@ -216,6 +216,7 @@ export async function prepareSyncPayload(): Promise<{
   saleItems: Array<SaleItem & { id: string }>;
   expenses: Array<Expense & { id: string; idempotencyKey: string }>;
   products: Array<Product & { id: string; idempotencyKey: string }>;
+  productBatches: any[];
   stockMovements: any[];
 }> {
   const items = await getPendingItems();
@@ -226,19 +227,20 @@ export async function prepareSyncPayload(): Promise<{
     if (a.action === 'CREATE' && b.action !== 'CREATE') return -1;
     if (a.action !== 'CREATE' && b.action === 'CREATE') return 1;
 
-    // 2. Type priority: PRODUCT > SUPPLIER > SALE > EXPENSE > STOCK_MOVEMENT
+    // 2. Type priority: PRODUCT > PRODUCT_BATCH > SUPPLIER > SALE > EXPENSE > STOCK_MOVEMENT
     const typePriority: Record<string, number> = {
       PRODUCT: 1,
-      SUPPLIER: 2,
-      SUPPLIER_ORDER: 3,
-      PRODUCT_SUPPLIER: 4,
-      SALE: 5,
-      EXPENSE: 6,
-      STOCK_MOVEMENT: 7,
-      CREDIT_PAYMENT: 8,
-      SUPPLIER_ORDER_ITEM: 9,
-      SUPPLIER_RETURN: 10,
-      USER: 11,
+      PRODUCT_BATCH: 2, // After products (foreign key dependency)
+      SUPPLIER: 3,
+      SUPPLIER_ORDER: 4,
+      PRODUCT_SUPPLIER: 5,
+      SALE: 6,
+      EXPENSE: 7,
+      STOCK_MOVEMENT: 8,
+      CREDIT_PAYMENT: 9,
+      SUPPLIER_ORDER_ITEM: 10,
+      SUPPLIER_RETURN: 11,
+      USER: 12,
     };
 
     const priorityA = typePriority[a.type] || 99;
@@ -256,6 +258,7 @@ export async function prepareSyncPayload(): Promise<{
   const saleItems: any[] = [];
   const expenses: any[] = [];
   const products: any[] = [];
+  const productBatches: any[] = [];
   const stockMovements: any[] = [];
 
   for (const item of sortedItems) {
@@ -276,6 +279,9 @@ export async function prepareSyncPayload(): Promise<{
         case 'PRODUCT':
           products.push(payloadWithKey);
           break;
+        case 'PRODUCT_BATCH':
+          productBatches.push(payloadWithKey);
+          break;
         case 'STOCK_MOVEMENT':
           stockMovements.push(payloadWithKey);
           break;
@@ -294,7 +300,7 @@ export async function prepareSyncPayload(): Promise<{
     }
   }
 
-  return { sales, saleItems, expenses, products, stockMovements };
+  return { sales, saleItems, expenses, products, productBatches, stockMovements };
 }
 
 /**
@@ -358,6 +364,8 @@ export async function processSyncQueue(): Promise<{
             serverId = data.synced.expenses[localIdStr].toString();
           } else if (item.type === 'PRODUCT' && data.synced?.products?.[localIdStr]) {
             serverId = data.synced.products[localIdStr].toString();
+          } else if (item.type === 'PRODUCT_BATCH' && data.synced?.productBatches?.[localIdStr]) {
+            serverId = data.synced.productBatches[localIdStr].toString();
           } else if (item.type === 'STOCK_MOVEMENT' && data.synced?.stockMovements?.[localIdStr]) {
             serverId = data.synced.stockMovements[localIdStr].toString();
           }
@@ -601,6 +609,7 @@ async function mergePulledData(data: {
   sales: any[];
   expenses: any[];
   stockMovements: any[];
+  productBatches: any[]; // 🆕 FEFO Phase 3
   creditPayments: any[];
 }): Promise<{
   merged: number;
@@ -770,6 +779,87 @@ async function mergePulledData(data: {
       }
     } catch (error) {
       results.errors.push(`Stock movement ${movement.id}: ${error}`);
+    }
+  }
+
+  // Merge Product Batches - FEFO Phase 3
+  for (const batch of data.productBatches || []) {
+    try {
+      // 🔧 FIX: Map server product_id (PostgreSQL ID) to IndexedDB product ID
+      // Server sends product_id matching PostgreSQL (1-10), but IndexedDB has different IDs (17-26)
+      // We need to find the IndexedDB product that has serverId matching the batch's product_id
+      const localProduct = await db.products
+        .where('serverId')
+        .equals(batch.product_id)
+        .first();
+
+      if (!localProduct) {
+        results.errors.push(
+          `Product batch ${batch.id}: Product with serverId=${batch.product_id} not found in IndexedDB`
+        );
+        continue;
+      }
+
+      const localProductId = localProduct.id!;
+
+      const existing = batch.serverId
+        ? await db.product_batches.where('serverId').equals(batch.serverId).first()
+        : null;
+
+      if (existing) {
+        // Batch exists - compare timestamps for conflict resolution
+        const serverUpdatedAt = batch.updatedAt ? new Date(batch.updatedAt) : new Date(0);
+        const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
+
+        if (serverUpdatedAt >= localUpdatedAt) {
+          // Server wins - update local batch
+          console.log(`[Sync] ProductBatch ${batch.serverId}: Server wins (${serverUpdatedAt.toISOString()} >= ${localUpdatedAt.toISOString()})`);
+          console.log(`[Sync]   Local quantity: ${existing.quantity}, Server quantity: ${batch.quantity}`);
+          console.log(`[Sync]   Mapped product_id: ${batch.product_id} (PostgreSQL) → ${localProductId} (IndexedDB ${localProduct.name})`);
+
+          await db.product_batches.update(existing.id!, {
+            product_id: localProductId, // Use mapped IndexedDB product ID
+            lot_number: batch.lot_number,
+            expiration_date: batch.expiration_date,
+            quantity: batch.quantity,
+            initial_qty: batch.initial_qty,
+            unit_cost: batch.unit_cost,
+            supplier_order_id: batch.supplier_order_id,
+            received_date: batch.received_date,
+            // createdAt is immutable - do NOT update
+            updatedAt: batch.updatedAt,
+            serverId: batch.serverId,
+            synced: true,
+          });
+          results.merged++;
+        } else {
+          // Local is newer - keep local (will be pushed on next sync)
+          console.log(`[Sync] ProductBatch ${batch.serverId}: Local wins (${localUpdatedAt.toISOString()} > ${serverUpdatedAt.toISOString()}) - queued for push`);
+          results.conflicts++;
+        }
+      } else {
+        // New batch - insert
+        console.log(`[Sync] ProductBatch ${batch.serverId}: New batch - inserting`);
+        console.log(`[Sync]   Mapped product_id: ${batch.product_id} (PostgreSQL) → ${localProductId} (IndexedDB ${localProduct.name})`);
+
+        await db.product_batches.add({
+          product_id: localProductId, // Use mapped IndexedDB product ID
+          lot_number: batch.lot_number,
+          expiration_date: batch.expiration_date,
+          quantity: batch.quantity,
+          initial_qty: batch.initial_qty,
+          unit_cost: batch.unit_cost,
+          supplier_order_id: batch.supplier_order_id,
+          received_date: batch.received_date,
+          createdAt: batch.createdAt,
+          updatedAt: batch.updatedAt,
+          serverId: batch.serverId,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Product batch ${batch.id}: ${error}`);
     }
   }
 
@@ -1034,22 +1124,42 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
 
       // Merge sale items
       const allSaleItems: any[] = [];
+
+      // First, build a map of server sale IDs to local sale IDs
+      const saleServerToLocalIdMap: Record<number, number> = {};
+      for (const sale of data.sales) {
+        const localSale = await db.sales.where('serverId').equals(sale.id).first();
+        if (localSale?.id) {
+          saleServerToLocalIdMap[sale.id] = localSale.id;
+        }
+      }
+
       data.sales.forEach((sale: any) => {
         if (sale.items?.length > 0) {
-          sale.items.forEach((item: any) => {
-            allSaleItems.push({
-              sale_id: sale.id, // This is server ID, will need mapping
-              product_id: item.productId,
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              subtotal: item.subtotal,
+          const localSaleId = saleServerToLocalIdMap[sale.id];
+          if (localSaleId) {
+            sale.items.forEach((item: any) => {
+              allSaleItems.push({
+                sale_id: localSaleId, // Map to local sale ID
+                product_id: item.productId,
+                quantity: item.quantity,
+                unit_price: item.unitPrice,
+                subtotal: item.subtotal,
+                product_batch_id: item.productBatchId || null, // FEFO tracking
+                serverId: item.id,
+                synced: true,
+              });
             });
-          });
+          } else {
+            console.warn(`[Sync] Could not find local sale for server ID ${sale.id}`);
+          }
         }
       });
+
       if (allSaleItems.length > 0) {
-        // Note: Need to map sale server IDs to local IDs
-        console.log(`[Sync] Found ${allSaleItems.length} sale items (mapping TBD)`);
+        // Insert sale items with proper sale_id mapping
+        await db.sale_items.bulkAdd(allSaleItems);
+        console.log(`[Sync] ✅ Merged ${allSaleItems.length} sale items`);
       }
       totalMerged += data.sales.length;
     }
@@ -1100,6 +1210,62 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
       })));
       totalMerged += data.creditPayments.length;
       console.log(`[Sync] Merged ${data.creditPayments.length} credit payments`);
+    }
+
+    // Merge product batches - FEFO Phase 3
+    console.log('[Sync] DEBUG: Checking productBatches...', {
+      exists: !!data.productBatches,
+      isArray: Array.isArray(data.productBatches),
+      length: data.productBatches?.length,
+      sample: data.productBatches?.[0]
+    });
+
+    if (data.productBatches?.length > 0) {
+      // 🔧 FIX: Build a map of PostgreSQL product IDs to IndexedDB product IDs
+      // Server sends product_id matching PostgreSQL (1-10), but IndexedDB has different IDs (17-26)
+      const productIdMap: Record<number, number> = {};
+      const allProducts = await db.products.toArray();
+      allProducts.forEach((p) => {
+        if (p.serverId) {
+          productIdMap[p.serverId] = p.id!;
+        }
+      });
+
+      const batchesToInsert: any[] = [];
+      for (const b of data.productBatches) {
+        const localProductId = productIdMap[b.product_id];
+        if (!localProductId) {
+          console.error(`[Sync] ❌ Product batch ${b.serverId}: Product with serverId=${b.product_id} not found in IndexedDB`);
+          continue;
+        }
+
+        console.log(`[Sync] Batch ${b.lot_number}: Mapped product_id ${b.product_id} (PostgreSQL) → ${localProductId} (IndexedDB)`);
+
+        batchesToInsert.push({
+          product_id: localProductId, // Use mapped IndexedDB product ID
+          lot_number: b.lot_number,
+          expiration_date: b.expiration_date,
+          quantity: b.quantity,
+          initial_qty: b.initial_qty,
+          unit_cost: b.unit_cost,
+          supplier_order_id: b.supplier_order_id,
+          received_date: b.received_date,
+          createdAt: b.createdAt,
+          updatedAt: b.updatedAt,
+          serverId: b.serverId,
+          synced: true,
+        });
+      }
+
+      if (batchesToInsert.length > 0) {
+        await db.product_batches.bulkPut(batchesToInsert);
+        totalMerged += batchesToInsert.length;
+        console.log(`[Sync] ✅ Merged ${batchesToInsert.length} product batches`);
+      } else {
+        console.warn('[Sync] ⚠️ No valid product batches to insert (product ID mapping failed)');
+      }
+    } else {
+      console.warn('[Sync] ⚠️ No product batches received from server!');
     }
 
     // Set sync timestamp

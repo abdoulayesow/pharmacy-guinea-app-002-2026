@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
-    const { sales, saleItems, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
 
     // Basic validation: ensure arrays are actually arrays
     const validationErrors: string[] = [];
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     if (expenses && !Array.isArray(expenses)) validationErrors.push('expenses must be an array');
     if (stockMovements && !Array.isArray(stockMovements)) validationErrors.push('stockMovements must be an array');
     if (products && !Array.isArray(products)) validationErrors.push('products must be an array');
+    if (productBatches && !Array.isArray(productBatches)) validationErrors.push('productBatches must be an array');
     if (suppliers && !Array.isArray(suppliers)) validationErrors.push('suppliers must be an array');
     if (supplierOrders && !Array.isArray(supplierOrders)) validationErrors.push('supplierOrders must be an array');
     if (supplierOrderItems && !Array.isArray(supplierOrderItems)) validationErrors.push('supplierOrderItems must be an array');
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
             expenses: {},
             stockMovements: {},
             products: {},
+            productBatches: {},
             suppliers: {},
             supplierOrders: {},
             supplierOrderItems: {},
@@ -78,6 +80,7 @@ export async function POST(request: NextRequest) {
     const syncedExpenses: Record<string, number> = {};
     const syncedStockMovements: Record<string, number> = {};
     const syncedProducts: Record<string, number> = {};
+    const syncedProductBatches: Record<string, number> = {};
     const syncedSuppliers: Record<string, number> = {};
     const syncedSupplierOrders: Record<string, number> = {};
     const syncedSupplierOrderItems: Record<string, number> = {};
@@ -460,6 +463,94 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync ProductBatches (FEFO tracking - Phase 3)
+    if (productBatches && productBatches.length > 0) {
+      for (const batch of productBatches) {
+        try {
+          let existingBatch = null;
+
+          // Try to find by serverId first
+          if (batch.serverId) {
+            existingBatch = await prisma.productBatch.findUnique({
+              where: { id: batch.serverId },
+            });
+          }
+
+          // If not found, try to find by lotNumber + productId
+          if (!existingBatch && batch.lot_number && batch.product_id) {
+            // Map local product_id to server productId if necessary
+            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+            const batchesByLot = await prisma.productBatch.findMany({
+              where: {
+                lotNumber: batch.lot_number,
+                productId: serverProductId,
+              },
+              orderBy: { updatedAt: 'desc' },
+              take: 1,
+            });
+            existingBatch = batchesByLot[0] || null;
+          }
+
+          if (existingBatch) {
+            // Conflict: check timestamps (Last Write Wins)
+            const serverUpdatedAt = existingBatch.updatedAt;
+            const localUpdatedAt = batch.updatedAt ? new Date(batch.updatedAt) : null;
+
+            if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
+              // Local is newer - update
+              console.log(`[API] ProductBatch ${batch.serverId}: Local wins (${localUpdatedAt.toISOString()} > ${serverUpdatedAt.toISOString()})`);
+              console.log(`[API]   Server quantity: ${existingBatch.quantity}, Local quantity: ${batch.quantity}`);
+
+              const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+              const updated = await prisma.productBatch.update({
+                where: { id: existingBatch.id },
+                data: {
+                  productId: serverProductId,
+                  lotNumber: batch.lot_number,
+                  expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : existingBatch.expirationDate,
+                  quantity: batch.quantity,
+                  initialQty: batch.initial_qty,
+                  unitCost: batch.unit_cost || null,
+                  supplierOrderId: batch.supplier_order_id || null,
+                  receivedDate: batch.received_date ? new Date(batch.received_date) : existingBatch.receivedDate,
+                  // Note: createdAt is NOT updated (immutable)
+                },
+              });
+              syncedProductBatches[batch.id?.toString() || ''] = updated.id;
+            } else {
+              // Server is newer or same - skip update
+              console.log(`[API] ProductBatch ${batch.serverId}: Server wins (${serverUpdatedAt.toISOString()} >= ${localUpdatedAt?.toISOString()})`);
+              syncedProductBatches[batch.id?.toString() || ''] = existingBatch.id;
+            }
+          } else {
+            // New batch
+            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+            const newBatch = await prisma.productBatch.create({
+              data: {
+                productId: serverProductId,
+                lotNumber: batch.lot_number,
+                expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : new Date(),
+                quantity: batch.quantity,
+                initialQty: batch.initial_qty,
+                unitCost: batch.unit_cost || null,
+                supplierOrderId: batch.supplier_order_id || null,
+                receivedDate: batch.received_date ? new Date(batch.received_date) : new Date(),
+              },
+            });
+            syncedProductBatches[batch.id?.toString() || ''] = newBatch.id;
+            console.log(`[API] Created new ProductBatch: ${newBatch.id} (lot: ${batch.lot_number})`);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product batch ${batch.id}: ${errorMsg}`);
+          console.error('[API] ProductBatch sync error:', error);
+        }
+      }
+    }
+
     // Sync Suppliers
     if (suppliers && suppliers.length > 0) {
       for (const supplier of suppliers) {
@@ -790,6 +881,7 @@ export async function POST(request: NextRequest) {
         expenses: syncedExpenses,
         stockMovements: syncedStockMovements,
         products: syncedProducts,
+        productBatches: syncedProductBatches,
         suppliers: syncedSuppliers,
         supplierOrders: syncedSupplierOrders,
         supplierOrderItems: syncedSupplierOrderItems,
@@ -929,6 +1021,7 @@ export async function POST(request: NextRequest) {
             expenses: {},
             stockMovements: {},
             products: {},
+            productBatches: {},
             suppliers: {},
             supplierOrders: {},
             supplierOrderItems: {},
@@ -951,6 +1044,7 @@ export async function POST(request: NextRequest) {
           expenses: {},
           stockMovements: {},
           products: {},
+          productBatches: {},
           suppliers: {},
           supplierOrders: {},
           supplierOrderItems: {},

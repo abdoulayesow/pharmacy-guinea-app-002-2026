@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: 'asc' },
     });
 
-    // Query Sales (created or modified after lastSyncAt, include sale items)
+    // Query Sales (created or modified after lastSyncAt, include sale items with batch info)
     const sales = await prisma.sale.findMany({
       where: lastSyncAt
         ? {
@@ -48,7 +48,17 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       include: {
-        items: true,
+        items: {
+          select: {
+            id: true,
+            saleId: true,
+            productId: true,
+            productBatchId: true, // Include batch ID for FEFO tracking
+            quantity: true,
+            unitPrice: true,
+            subtotal: true,
+          },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -126,6 +136,16 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'asc' },
     });
 
+    // Query Product Batches (updated after lastSyncAt) - FEFO Phase 3
+    const productBatches = await prisma.productBatch.findMany({
+      where: lastSyncAt
+        ? {
+            updatedAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { updatedAt: 'asc' },
+    });
+
     // Transform Prisma models to client types
     const transformedProducts = products.map((p) => ({
       id: p.id,
@@ -165,6 +185,7 @@ export async function GET(request: NextRequest) {
         id: item.id,
         sale_id: item.saleId,
         product_id: item.productId,
+        product_batch_id: item.productBatchId || undefined,
         quantity: item.quantity,
         unit_price: item.unitPrice,
         subtotal: item.subtotal,
@@ -332,6 +353,23 @@ export async function GET(request: NextRequest) {
       synced: true,
     }));
 
+    // Transform Product Batches - FEFO Phase 3
+    const transformedProductBatches = productBatches.map((b) => ({
+      id: b.id,
+      serverId: b.id,
+      product_id: b.productId,
+      lot_number: b.lotNumber,
+      expiration_date: b.expirationDate,
+      quantity: b.quantity,
+      initial_qty: b.initialQty,
+      unit_cost: b.unitCost || undefined,
+      supplier_order_id: b.supplierOrderId || undefined,
+      received_date: b.receivedDate,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      synced: true,
+    }));
+
     return NextResponse.json<SyncPullResponse>({
       success: true,
       data: {
@@ -344,6 +382,7 @@ export async function GET(request: NextRequest) {
         supplierOrderItems: transformedSupplierOrderItems,
         supplierReturns: transformedSupplierReturns,
         productSuppliers: transformedProductSuppliers,
+        productBatches: transformedProductBatches, // 🆕 FEFO Phase 3
         creditPayments: transformedCreditPayments,
       },
       serverTime,
@@ -365,6 +404,7 @@ export async function GET(request: NextRequest) {
             supplierOrderItems: [],
             supplierReturns: [],
             productSuppliers: [],
+            productBatches: [], // 🆕 FEFO Phase 3
             creditPayments: [],
           },
           serverTime: new Date(),
@@ -386,6 +426,7 @@ export async function GET(request: NextRequest) {
           supplierOrderItems: [],
           supplierReturns: [],
           productSuppliers: [],
+          productBatches: [], // 🆕 FEFO Phase 3
           creditPayments: [],
         },
         serverTime: new Date(),

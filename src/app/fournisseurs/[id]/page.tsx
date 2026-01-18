@@ -23,8 +23,12 @@ import {
   Truck,
   Edit3,
   X,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import type { Supplier, SupplierOrder } from '@/lib/shared/types';
+import { toast } from 'sonner';
+import { queueTransaction } from '@/lib/client/sync';
 
 export default function SupplierDetailPage() {
   const router = useRouter();
@@ -185,6 +189,97 @@ export default function SupplierDetailPage() {
           color: 'text-slate-400',
           bgColor: 'bg-slate-500/10',
         };
+    }
+  };
+
+  // Handle return delivery confirmation
+  const handleConfirmReturnDelivery = async (returnOrder: SupplierOrder, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent navigation to detail page
+
+    if (!returnOrder.id) return;
+
+    try {
+      // Update return status to DELIVERED (confirmed delivered to supplier)
+      await db.supplier_orders.update(returnOrder.id, {
+        status: 'DELIVERED',
+        deliveryDate: new Date(),
+        updatedAt: new Date(),
+        synced: false,
+      });
+
+      // Queue for sync
+      const updatedReturn = await db.supplier_orders.get(returnOrder.id);
+      if (updatedReturn) {
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
+      }
+
+      toast.success('Livraison confirmée - Crédit disponible pour paiements');
+    } catch (error) {
+      console.error('Error confirming return delivery:', error);
+      toast.error('Erreur lors de la confirmation de livraison');
+    }
+  };
+
+  // Handle return cancellation
+  const handleCancelReturn = async (returnOrder: SupplierOrder, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent navigation to detail page
+
+    if (!returnOrder.id || !returnOrder.returnProductId) return;
+
+    try {
+      // Get product to restore stock
+      const product = await db.products.get(returnOrder.returnProductId);
+      if (!product) {
+        toast.error('Produit non trouvé');
+        return;
+      }
+
+      // Find the stock movement record to get the quantity
+      const stockMovement = await db.stock_movements
+        .where('supplier_order_id')
+        .equals(returnOrder.id)
+        .first();
+
+      const returnQty = stockMovement ? Math.abs(stockMovement.quantity_change) : 0;
+
+      // Update return status to CANCELLED
+      await db.supplier_orders.update(returnOrder.id, {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+        synced: false,
+      });
+
+      // Restore stock (return was never delivered)
+      await db.products.update(returnOrder.returnProductId, {
+        stock: product.stock + returnQty,
+        updatedAt: new Date(),
+        synced: false,
+      });
+
+      // Create stock movement for restoration
+      await db.stock_movements.add({
+        product_id: returnOrder.returnProductId,
+        type: 'ADJUSTMENT',
+        quantity_change: returnQty,
+        reason: `Retour annulé - Stock restauré (Retour #${returnOrder.id})`,
+        supplier_order_id: returnOrder.id,
+        user_id: session?.user?.email || 'unknown',
+        created_at: new Date(),
+        synced: false,
+      });
+
+      // Queue for sync
+      const updatedReturn = await db.supplier_orders.get(returnOrder.id);
+      if (updatedReturn) {
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
+        await queueTransaction('PRODUCT', 'UPDATE', { ...product, stock: product.stock + returnQty }, String(returnOrder.returnProductId));
+      }
+
+      toast.success('Retour annulé - Stock restauré');
+    } catch (error) {
+      console.error('Error cancelling return:', error);
+      toast.error('Erreur lors de l\'annulation du retour');
     }
   };
 
@@ -441,6 +536,27 @@ export default function SupplierDetailPage() {
                       <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-800">
                         Note: {order.notes}
                       </p>
+                    )}
+
+                    {/* Return Delivery Confirmation (only for pending returns) */}
+                    {isReturn && order.status === 'PENDING' && (
+                      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-800">
+                        <Button
+                          onClick={(e) => handleCancelReturn(order, e)}
+                          variant="outline"
+                          className="flex-1 h-10 bg-slate-800 border-red-700 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg text-sm font-semibold"
+                        >
+                          <ThumbsDown className="w-4 h-4 mr-1.5" />
+                          Annuler
+                        </Button>
+                        <Button
+                          onClick={(e) => handleConfirmReturnDelivery(order, e)}
+                          className="flex-1 h-10 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold"
+                        >
+                          <ThumbsUp className="w-4 h-4 mr-1.5" />
+                          Confirmer livraison
+                        </Button>
+                      </div>
                     )}
                   </div>
                 );

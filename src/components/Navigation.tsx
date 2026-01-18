@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingCart, Package, Building2, Settings } from 'lucide-react';
+import { Home, ShoppingCart, Package, Users, Coins, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Accueil', icon: Home },
   { href: '/ventes/nouvelle', label: 'Vente', icon: ShoppingCart },
   { href: '/stocks', label: 'Stock', icon: Package },
-  { href: '/fournisseurs', label: 'Fourniss.', icon: Building2 }, // 🆕
+  { href: '/fournisseurs', label: 'Fournisseurs', icon: Users },
+  { href: '/depenses', label: 'Dépenses', icon: Coins },
   { href: '/parametres', label: 'Réglages', icon: Settings },
 ];
 
@@ -45,7 +46,7 @@ export function Navigation() {
               >
                 <Icon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </div>
-              <span className={cn('text-[10px] sm:text-xs', isActive ? 'font-semibold' : 'font-medium')}>
+              <span className={cn('text-[10px] sm:text-xs truncate max-w-full px-0.5', isActive ? 'font-semibold' : 'font-medium')}>
                 {item.label}
               </span>
             </Link>

@@ -6,7 +6,7 @@ Les personas représentent nos utilisateurs cibles. Ils nous aident à prendre d
 
 ---
 
-## Persona 1: Mamadou Diallo
+## Persona 1: Oumar Diallo
 
 ### "Le Propriétaire Jongleur"
 
@@ -30,7 +30,7 @@ Les personas représentent nos utilisateurs cibles. Ils nous aident à prendre d
 ```
 Faible ━━━━━━━━●━━━━━━━━━━ Élevée
               ↑
-         Mamadou
+         Oumar
 ```
 
 | Outil | Niveau |
@@ -73,7 +73,7 @@ Faible ━━━━━━━━●━━━━━━━━━━ Élevée
 
 ### Questions d'Évaluation
 
-Quand Mamadou évalue une nouvelle solution, il se demande:
+Quand Oumar évalue une nouvelle solution, il se demande:
 
 > "Est-ce que ça va me faire économiser de l'argent en 6 mois?"
 
@@ -87,15 +87,15 @@ Quand Mamadou évalue une nouvelle solution, il se demande:
 
 ### Scénario Type
 
-**Lundi, 7h30** — Mamadou arrive à la pharmacie. Il compte la caisse restante de samedi. Il ouvre Excel pour vérifier les stocks mais le fichier met 2 minutes à charger. Un client arrive, il ferme Excel.
+**Lundi, 7h30** — Oumar arrive à la pharmacie. Il compte la caisse restante de samedi. Il ouvre Excel pour vérifier les stocks mais le fichier met 2 minutes à charger. Un client arrive, il ferme Excel.
 
-**11h** — Heure de pointe. Fatoumata lui demande le prix du Coartem. Il ne se souvient plus, cherche dans son cahier. Le client attend.
+**11h** — Heure de pointe. Abdoulaye lui demande le prix du Coartem. Il ne se souvient plus, cherche dans son cahier. Le client attend.
 
-**14h** — Le représentant du grossiste appelle. Mamadou commande de mémoire, espérant ne rien oublier.
+**14h** — Le représentant du grossiste appelle. Oumar commande de mémoire, espérant ne rien oublier.
 
 **19h** — Fermeture. Il compte la caisse (30 min). Note les totaux dans son cahier. Rentre épuisé.
 
-### Ce dont Mamadou a besoin
+### Ce dont Oumar a besoin
 
 | Besoin | Traduction Produit |
 |--------|-------------------|
@@ -107,7 +107,7 @@ Quand Mamadou évalue une nouvelle solution, il se demande:
 
 ---
 
-## Persona 2: Fatoumata Camara
+## Persona 2: Abdoulaye Camara
 
 ### "L'Employée Efficace"
 
@@ -121,7 +121,7 @@ Quand Mamadou évalue une nouvelle solution, il se demande:
 |----------|--------|
 | **Âge** | 27 ans |
 | **Rôle** | Vendeuse et gestionnaire de stock |
-| **Expérience** | 3 ans chez Thierno Mamadou |
+| **Expérience** | 3 ans chez Thierno Oumar |
 | **Expérience précédente** | Pharmacie avec système POS basique |
 | **Horaires** | 8h-18h, parfois plus |
 | **Localisation** | Conakry, Guinée |
@@ -131,7 +131,7 @@ Quand Mamadou évalue une nouvelle solution, il se demande:
 ```
 Faible ━━━━━━━━━━━━━━●━━━━ Élevée
                     ↑
-               Fatoumata
+               Abdoulaye
 ```
 
 | Outil | Niveau |
@@ -143,7 +143,7 @@ Faible ━━━━━━━━━━━━━━●━━━━ Élevée
 
 ### Workarounds Actuels
 
-Fatoumata a développé ses propres systèmes pour compenser les lacunes:
+Abdoulaye a développé ses propres systèmes pour compenser les lacunes:
 
 | Problème | Sa Solution |
 |----------|-------------|
@@ -163,7 +163,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 ### Frustrations
 
 - 😤 Le système (Excel) plante ou est lent
-- 😤 Doit interrompre Mamadou pour les prix
+- 😤 Doit interrompre Oumar pour les prix
 - 😤 Comptage manuel répétitif et stressant
 - 😤 Les clients s'impatientent quand elle cherche
 - 😤 Heures supplémentaires non prévues
@@ -177,7 +177,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 
 ### Scénario Type
 
-**8h** — Fatoumata ouvre la pharmacie. Elle vérifie ses notes personnelles pour se rappeler ce qui manquait hier.
+**8h** — Abdoulaye ouvre la pharmacie. Elle vérifie ses notes personnelles pour se rappeler ce qui manquait hier.
 
 **11h30** — File d'attente de 5 personnes. Un client demande du Paracétamol 500mg. Elle tape dans Excel, attend 30 secondes. "Stock: 2 boîtes". Elle doute, vérifie physiquement. Il en reste 8. Excel n'est pas à jour.
 
@@ -187,7 +187,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 
 **18h30** — Elle devait finir à 18h. Le comptage de caisse prend 20 minutes. Erreur de 5000 GNF. Recompte. Trouve l'erreur. Part à 19h.
 
-### Ce dont Fatoumata a besoin
+### Ce dont Abdoulaye a besoin
 
 | Besoin | Traduction Produit |
 |--------|-------------------|
@@ -201,7 +201,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 
 ## Comparaison des Personas
 
-| Dimension | Mamadou | Fatoumata |
+| Dimension | Oumar | Abdoulaye |
 |-----------|---------|-----------|
 | **Priorité #1** | Rentabilité | Rapidité |
 | **Rapport à la tech** | Méfiant | Enthousiaste (si ça marche) |
@@ -214,7 +214,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 
 ## Implications Design par Persona
 
-### Pour Mamadou
+### Pour Oumar
 
 | Besoin | Solution Design |
 |--------|-----------------|
@@ -223,7 +223,7 @@ Fatoumata a développé ses propres systèmes pour compenser les lacunes:
 | Confiance | Indicateur de sync visible |
 | Coût visible | ROI clair (économies périmés) |
 
-### Pour Fatoumata
+### Pour Abdoulaye
 
 | Besoin | Solution Design |
 |--------|-----------------|

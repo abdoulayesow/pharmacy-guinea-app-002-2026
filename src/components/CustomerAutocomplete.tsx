@@ -97,9 +97,11 @@ export function CustomerAutocomplete({
       }
     });
 
-    return Array.from(customerMap.values()).sort(
-      (a, b) => b.lastPurchaseDate.getTime() - a.lastPurchaseDate.getTime()
-    );
+    return Array.from(customerMap.values()).sort((a, b) => {
+      const dateA = a.lastPurchaseDate instanceof Date ? a.lastPurchaseDate : new Date(a.lastPurchaseDate);
+      const dateB = b.lastPurchaseDate instanceof Date ? b.lastPurchaseDate : new Date(b.lastPurchaseDate);
+      return dateB.getTime() - dateA.getTime();
+    });
   }, [sales]);
 
   // Fuzzy search filtering

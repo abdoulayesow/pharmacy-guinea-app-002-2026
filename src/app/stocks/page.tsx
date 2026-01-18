@@ -24,9 +24,15 @@ import {
   TrendingDown,
   Edit3,
   AlertCircle,
+  PackagePlus,
+  Calendar,
+  Hash,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import type { Product, StockMovementType } from '@/lib/shared/types';
+import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
+import { getExpirationAlertLevel } from '@/lib/client/db';
 
 const CATEGORIES = [
   'Antidouleur',
@@ -63,6 +69,17 @@ export default function StocksPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
+  // 🆕 Batch receipt modal states
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchProductId, setBatchProductId] = useState<number | null>(null);
+  const [batchLotNumber, setBatchLotNumber] = useState('');
+  const [batchExpirationDate, setBatchExpirationDate] = useState('');
+  const [batchQuantity, setBatchQuantity] = useState('');
+  const [batchUnitCost, setBatchUnitCost] = useState('');
+
+  // 🆕 Expanded batches state (track which products show batch details)
+  const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
+
   // Stock adjustment modal states
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
@@ -95,8 +112,44 @@ export default function StocksPage() {
     return null;
   }
 
-  // Get products from IndexedDB
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // Get products from IndexedDB with calculated stock
+  // Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
+  // Synced movements are already reflected in product.stock from the server
+  const products = useLiveQuery(async () => {
+    const allProducts = await db.products.toArray();
+
+    // Calculate stock for each product from UNSYNCED movements only
+    const productsWithStock = await Promise.all(
+      allProducts.map(async (product) => {
+        if (!product.id) return product;
+
+        // Get UNSYNCED stock movements for this product
+        const movements = await db.stock_movements
+          .where('product_id')
+          .equals(product.id)
+          .filter(m => !m.synced) // CRITICAL: Only unsynced movements
+          .toArray();
+
+        // Sum all unsynced movements
+        const totalMovements = movements.reduce((sum, movement) => {
+          return sum + movement.quantity_change;
+        }, 0);
+
+        // Return product with calculated stock
+        // product.stock = server value (includes synced movements)
+        // + unsynced local movements
+        return {
+          ...product,
+          stock: product.stock + totalMovements,
+        };
+      })
+    );
+
+    return productsWithStock;
+  }) ?? [];
+
+  // 🆕 Get batches for all products
+  const allBatches = useLiveQuery(() => db.product_batches.toArray()) ?? [];
 
   // Filter products
   const filteredProducts = products.filter((product) => {
@@ -228,6 +281,135 @@ export default function StocksPage() {
     setIsAddingStock(true);
   };
 
+  // 🆕 Open batch receipt modal
+  const handleOpenBatchReceipt = (productId: number) => {
+    setBatchProductId(productId);
+    setBatchLotNumber('');
+    setBatchExpirationDate('');
+    setBatchQuantity('');
+    setBatchUnitCost('');
+    setShowBatchModal(true);
+  };
+
+  // 🆕 Reset batch form
+  const resetBatchForm = () => {
+    setBatchProductId(null);
+    setBatchLotNumber('');
+    setBatchExpirationDate('');
+    setBatchQuantity('');
+    setBatchUnitCost('');
+  };
+
+  // 🆕 Submit batch receipt
+  const handleSubmitBatch = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!batchProductId || !currentUser) return;
+
+    const quantity = parseInt(batchQuantity);
+    const unitCost = parseInt(batchUnitCost);
+
+    if (isNaN(quantity) || quantity <= 0) {
+      alert('La quantité doit être supérieure à 0');
+      return;
+    }
+
+    const expirationDate = new Date(batchExpirationDate);
+    const now = new Date();
+
+    if (expirationDate <= now) {
+      alert('La date d\'expiration doit être dans le futur');
+      return;
+    }
+
+    // 1. Create ProductBatch record
+    const batch = {
+      product_id: batchProductId,
+      lot_number: batchLotNumber.trim(),
+      expiration_date: expirationDate,
+      quantity,
+      initial_qty: quantity,
+      unit_cost: isNaN(unitCost) ? undefined : unitCost,
+      received_date: now,
+      createdAt: now,
+      updatedAt: now,
+      synced: false,
+    };
+
+    const batchId = await db.product_batches.add(batch);
+
+    // 2. Create stock movement for receipt
+    const movement = {
+      product_id: batchProductId,
+      type: 'RECEIPT' as StockMovementType,
+      quantity_change: quantity,
+      reason: `Réception lot ${batchLotNumber.trim()}`,
+      created_at: now,
+      user_id: currentUser.id,
+      synced: false,
+    };
+
+    const movementId = await db.stock_movements.add(movement);
+
+    // 3. Update product stock
+    const product = products.find(p => p.id === batchProductId);
+    if (product) {
+      const newStock = product.stock + quantity;
+      await db.products.update(batchProductId, {
+        stock: newStock,
+        synced: false,
+        updatedAt: now,
+      });
+
+      // 4. Queue for sync
+      await queueTransaction('PRODUCT_BATCH', 'CREATE', {
+        ...batch,
+        id: batchId,
+      });
+
+      await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
+        ...movement,
+        id: movementId,
+      });
+
+      await queueTransaction('PRODUCT', 'UPDATE', {
+        id: batchProductId,
+        stock: newStock,
+        synced: false,
+        updatedAt: now,
+      });
+
+      await updatePendingCount();
+    }
+
+    setShowBatchModal(false);
+    resetBatchForm();
+  };
+
+  // 🆕 Toggle batch expansion
+  const toggleBatchExpansion = (productId: number) => {
+    setExpandedBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  // 🆕 Get batches for a product
+  const getBatchesForProduct = (productId: number): ProductBatch[] => {
+    return allBatches
+      .filter(b => b.product_id === productId && b.quantity > 0)
+      .sort((a, b) => {
+        const dateA = a.expiration_date instanceof Date ? a.expiration_date : new Date(a.expiration_date);
+        const dateB = b.expiration_date instanceof Date ? b.expiration_date : new Date(b.expiration_date);
+        return dateA.getTime() - dateB.getTime();
+      });
+  };
+
   // Submit stock adjustment
   const handleSubmitAdjustment = async (e: FormEvent) => {
     e.preventDefault();
@@ -302,13 +484,15 @@ export default function StocksPage() {
                 <h2 className="text-white text-lg font-bold">Stock</h2>
               </div>
             </div>
-            <Button
-              onClick={handleOpenAdd}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-10 px-3 font-semibold text-xs"
-            >
-              <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
-              Nouveau produit
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleOpenAdd}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-10 px-3 font-semibold text-xs"
+              >
+                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
+                Nouveau produit
+              </Button>
+            </div>
           </div>
 
           {/* Search Bar - Dark Theme */}
@@ -439,6 +623,8 @@ export default function StocksPage() {
             filteredProducts.map((product) => {
               const stockInfo = getStockLevel(product);
               const expirationInfo = getExpirationStatus(product.expirationDate); // 🆕
+              const productBatches = getBatchesForProduct(product.id!);
+              const isExpanded = expandedBatches.has(product.id!);
 
               return (
                 <div
@@ -480,7 +666,7 @@ export default function StocksPage() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mb-2">
                     <Button
                       onClick={() => handleOpenEdit(product)}
                       variant="outline"
@@ -497,6 +683,87 @@ export default function StocksPage() {
                       Ajuster stock
                     </Button>
                   </div>
+
+                  {/* 🆕 Batch Receipt Button */}
+                  <Button
+                    onClick={() => handleOpenBatchReceipt(product.id!)}
+                    className="w-full h-10 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold mb-2"
+                  >
+                    <PackagePlus className="w-4 h-4 mr-1.5" />
+                    Nouvelle réception
+                  </Button>
+
+                  {/* 🆕 Batch List Toggle */}
+                  {productBatches.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => toggleBatchExpansion(product.id!)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-950/50 border border-slate-700 hover:bg-slate-950 transition-all text-sm text-slate-300"
+                      >
+                        <span className="font-semibold flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          Lots en stock ({productBatches.length})
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      {/* 🆕 Expanded Batch Details */}
+                      {isExpanded && (
+                        <div className="mt-2 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                          {productBatches.map((batch) => {
+                            const alertLevel = getExpirationAlertLevel(batch.expiration_date);
+                            const alertColors = {
+                              critical: { bg: 'bg-red-500/20', border: 'border-red-500/50', text: 'text-red-300' },
+                              warning: { bg: 'bg-amber-500/20', border: 'border-amber-500/50', text: 'text-amber-300' },
+                              notice: { bg: 'bg-yellow-500/20', border: 'border-yellow-500/50', text: 'text-yellow-300' },
+                              ok: { bg: 'bg-emerald-500/20', border: 'border-emerald-500/50', text: 'text-emerald-300' },
+                            };
+                            const colors = alertColors[alertLevel];
+
+                            return (
+                              <div
+                                key={batch.id}
+                                className={cn(
+                                  'p-3 rounded-lg border-2 transition-all',
+                                  colors.bg,
+                                  colors.border
+                                )}
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Hash className="w-3.5 h-3.5 text-slate-400" />
+                                      <span className="text-sm font-bold text-white">
+                                        {batch.lot_number}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                      <span className={cn('text-xs font-semibold', colors.text)}>
+                                        Exp: {formatDate(batch.expiration_date)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className={cn('px-3 py-1 rounded-lg font-bold text-sm', colors.text, colors.bg)}>
+                                    {batch.quantity} unités
+                                  </div>
+                                </div>
+                                {batch.unit_cost && (
+                                  <p className="text-xs text-slate-400">
+                                    Coût unitaire: {formatCurrency(batch.unit_cost)}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             })
@@ -803,6 +1070,141 @@ export default function StocksPage() {
                   )}
                 >
                   {isAddingStock ? 'Ajouter' : 'Retirer'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Batch Receipt Modal */}
+      {showBatchModal && batchProductId && (
+        <div className="fixed inset-0 bg-black/80 flex items-end z-50">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-white font-bold text-xl">Nouvelle réception</h3>
+                <p className="text-slate-400 text-sm mt-1">
+                  {products.find(p => p.id === batchProductId)?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowBatchModal(false);
+                  resetBatchForm();
+                }}
+                className="text-slate-400 hover:text-white w-10 h-10 rounded-lg hover:bg-slate-950 flex items-center justify-center transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitBatch} className="space-y-4">
+              {/* Lot Number */}
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  <Hash className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+                  Numéro de lot *
+                </label>
+                <Input
+                  type="text"
+                  value={batchLotNumber}
+                  onChange={(e) => setBatchLotNumber(e.target.value)}
+                  placeholder="Ex: LOT-2024-001"
+                  className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg font-mono"
+                  required
+                />
+                <p className="text-xs text-slate-400 mt-1.5">
+                  Le numéro de lot permettra de tracer ce lot spécifique
+                </p>
+              </div>
+
+              {/* Expiration Date */}
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  <Calendar className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+                  Date d&apos;expiration *
+                </label>
+                <Input
+                  type="date"
+                  value={batchExpirationDate}
+                  onChange={(e) => setBatchExpirationDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="h-12 bg-slate-950 border-slate-700 text-white rounded-lg"
+                  required
+                />
+                <p className="text-xs text-slate-400 mt-1.5">
+                  La date d&apos;expiration doit être dans le futur
+                </p>
+              </div>
+
+              {/* Quantity and Unit Cost Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2">
+                    <Package className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+                    Quantité reçue *
+                  </label>
+                  <Input
+                    type="number"
+                    value={batchQuantity}
+                    onChange={(e) => setBatchQuantity(e.target.value)}
+                    placeholder="0"
+                    min="1"
+                    className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2">
+                    Coût unitaire (GNF)
+                  </label>
+                  <Input
+                    type="number"
+                    value={batchUnitCost}
+                    onChange={(e) => setBatchUnitCost(e.target.value)}
+                    placeholder="0"
+                    className="h-12 bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              {/* Info Box - FEFO Explanation */}
+              <div className="bg-purple-500/10 border-2 border-purple-500/30 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <PackagePlus className="w-4 h-4 text-purple-300" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-purple-300 mb-1">
+                      Gestion automatique FEFO
+                    </h4>
+                    <p className="text-xs text-purple-200/80 leading-relaxed">
+                      Les lots avec les dates d&apos;expiration les plus proches seront vendus en premier automatiquement (First Expired First Out).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowBatchModal(false);
+                    resetBatchForm();
+                  }}
+                  className="flex-1 h-12 rounded-lg border border-slate-700 text-white hover:bg-slate-950"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 h-12 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold"
+                >
+                  <PackagePlus className="w-4 h-4 mr-1.5" />
+                  Enregistrer
                 </Button>
               </div>
             </form>

@@ -23,8 +23,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
-import { db } from '@/lib/client/db';
-import { queueTransaction } from '@/lib/client/sync';
+import { db, selectBatchForSale, type BatchAllocation } from '@/lib/client/db';
+import { queueTransaction, processSyncQueue } from '@/lib/client/sync';
 import { formatCurrency } from '@/lib/shared/utils';
 import type { Product, Sale, SaleItem, CartItem, StockMovement } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
@@ -78,8 +78,41 @@ export default function NouvelleVentePage() {
     new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // Default: 3 days from now
   );
 
-  // Get products from IndexedDB
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // Get products from IndexedDB with calculated stock
+  // Note: Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
+  // Synced movements are already reflected in product.stock from the server
+  const products = useLiveQuery(async () => {
+    const allProducts = await db.products.toArray();
+
+    // Calculate stock for each product from UNSYNCED movements only
+    const productsWithStock = await Promise.all(
+      allProducts.map(async (product) => {
+        if (!product.id) return product;
+
+        // Get UNSYNCED stock movements for this product
+        const movements = await db.stock_movements
+          .where('product_id')
+          .equals(product.id)
+          .filter(m => !m.synced) // CRITICAL: Only unsynced movements
+          .toArray();
+
+        // Sum all unsynced movements
+        const totalMovements = movements.reduce((sum, movement) => {
+          return sum + movement.quantity_change;
+        }, 0);
+
+        // Return product with calculated stock
+        // product.stock = server value (includes synced movements)
+        // + unsynced local movements
+        return {
+          ...product,
+          stock: product.stock + totalMovements,
+        };
+      })
+    );
+
+    return productsWithStock;
+  }) ?? [];
 
   useEffect(() => {
     // Wait for session to load before checking auth
@@ -145,7 +178,13 @@ export default function NouvelleVentePage() {
   };
 
   const handlePayment = async (method: PaymentMethod) => {
-    if (!currentUser || cartItems.length === 0) return;
+    // Use session user if available, fallback to Zustand currentUser
+    const activeUser = session?.user || currentUser;
+
+    if (!activeUser || cartItems.length === 0) {
+      toast.error('Erreur: Utilisateur ou panier non valide');
+      return;
+    }
 
     // For cash, validate amount received
     if (method === 'CASH' && showCashCalculator) {
@@ -154,6 +193,14 @@ export default function NouvelleVentePage() {
         toast.error('Montant reçu insuffisant');
         return;
       }
+    }
+
+    // 🆕 For credit sales, enforce customer name requirement
+    if (method === 'CREDIT' && !customerName.trim()) {
+      toast.error('Veuillez entrer le nom du client pour un paiement à crédit');
+      setShowCreditDialog(false);
+      setStep('customer_info'); // Redirect to customer info step
+      return;
     }
 
     setIsProcessing(true);
@@ -168,7 +215,7 @@ export default function NouvelleVentePage() {
         total: cartTotal,
         payment_method: method,
         payment_ref: method === 'ORANGE_MONEY' ? orangeMoneyRef || `OM-${Date.now()}` : null,
-        user_id: currentUser.id,
+        user_id: activeUser.id,
         synced: false,
         // 🆕 Customer info (optional)
         customer_name: customerName || undefined,
@@ -183,37 +230,92 @@ export default function NouvelleVentePage() {
       // Add sale to database
       const saleId = await db.sales.add(sale);
 
-      // Create sale items records
-      const saleItemsToAdd: SaleItem[] = saleItems.map((item) => ({
-        sale_id: saleId as number,
-        product_id: item.product.id!,
-        quantity: item.quantity,
-        unit_price: item.product.price,
-        subtotal: item.product.price * item.quantity,
-      }));
+      // 🆕 FEFO: Allocate batches for each product before creating sale items
+      const batchAllocationsMap = new Map<number, BatchAllocation[]>();
+
+      try {
+        for (const item of saleItems) {
+          if (!item.product.id) continue;
+
+          // Allocate batches using FEFO (First Expired First Out)
+          const allocations = await selectBatchForSale(item.product.id, item.quantity);
+          batchAllocationsMap.set(item.product.id, allocations);
+        }
+      } catch (error) {
+        // Rollback sale if batch allocation fails
+        await db.sales.delete(saleId);
+
+        const errorMsg = error instanceof Error ? error.message : 'Erreur inconnue';
+        toast.error(
+          `Impossible de compléter la vente: ${errorMsg}`,
+          { duration: 6000 }
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      // Create sale items records with batch tracking
+      const saleItemsToAdd: SaleItem[] = [];
+
+      for (const item of saleItems) {
+        if (!item.product.id) continue;
+
+        const allocations = batchAllocationsMap.get(item.product.id) || [];
+
+        // Create one sale item per batch allocation (may span multiple batches)
+        for (const allocation of allocations) {
+          saleItemsToAdd.push({
+            sale_id: saleId as number,
+            product_id: item.product.id,
+            product_batch_id: allocation.batchId,
+            quantity: allocation.quantity,
+            unit_price: item.product.price,
+            subtotal: item.product.price * allocation.quantity,
+          });
+        }
+      }
 
       await db.sale_items.bulkAdd(saleItemsToAdd);
 
-      // Update product stock and create stock movements
+      // 🆕 Update batch quantities (decrement from allocated batches)
+      for (const item of saleItems) {
+        if (!item.product.id) continue;
+
+        const allocations = batchAllocationsMap.get(item.product.id) || [];
+
+        for (const allocation of allocations) {
+          const batch = await db.product_batches.get(allocation.batchId);
+          if (batch) {
+            // Decrement batch quantity
+            await db.product_batches.update(allocation.batchId, {
+              quantity: batch.quantity - allocation.quantity,
+              updatedAt: new Date(),
+            });
+
+            // Queue batch update for sync
+            await queueTransaction(
+              'PRODUCT_BATCH',
+              'UPDATE',
+              { ...batch, quantity: batch.quantity - allocation.quantity, updatedAt: new Date() },
+              String(allocation.batchId)
+            );
+          }
+        }
+      }
+
+      // Create stock movements (don't update product.stock directly)
+      // Stock is calculated from movements to prevent concurrent update conflicts
       for (const item of saleItems) {
         const product = await db.products.get(item.product.id!);
         if (product) {
-          // Update stock
-          const newStock = product.stock - item.quantity;
-          await db.products.update(item.product.id!, {
-            stock: newStock,
-            synced: false,
-            updatedAt: new Date(),
-          });
-
-          // Create stock movement record for audit trail
+          // Create stock movement record (source of truth for stock changes)
           const movement: StockMovement = {
             product_id: item.product.id!,
             type: 'SALE',
             quantity_change: -item.quantity,
             reason: `Vente #${saleId}`,
             created_at: new Date(),
-            user_id: currentUser.id,
+            user_id: activeUser.id,
             synced: false,
           };
 
@@ -221,11 +323,98 @@ export default function NouvelleVentePage() {
 
           // Queue stock movement for sync
           await queueTransaction('STOCK_MOVEMENT', 'CREATE', { ...movement, id: movementId }, String(movementId));
+
+          // Mark product as unsynced (for background sync to pick up)
+          await db.products.update(item.product.id!, {
+            synced: false,
+            updatedAt: new Date(),
+          });
         }
       }
 
       // Queue sale for sync
       await queueTransaction('SALE', 'CREATE', { ...sale, id: saleId }, String(saleId));
+
+      // 🆕 OPTIMISTIC LOCKING: Try immediate sync with 5s timeout
+      let syncFailed = false;
+      let stockError: string | null = null;
+
+      try {
+        const syncResult = await Promise.race([
+          processSyncQueue(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Sync timeout')), 5000)
+          ),
+        ]);
+
+        // Check if sync failed due to stock validation
+        if (syncResult && typeof syncResult === 'object' && 'failed' in syncResult && (syncResult as any).failed > 0) {
+          const errors = (syncResult as any).errors || [];
+          stockError = errors.find((e: string) => e.includes('Stock insuffisant'));
+
+          if (stockError) {
+            syncFailed = true;
+          }
+        }
+      } catch (error) {
+        console.warn('[Sale] Immediate sync failed, will retry in background', error);
+        // Not a critical error - background sync will retry
+      }
+
+      // 🆕 If stock validation failed, rollback the sale
+      if (syncFailed && stockError) {
+        console.error('[Sale] Stock validation failed on server, rolling back local sale');
+
+        // Delete sale and sale items from IndexedDB
+        await db.sales.delete(saleId);
+        await db.sale_items.where('sale_id').equals(saleId).delete();
+
+        // Delete stock movements created for this sale
+        const saleMovements = await db.stock_movements
+          .where('reason')
+          .equals(`Vente #${saleId}`)
+          .toArray();
+
+        for (const movement of saleMovements) {
+          if (movement.id) {
+            await db.stock_movements.delete(movement.id);
+          }
+        }
+
+        // Remove from sync queue (sale + stock movements)
+        const queueItems = await db.sync_queue
+          .where('localId')
+          .equals(parseInt(String(saleId), 10))
+          .toArray();
+        for (const qi of queueItems) {
+          if (qi.id) {
+            await db.sync_queue.delete(qi.id);
+          }
+        }
+
+        // Also remove stock movement queue items
+        const movementQueueItems = await db.sync_queue
+          .where('entity_type')
+          .equals('STOCK_MOVEMENT')
+          .toArray();
+
+        for (const item of movementQueueItems) {
+          const payload = item.payload as any;
+          if (payload?.reason === `Vente #${saleId}`) {
+            await db.sync_queue.delete(item.id!);
+          }
+        }
+
+        // Show error to user
+        toast.error(
+          'Stock insuffisant sur le serveur. La vente a été annulée. ' +
+          'Veuillez synchroniser et réessayer.',
+          { duration: 6000 }
+        );
+
+        setIsProcessing(false);
+        return; // Don't proceed to receipt
+      }
 
       // Set last sale for receipt (with stored items)
       setLastSale({
@@ -252,7 +441,7 @@ export default function NouvelleVentePage() {
       setStep('receipt');
     } catch (error) {
       console.error('Error completing sale:', error);
-      toast.error('Erreur lors de la vente. Veuillez réessayer.');
+      toast.error(`Erreur lors de la vente: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -709,6 +898,36 @@ export default function NouvelleVentePage() {
             </div>
           </Card>
 
+          {/* Customer Info Display - Show if customer info was entered */}
+          {customerName && (
+            <Card className="p-5 sm:p-6 rounded-xl shadow-md border border-blue-700/50 bg-gradient-to-br from-blue-900/30 to-blue-900/10">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">
+                    Client
+                  </div>
+                  <div className="text-white font-bold text-lg mb-0.5 truncate" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {customerName}
+                  </div>
+                  {customerPhone && (
+                    <div className="text-sm text-blue-300/70 font-medium">{customerPhone}</div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setStep('customer_info')}
+                  className="text-blue-400 hover:text-blue-300 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-500/10 transition-all"
+                >
+                  Modifier
+                </button>
+              </div>
+            </Card>
+          )}
+
           <div className="space-y-4">
             <h3 className="text-white font-semibold text-lg sm:text-xl lg:col-span-2">Méthode de paiement</h3>
 
@@ -1033,13 +1252,16 @@ export default function NouvelleVentePage() {
                         1
                       </span>
                       Référence de Transaction
+                      <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700">
+                        OPTIONNEL
+                      </span>
                     </label>
                     <div className="relative">
                       <Input
                         type="text"
                         value={orangeMoneyRef}
                         onChange={(e) => setOrangeMoneyRef(e.target.value.toUpperCase())}
-                        placeholder="OM202601131234"
+                        placeholder="OM202601131234 (optionnel)"
                         className="h-16 bg-slate-950 border-2 border-orange-900/50 focus:border-orange-500 rounded-xl text-lg font-bold text-center text-white placeholder:text-slate-700 tracking-wider"
                         style={{
                           fontVariantNumeric: 'tabular-nums',
@@ -1060,7 +1282,11 @@ export default function NouvelleVentePage() {
                         <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50" />
                       </div>
                       <p className="font-medium leading-relaxed">
-                        Entrez le code de confirmation envoyé par Orange Money après validation du paiement
+                        {orangeMoneyRef ? (
+                          "Code de confirmation saisi - sera enregistré avec la vente"
+                        ) : (
+                          "Laisser vide pour générer automatiquement une référence (OM-timestamp)"
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1095,21 +1321,21 @@ export default function NouvelleVentePage() {
                         setShowOrangeMoneyDialog(false);
                         handlePayment('ORANGE_MONEY');
                       }}
-                      disabled={!orangeMoneyRef || isProcessing}
+                      disabled={isProcessing}
                       className="relative flex-[2] h-14 bg-gradient-to-r from-orange-600 via-orange-500 to-orange-600 hover:from-orange-500 hover:via-orange-400 hover:to-orange-500 text-white font-black rounded-xl shadow-xl shadow-orange-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-orange-400 overflow-hidden"
                       style={{
-                        boxShadow: orangeMoneyRef ? '0 8px 24px rgba(249, 115, 22, 0.5)' : undefined,
+                        boxShadow: '0 8px 24px rgba(249, 115, 22, 0.5)',
                       }}
                     >
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                          Vérification...
+                          Traitement...
                         </>
                       ) : (
                         <>
                           <Check className="w-6 h-6 mr-2 drop-shadow-lg" />
-                          <span className="uppercase tracking-wider">Vérifier &amp; Payer</span>
+                          <span className="uppercase tracking-wider">{orangeMoneyRef ? 'Confirmer Paiement' : 'Payer Sans Réf.'}</span>
                         </>
                       )}
                       {/* Shine effect */}
@@ -1267,23 +1493,52 @@ export default function NouvelleVentePage() {
                     </div>
                   </div>
 
-                  {/* Customer signature */}
-                  {customerName && (
-                    <div className="bg-slate-950/50 rounded-xl p-4 border-2 border-amber-700/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="text-xs font-bold text-amber-400 uppercase tracking-widest">
-                          Client Signataire
-                        </div>
-                        <div className="w-1 h-1 rounded-full bg-amber-500" />
+                  {/* Customer name requirement - Always show for credit */}
+                  <div className={cn(
+                    "rounded-xl p-4 border-2 transition-all",
+                    customerName
+                      ? "bg-slate-950/50 border-amber-700/30"
+                      : "bg-red-950/30 border-red-700/50 animate-pulse"
+                  )}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <span className={cn(
+                          "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border",
+                          customerName
+                            ? "bg-amber-500/20 border-amber-500/50 text-amber-400"
+                            : "bg-red-500/20 border-red-500/50 text-red-400"
+                        )}>
+                          2
+                        </span>
+                        <span className={customerName ? "text-amber-400" : "text-red-400"}>
+                          {customerName ? "Client Signataire" : "Nom du Client Requis"}
+                        </span>
                       </div>
-                      <div className="text-white font-bold text-lg" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {customerName}
-                      </div>
-                      {customerPhone && (
-                        <div className="text-sm text-amber-300/70 mt-1 font-medium">{customerPhone}</div>
-                      )}
+                      {customerName && <div className="w-1 h-1 rounded-full bg-amber-500" />}
+                      {!customerName && <AlertCircle className="w-4 h-4 text-red-400 animate-pulse" />}
                     </div>
-                  )}
+                    {customerName ? (
+                      <>
+                        <div className="text-white font-bold text-lg" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {customerName}
+                        </div>
+                        {customerPhone && (
+                          <div className="text-sm text-amber-300/70 mt-1 font-medium">{customerPhone}</div>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowCreditDialog(false);
+                          setStep('customer_info');
+                        }}
+                        className="w-full mt-2 px-4 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        <AlertCircle className="w-5 h-5" />
+                        <span>Ajouter les informations du client</span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Legal notice */}
                   <div className="bg-amber-900/10 rounded-xl p-4 border border-amber-700/30">
@@ -1314,16 +1569,21 @@ export default function NouvelleVentePage() {
                         setShowCreditDialog(false);
                         handlePayment('CREDIT');
                       }}
-                      disabled={isProcessing}
+                      disabled={isProcessing || !customerName.trim()}
                       className="relative flex-[2] h-12 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:via-amber-400 hover:to-amber-500 text-white font-black rounded-xl shadow-xl shadow-amber-500/50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-amber-400 overflow-hidden"
                       style={{
-                        boxShadow: '0 8px 24px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
+                        boxShadow: customerName.trim() ? '0 8px 24px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)' : undefined,
                       }}
                     >
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-6 h-6 mr-2 animate-spin" />
                           Confirmation...
+                        </>
+                      ) : !customerName.trim() ? (
+                        <>
+                          <AlertCircle className="w-6 h-6 mr-2" />
+                          <span className="uppercase tracking-wider">Nom client requis</span>
                         </>
                       ) : (
                         <>
@@ -1332,7 +1592,9 @@ export default function NouvelleVentePage() {
                         </>
                       )}
                       {/* Shine effect */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
+                      {customerName.trim() && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
+                      )}
                     </Button>
                   </div>
                   </div>

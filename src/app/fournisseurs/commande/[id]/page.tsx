@@ -240,6 +240,12 @@ export default function OrderDetailPage() {
   const handleConfirmDelivery = async () => {
     if (!order || !supplier || !currentUser) return;
 
+    // Idempotency check: prevent duplicate delivery confirmation
+    if (order.status === 'DELIVERED') {
+      toast.error('Cette commande a déjà été confirmée comme livrée');
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -444,6 +450,16 @@ export default function OrderDetailPage() {
   const updateDeliveryItem = (index: number, updates: Partial<DeliveryItem>) => {
     setDeliveryItems(items => {
       const newItems = [...items];
+      const item = newItems[index];
+
+      // Validate received quantity doesn't exceed ordered quantity
+      if (updates.receivedQuantity !== undefined) {
+        if (updates.receivedQuantity > item.orderedQuantity) {
+          toast.error(`Quantité reçue (${updates.receivedQuantity}) ne peut pas dépasser la quantité commandée (${item.orderedQuantity})`);
+          return items; // Don't update if invalid
+        }
+      }
+
       newItems[index] = { ...newItems[index], ...updates };
       return newItems;
     });

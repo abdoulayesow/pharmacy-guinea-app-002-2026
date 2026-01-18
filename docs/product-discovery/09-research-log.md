@@ -19,7 +19,7 @@ Ce document sert à capturer les observations, interviews, et découvertes tout 
 
 | Date | Type | Participant(s) | Résumé | Lien |
 |------|------|----------------|--------|------|
-| 2026-01-XX | Interview | Mamadou Diallo | Setup initial | [#session-001](#session-001) |
+| 2026-01-XX | Interview | Oumar Diallo | Setup initial | [#session-001](#session-001) |
 | | | | | |
 | | | | | |
 
@@ -130,7 +130,7 @@ Ce document sert à capturer les observations, interviews, et découvertes tout 
 
 **Date:** YYYY-MM-DD
 **Durée:** XXh à XXh
-**Lieu:** Pharmacie Thierno Mamadou
+**Lieu:** Pharmacie Thierno Oumar
 **Observateur(s):** Nom(s)
 
 ### Contexte
@@ -231,7 +231,7 @@ Ce document sert à capturer les observations, interviews, et découvertes tout 
 
 **Date:** 2026-01-XX
 **Durée:** 60 minutes
-**Participant:** Mamadou Diallo, Propriétaire
+**Participant:** Oumar Diallo, Propriétaire
 **Interviewer:** [Votre nom]
 **Observateur(s):** —
 
@@ -250,7 +250,7 @@ Ce document sert à capturer les observations, interviews, et découvertes tout 
 [À COMPLÉTER APRÈS L'INTERVIEW]
 
 ### Citations Clés
-> "[À COMPLÉTER]" — Mamadou
+> "[À COMPLÉTER]" — Oumar
 
 ### Insights
 | Insight | Impact | Action |
@@ -312,9 +312,9 @@ Ce document sert à capturer les observations, interviews, et découvertes tout 
 
 Questions ou sujets à explorer dans les prochaines sessions:
 
-- [ ] Valider le pricing acceptable avec Mamadou
+- [ ] Valider le pricing acceptable avec Oumar
 - [ ] Observer une journée complète à la pharmacie
-- [ ] Interviewer Fatoumata séparément
+- [ ] Interviewer Abdoulaye séparément
 - [ ] Tester le prototype papier du flux de vente
 - [ ] Analyser un concurrent local s'il en existe
 - [ ] Comprendre le processus de commande aux grossistes

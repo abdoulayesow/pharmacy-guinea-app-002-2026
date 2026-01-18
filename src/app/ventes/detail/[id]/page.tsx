@@ -15,6 +15,7 @@ import { useSaleEdit } from '@/lib/client/useSaleEdit';
 import { ProductSearch } from '@/components/ProductSearch';
 import { useAuthStore } from '@/stores/auth';
 import { Input } from '@/components/ui/input';
+import { queueTransaction } from '@/lib/client/sync';
 
 export default function SaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -531,15 +532,7 @@ function PaymentFormModal({ sale, onClose }: { sale: any; onClose: () => void })
         payment_status: newStatus,
       });
 
-      await db.sync_queue.add({
-        type: 'CREDIT_PAYMENT',
-        action: 'CREATE',
-        payload: payment,
-        localId: sale.id!,
-        createdAt: new Date(),
-        status: 'PENDING',
-        retryCount: 0,
-      });
+      await queueTransaction('CREDIT_PAYMENT', 'CREATE', payment, String(sale.id!));
 
       toast.success('Paiement enregistré');
       onClose();

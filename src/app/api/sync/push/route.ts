@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
-    const { sales, saleItems, expenses, stockMovements, products, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
 
     // Basic validation: ensure arrays are actually arrays
     const validationErrors: string[] = [];
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     if (expenses && !Array.isArray(expenses)) validationErrors.push('expenses must be an array');
     if (stockMovements && !Array.isArray(stockMovements)) validationErrors.push('stockMovements must be an array');
     if (products && !Array.isArray(products)) validationErrors.push('products must be an array');
+    if (productBatches && !Array.isArray(productBatches)) validationErrors.push('productBatches must be an array');
     if (suppliers && !Array.isArray(suppliers)) validationErrors.push('suppliers must be an array');
     if (supplierOrders && !Array.isArray(supplierOrders)) validationErrors.push('supplierOrders must be an array');
     if (supplierOrderItems && !Array.isArray(supplierOrderItems)) validationErrors.push('supplierOrderItems must be an array');
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
             expenses: {},
             stockMovements: {},
             products: {},
+            productBatches: {},
             suppliers: {},
             supplierOrders: {},
             supplierOrderItems: {},
@@ -78,6 +80,7 @@ export async function POST(request: NextRequest) {
     const syncedExpenses: Record<string, number> = {};
     const syncedStockMovements: Record<string, number> = {};
     const syncedProducts: Record<string, number> = {};
+    const syncedProductBatches: Record<string, number> = {};
     const syncedSuppliers: Record<string, number> = {};
     const syncedSupplierOrders: Record<string, number> = {};
     const syncedSupplierOrderItems: Record<string, number> = {};
@@ -90,6 +93,20 @@ export async function POST(request: NextRequest) {
     if (sales && sales.length > 0) {
       for (const sale of sales) {
         try {
+          // 🆕 Check idempotency key first (prevent duplicates on retry)
+          if (sale.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: sale.idempotencyKey },
+            });
+
+            if (existingKey) {
+              // Already processed - return existing server ID
+              syncedSales[sale.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Sale ${sale.id} already synced (idempotency key: ${sale.idempotencyKey})`);
+              continue; // Skip creation
+            }
+          }
+
           // Check if sale already exists (by serverId if provided)
           let existingSale = null;
           if (sale.serverId) {
@@ -149,6 +166,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedSales[sale.id?.toString() || ''] = newSale.id;
+
+            // 🆕 Store idempotency key (24h TTL)
+            if (sale.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: sale.idempotencyKey,
+                  entityType: 'SALE',
+                  entityId: newSale.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -201,6 +230,19 @@ export async function POST(request: NextRequest) {
     if (expenses && expenses.length > 0) {
       for (const expense of expenses) {
         try {
+          // 🆕 Check idempotency key first
+          if (expense.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: expense.idempotencyKey },
+            });
+
+            if (existingKey) {
+              syncedExpenses[expense.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Expense ${expense.id} already synced (idempotency key: ${expense.idempotencyKey})`);
+              continue;
+            }
+          }
+
           let existingExpense = null;
           if (expense.serverId) {
             existingExpense = await prisma.expense.findUnique({
@@ -238,6 +280,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedExpenses[expense.id?.toString() || ''] = newExpense.id;
+
+            // 🆕 Store idempotency key
+            if (expense.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: expense.idempotencyKey,
+                  entityType: 'EXPENSE',
+                  entityId: newExpense.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -247,10 +301,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Stock Movements
+    // 🆕 Sync Stock Movements with server-side stock validation
     if (stockMovements && stockMovements.length > 0) {
       for (const movement of stockMovements) {
         try {
+          // 🆕 Check idempotency key first
+          if (movement.idempotencyKey) {
+            const existingKey = await prisma.syncIdempotencyKey.findUnique({
+              where: { idempotencyKey: movement.idempotencyKey },
+            });
+
+            if (existingKey) {
+              syncedStockMovements[movement.id?.toString() || ''] = existingKey.entityId;
+              console.log(`[API] Stock movement ${movement.id} already synced (idempotency key: ${movement.idempotencyKey})`);
+              continue;
+            }
+          }
+
           let existingMovement = null;
           if (movement.serverId) {
             existingMovement = await prisma.stockMovement.findUnique({
@@ -259,6 +326,38 @@ export async function POST(request: NextRequest) {
           }
 
           if (!existingMovement) {
+            // 🆕 CRITICAL: Validate stock before applying movement
+            if (movement.type === 'SALE' && movement.quantity_change < 0) {
+              const product = await prisma.product.findUnique({
+                where: { id: movement.product_id },
+              });
+
+              if (!product) {
+                errors.push(`Produit ${movement.product_id} introuvable`);
+                continue;
+              }
+
+              const newStock = product.stock + movement.quantity_change;
+
+              if (newStock < 0) {
+                // REJECT - insufficient stock
+                errors.push(
+                  `Stock insuffisant pour ${product.name}: ` +
+                  `${product.stock} disponible, ${-movement.quantity_change} demandé. ` +
+                  `Vente refusée.`
+                );
+                console.error(`[API] Stock validation failed for product ${product.id}: ${product.stock} + ${movement.quantity_change} = ${newStock}`);
+                continue; // Don't create movement, don't mark as synced
+              }
+
+              // Stock OK - update product stock atomically
+              await prisma.product.update({
+                where: { id: movement.product_id },
+                data: { stock: newStock },
+              });
+            }
+
+            // Create stock movement record
             const newMovement = await prisma.stockMovement.create({
               data: {
                 productId: movement.product_id,
@@ -270,6 +369,18 @@ export async function POST(request: NextRequest) {
               },
             });
             syncedStockMovements[movement.id?.toString() || ''] = newMovement.id;
+
+            // 🆕 Store idempotency key
+            if (movement.idempotencyKey) {
+              await prisma.syncIdempotencyKey.create({
+                data: {
+                  idempotencyKey: movement.idempotencyKey,
+                  entityType: 'STOCK_MOVEMENT',
+                  entityId: newMovement.id,
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              });
+            }
           } else {
             syncedStockMovements[movement.id?.toString() || ''] = existingMovement.id;
           }
@@ -348,6 +459,94 @@ export async function POST(request: NextRequest) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           errors.push(`Failed to sync product ${product.id}: ${errorMsg}`);
           console.error('[API] Product sync error:', error);
+        }
+      }
+    }
+
+    // Sync ProductBatches (FEFO tracking - Phase 3)
+    if (productBatches && productBatches.length > 0) {
+      for (const batch of productBatches) {
+        try {
+          let existingBatch = null;
+
+          // Try to find by serverId first
+          if (batch.serverId) {
+            existingBatch = await prisma.productBatch.findUnique({
+              where: { id: batch.serverId },
+            });
+          }
+
+          // If not found, try to find by lotNumber + productId
+          if (!existingBatch && batch.lot_number && batch.product_id) {
+            // Map local product_id to server productId if necessary
+            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+            const batchesByLot = await prisma.productBatch.findMany({
+              where: {
+                lotNumber: batch.lot_number,
+                productId: serverProductId,
+              },
+              orderBy: { updatedAt: 'desc' },
+              take: 1,
+            });
+            existingBatch = batchesByLot[0] || null;
+          }
+
+          if (existingBatch) {
+            // Conflict: check timestamps (Last Write Wins)
+            const serverUpdatedAt = existingBatch.updatedAt;
+            const localUpdatedAt = batch.updatedAt ? new Date(batch.updatedAt) : null;
+
+            if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
+              // Local is newer - update
+              console.log(`[API] ProductBatch ${batch.serverId}: Local wins (${localUpdatedAt.toISOString()} > ${serverUpdatedAt.toISOString()})`);
+              console.log(`[API]   Server quantity: ${existingBatch.quantity}, Local quantity: ${batch.quantity}`);
+
+              const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+              const updated = await prisma.productBatch.update({
+                where: { id: existingBatch.id },
+                data: {
+                  productId: serverProductId,
+                  lotNumber: batch.lot_number,
+                  expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : existingBatch.expirationDate,
+                  quantity: batch.quantity,
+                  initialQty: batch.initial_qty,
+                  unitCost: batch.unit_cost || null,
+                  supplierOrderId: batch.supplier_order_id || null,
+                  receivedDate: batch.received_date ? new Date(batch.received_date) : existingBatch.receivedDate,
+                  // Note: createdAt is NOT updated (immutable)
+                },
+              });
+              syncedProductBatches[batch.id?.toString() || ''] = updated.id;
+            } else {
+              // Server is newer or same - skip update
+              console.log(`[API] ProductBatch ${batch.serverId}: Server wins (${serverUpdatedAt.toISOString()} >= ${localUpdatedAt?.toISOString()})`);
+              syncedProductBatches[batch.id?.toString() || ''] = existingBatch.id;
+            }
+          } else {
+            // New batch
+            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+
+            const newBatch = await prisma.productBatch.create({
+              data: {
+                productId: serverProductId,
+                lotNumber: batch.lot_number,
+                expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : new Date(),
+                quantity: batch.quantity,
+                initialQty: batch.initial_qty,
+                unitCost: batch.unit_cost || null,
+                supplierOrderId: batch.supplier_order_id || null,
+                receivedDate: batch.received_date ? new Date(batch.received_date) : new Date(),
+              },
+            });
+            syncedProductBatches[batch.id?.toString() || ''] = newBatch.id;
+            console.log(`[API] Created new ProductBatch: ${newBatch.id} (lot: ${batch.lot_number})`);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product batch ${batch.id}: ${errorMsg}`);
+          console.error('[API] ProductBatch sync error:', error);
         }
       }
     }
@@ -682,6 +881,7 @@ export async function POST(request: NextRequest) {
         expenses: syncedExpenses,
         stockMovements: syncedStockMovements,
         products: syncedProducts,
+        productBatches: syncedProductBatches,
         suppliers: syncedSuppliers,
         supplierOrders: syncedSupplierOrders,
         supplierOrderItems: syncedSupplierOrderItems,
@@ -821,6 +1021,7 @@ export async function POST(request: NextRequest) {
             expenses: {},
             stockMovements: {},
             products: {},
+            productBatches: {},
             suppliers: {},
             supplierOrders: {},
             supplierOrderItems: {},
@@ -843,6 +1044,7 @@ export async function POST(request: NextRequest) {
           expenses: {},
           stockMovements: {},
           products: {},
+          productBatches: {},
           suppliers: {},
           supplierOrders: {},
           supplierOrderItems: {},

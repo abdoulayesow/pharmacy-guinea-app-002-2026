@@ -143,7 +143,7 @@
 
 ## Value Proposition Canvas
 
-### Profil Client (Mamadou)
+### Profil Client (Oumar)
 
 | Jobs to be Done | Douleurs | Gains Attendus |
 |-----------------|----------|----------------|

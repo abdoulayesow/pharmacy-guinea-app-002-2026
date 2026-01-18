@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History, Wallet } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useActivityMonitor } from '@/hooks/useActivityMonitor';
@@ -16,6 +16,17 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBanner } from '@/components/NotificationBadge';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
 import { getExpirationSummary, getExpirationStatus } from '@/lib/client/expiration';
+import type { ExpenseCategory } from '@/lib/shared/types';
+
+const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: 'STOCK_PURCHASE', label: 'Achat de médicaments' },
+  { value: 'SUPPLIER_PAYMENT', label: 'Paiement fournisseur' },
+  { value: 'RENT', label: 'Loyer' },
+  { value: 'SALARY', label: 'Salaire' },
+  { value: 'ELECTRICITY', label: 'Électricité' },
+  { value: 'TRANSPORT', label: 'Transport' },
+  { value: 'OTHER', label: 'Autre' },
+];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -47,7 +58,35 @@ export default function DashboardPage() {
   }, [isAuthenticated, session, status, router]);
 
   // Get data from IndexedDB with live queries
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
+  // Synced movements are already reflected in product.stock from the server
+  const products = useLiveQuery(async () => {
+    const allProducts = await db.products.toArray();
+
+    // Calculate stock for each product from UNSYNCED movements only
+    const productsWithStock = await Promise.all(
+      allProducts.map(async (product) => {
+        if (!product.id) return product;
+
+        const movements = await db.stock_movements
+          .where('product_id')
+          .equals(product.id)
+          .filter(m => !m.synced) // CRITICAL: Only unsynced movements
+          .toArray();
+
+        const totalMovements = movements.reduce((sum, movement) => sum + movement.quantity_change, 0);
+
+        // product.stock = server value (includes synced movements)
+        // + unsynced local movements
+        return {
+          ...product,
+          stock: product.stock + totalMovements,
+        };
+      })
+    );
+
+    return productsWithStock;
+  }) ?? [];
   const sales = useLiveQuery(() => db.sales.toArray()) ?? [];
   const expenses = useLiveQuery(() => db.expenses.toArray()) ?? [];
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? []; // 🆕
@@ -239,6 +278,68 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* 🆕 Expenses Quick Access - Owner Only */}
+        {currentUser?.role === 'OWNER' && (
+          <div>
+            <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">Dépenses</h3>
+            <Link href="/depenses">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer group">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20 group-hover:scale-110 transition-transform">
+                    <Wallet className="w-6 h-6 text-orange-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-semibold text-lg">Dépenses du jour</h4>
+                    <p className="text-3xl font-bold text-orange-400 mt-1">
+                      {formatCurrency(todayExpenseTotal)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Expense breakdown */}
+                {todayExpenses.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {todayExpenses.slice(0, 2).map(expense => (
+                      <div key={expense.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white font-medium truncate">{expense.description}</div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {EXPENSE_CATEGORIES.find(c => c.value === expense.category)?.label || expense.category}
+                          </div>
+                        </div>
+                        <div className="text-orange-400 font-bold ml-3">
+                          {formatCurrency(expense.amount).replace(' GNF', '')}
+                        </div>
+                      </div>
+                    ))}
+                    {todayExpenses.length > 2 && (
+                      <div className="text-center text-sm text-slate-400 mt-2">
+                        +{todayExpenses.length - 2} autre(s) dépense(s)
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {todayExpenses.length === 0 && (
+                  <div className="text-center py-4">
+                    <div className="text-slate-400 text-sm">Aucune dépense enregistrée aujourd&apos;hui</div>
+                  </div>
+                )}
+
+                {/* Action hint */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-700/50">
+                  <span className="text-sm text-slate-400">Gérer les dépenses</span>
+                  <div className="w-6 h-6 rounded-full bg-orange-500/10 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                    <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </div>
+        )}
 
         {/* 🆕 Expiration Alerts */}
         {expirationSummary.total > 0 && (

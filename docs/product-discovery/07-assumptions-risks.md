@@ -53,7 +53,7 @@ Ces hypothèses sont probablement vraies mais méritent validation.
 | Hypothèse | Méthode de Validation | Critère de Succès | Responsable |
 |-----------|----------------------|-------------------|-------------|
 | H1 | Inventaire des smartphones de l'équipe | 100% compatible PWA | PO |
-| H2 | Interview pricing avec Mamadou | Accord de principe sur prix | PO |
+| H2 | Interview pricing avec Oumar | Accord de principe sur prix | PO |
 | H9 | Comptage du catalogue actuel | < 500 produits | PO |
 | H11 | Discussion avec équipe | Français confirmé | PO |
 
@@ -83,7 +83,7 @@ Ces hypothèses sont probablement vraies mais méritent validation.
 | ID | Risque | Probabilité | Impact | Score | Mitigation |
 |----|--------|-------------|--------|-------|------------|
 | R1 | **Perte de données en mode offline** | Moyenne | Critique | 🔴 | Tests exhaustifs sync, backup local redondant, logs détaillés |
-| R2 | **Rejet de l'outil par les employés** | Moyenne | Élevé | 🔴 | Impliquer Fatoumata dans le design, formation hands-on, support réactif |
+| R2 | **Rejet de l'outil par les employés** | Moyenne | Élevé | 🔴 | Impliquer Abdoulaye dans le design, formation hands-on, support réactif |
 | R3 | **Performances insuffisantes sur 3G** | Moyenne | Élevé | 🔴 | Optimisation bundle, lazy loading, cache agressif |
 | R4 | **Coût de développement dépasse budget** | Moyenne | Élevé | 🔴 | MVP strict, pas de feature creep, sprints courts |
 
@@ -93,7 +93,7 @@ Ces hypothèses sont probablement vraies mais méritent validation.
 |----|--------|-------------|--------|-------|------------|
 | R5 | Concurrence lance produit similaire | Faible | Élevé | 🟡 | Time to market rapide, différenciation locale |
 | R6 | Changement réglementation DNPM | Faible | Élevé | 🟡 | Veille réglementaire, architecture flexible |
-| R7 | Mamadou perd intérêt pendant développement | Moyenne | Moyen | 🟡 | Communication régulière, démos fréquentes |
+| R7 | Oumar perd intérêt pendant développement | Moyenne | Moyen | 🟡 | Communication régulière, démos fréquentes |
 | R8 | Problèmes d'intégration Orange Money | Moyenne | Moyen | 🟡 | Valider API OM early, fallback manuel |
 | R9 | Smartphones des utilisateurs trop anciens | Faible | Moyen | 🟡 | Test sur appareils low-end, PWA légère |
 

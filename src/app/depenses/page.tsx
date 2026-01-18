@@ -13,21 +13,28 @@ import {
   Trash2,
   Edit2,
   Wallet,
+  AlertCircle,
+  Search,
+  Package,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
-import { formatCurrency } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, formatTime } from '@/lib/shared/utils';
+import { queueTransaction } from '@/lib/client/sync';
+import { cn } from '@/lib/client/utils';
 import type { Expense, ExpenseCategory } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { toast } from 'sonner';
 
 type FilterPeriod = 'all' | 'today' | 'week' | 'month';
 
 const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'STOCK_PURCHASE', label: 'Achat de médicaments' },
+  { value: 'SUPPLIER_PAYMENT', label: 'Paiement fournisseur' },
   { value: 'RENT', label: 'Loyer' },
   { value: 'SALARY', label: 'Salaire' },
   { value: 'ELECTRICITY', label: 'Électricité' },
@@ -45,18 +52,27 @@ export default function DepensesPage() {
   const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
   const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
 
-  const [filter, setFilter] = useState<FilterPeriod>('all');
+  // Filter states
+  const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
+  const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
 
   // Form state
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('STOCK_PURCHASE');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Get expenses from IndexedDB
   const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray()) ?? [];
+
+  // Get supplier orders for linking
+  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? [];
 
   useEffect(() => {
     // Wait for session to load before checking auth
@@ -70,6 +86,9 @@ export default function DepensesPage() {
   // Only owners can access expenses
   useEffect(() => {
     if (isFullyAuthenticated && currentUser?.role !== 'OWNER') {
+      toast.error('Accès refusé', {
+        description: 'Seul le propriétaire peut gérer les dépenses',
+      });
       router.push('/dashboard');
     }
   }, [isFullyAuthenticated, currentUser, router]);
@@ -101,42 +120,61 @@ export default function DepensesPage() {
     );
   }
 
-  // Filter logic
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Enhanced filter logic with category and search
+  const getFilteredExpenses = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  weekAgo.setHours(0, 0, 0, 0);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
 
-  const monthAgo = new Date();
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
-  monthAgo.setHours(0, 0, 0, 0);
+    const monthAgo = new Date();
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+    monthAgo.setHours(0, 0, 0, 0);
 
-  const filteredExpenses = expenses.filter((expense) => {
-    const expenseDate = new Date(expense.date);
-    expenseDate.setHours(0, 0, 0, 0);
+    return expenses.filter((expense) => {
+      const expenseDate = new Date(expense.date);
+      expenseDate.setHours(0, 0, 0, 0);
 
-    switch (filter) {
-      case 'today':
-        return expenseDate.getTime() === today.getTime();
-      case 'week':
-        return expenseDate >= weekAgo;
-      case 'month':
-        return expenseDate >= monthAgo;
-      default:
-        return true;
-    }
-  });
+      // Period filter
+      let periodMatch = true;
+      switch (periodFilter) {
+        case 'today':
+          periodMatch = expenseDate.getTime() === today.getTime();
+          break;
+        case 'week':
+          periodMatch = expenseDate >= weekAgo;
+          break;
+        case 'month':
+          periodMatch = expenseDate >= monthAgo;
+          break;
+        default:
+          periodMatch = true;
+      }
 
-  const total = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+      // Category filter
+      const categoryMatch =
+        categoryFilter === 'all' || expense.category === categoryFilter;
+
+      // Search filter (case-insensitive)
+      const searchMatch =
+        searchQuery === '' ||
+        expense.description.toLowerCase().includes(searchQuery.toLowerCase());
+
+      return periodMatch && categoryMatch && searchMatch;
+    });
+  };
+
+  const filteredExpenses = getFilteredExpenses();
+  const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const resetForm = () => {
     setAmount('');
     setCategory('STOCK_PURCHASE');
     setDescription('');
-    setDate(new Date().toISOString().split('T')[0]);
-    setEditingExpense(null);
+    setExpenseDate(new Date().toISOString().split('T')[0]);
+    setSelectedExpense(null);
   };
 
   const handleOpenAdd = () => {
@@ -148,58 +186,65 @@ export default function DepensesPage() {
     setAmount(expense.amount.toString());
     setCategory(expense.category);
     setDescription(expense.description);
-    setDate(new Date(expense.date).toISOString().split('T')[0]);
-    setEditingExpense(expense);
+    setExpenseDate(new Date(expense.date).toISOString().split('T')[0]);
+    setSelectedExpense(expense);
     setShowAddModal(true);
+  };
+
+  const handleOpenDelete = (expense: Expense) => {
+    setSelectedExpense(expense);
+    setShowDeleteDialog(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!amount || !description || !date) {
-      alert('Veuillez remplir tous les champs');
+    if (!amount || !description || !expenseDate) {
+      toast.error('Erreur', {
+        description: 'Veuillez remplir tous les champs correctement',
+      });
       return;
     }
 
-    const expenseData = {
+    if (parseFloat(amount) <= 0) {
+      toast.error('Erreur', {
+        description: 'Le montant doit être supérieur à 0',
+      });
+      return;
+    }
+
+    if (!currentUser?.id) {
+      toast.error('Erreur', {
+        description: 'Utilisateur non identifié',
+      });
+      return;
+    }
+
+    const expenseData: Expense = {
       amount: parseFloat(amount),
       category,
-      description,
-      date: new Date(date),
+      description: description.trim(),
+      date: new Date(expenseDate),
+      user_id: currentUser.id,
       synced: false,
     };
 
     try {
-      if (editingExpense) {
+      if (selectedExpense?.id) {
         // Update existing expense
-        await db.expenses.update(editingExpense.id!, expenseData);
+        await db.expenses.update(selectedExpense.id, expenseData);
+        await queueTransaction('EXPENSE', 'UPDATE', { ...expenseData, id: selectedExpense.id });
 
-        // Add to sync queue
-        await db.sync_queue.add({
-          type: 'EXPENSE',
-          action: 'UPDATE',
-          payload: { ...expenseData, id: editingExpense.id },
-          localId: editingExpense.id!,
-          createdAt: new Date(),
-          status: 'PENDING',
-          retryCount: 0,
+        toast.success('Dépense modifiée', {
+          description: 'Les modifications ont été enregistrées',
         });
       } else {
         // Create new expense
-        const id = await db.expenses.add({
-          ...expenseData,
-          user_id: currentUser.id,
-        });
+        const id = await db.expenses.add(expenseData);
+        await queueTransaction('EXPENSE', 'CREATE', { ...expenseData, id });
 
-        // Add to sync queue
-        await db.sync_queue.add({
-          type: 'EXPENSE',
-          action: 'CREATE',
-          payload: { ...expenseData, id, user_id: currentUser.id },
-          localId: id as number,
-          createdAt: new Date(),
-          status: 'PENDING',
-          retryCount: 0,
+        toast.success('Dépense ajoutée', {
+          description: `${formatCurrency(expenseData.amount)} enregistré`,
         });
       }
 
@@ -207,29 +252,30 @@ export default function DepensesPage() {
       resetForm();
     } catch (error) {
       console.error('Error saving expense:', error);
-      alert("Erreur lors de l'enregistrement");
+      toast.error('Erreur', {
+        description: "Impossible d'enregistrer la dépense",
+      });
     }
   };
 
-  const handleDelete = async (expense: Expense) => {
-    if (!confirm('Supprimer cette dépense ?')) return;
+  const handleDelete = async () => {
+    if (!selectedExpense?.id) return;
 
     try {
-      await db.expenses.delete(expense.id!);
+      await db.expenses.delete(selectedExpense.id);
+      await queueTransaction('EXPENSE', 'DELETE', { id: selectedExpense.id });
 
-      // Add to sync queue
-      await db.sync_queue.add({
-        type: 'EXPENSE',
-        action: 'DELETE',
-        payload: { id: expense.id },
-        localId: expense.id!,
-        createdAt: new Date(),
-        status: 'PENDING',
-        retryCount: 0,
+      toast.success('Dépense supprimée', {
+        description: 'La dépense a été supprimée avec succès',
       });
+
+      setShowDeleteDialog(false);
+      setSelectedExpense(null);
     } catch (error) {
       console.error('Error deleting expense:', error);
-      alert('Erreur lors de la suppression');
+      toast.error('Erreur', {
+        description: 'Impossible de supprimer la dépense',
+      });
     }
   };
 
@@ -237,35 +283,36 @@ export default function DepensesPage() {
     return EXPENSE_CATEGORIES.find((c) => c.value === cat)?.label || cat;
   };
 
-  const formatTime = (date: Date) => {
-    return new Date(date).toLocaleTimeString('fr-GN', { hour: '2-digit', minute: '2-digit' });
+  const getLinkedSupplierOrder = (expense: Expense) => {
+    if (!expense.supplier_order_id) return null;
+    return supplierOrders.find((order: any) => order.id === expense.supplier_order_id);
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       <Header />
 
-      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+      <main className="max-w-4xl mx-auto px-4 py-6 space-y-4">
         {/* Header Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-300">
+        <Card className="p-5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-lg bg-orange-600 flex items-center justify-center">
                 <TrendingDown className="w-6 h-6 text-white" />
               </div>
               <h2 className="text-gray-900 dark:text-white text-xl font-semibold">Dépenses</h2>
             </div>
             <Button
               onClick={handleOpenAdd}
-              className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white rounded-md active:scale-95 transition-all h-11"
+              className="bg-orange-600 hover:bg-orange-700 text-white rounded-md active:scale-95 transition-all h-11"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-5 h-5 mr-2" />
               Nouvelle dépense
             </Button>
           </div>
 
-          {/* Filter Buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          {/* Period Filter Buttons */}
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
             {[
               { key: 'all' as FilterPeriod, label: 'Toutes' },
               { key: 'today' as FilterPeriod, label: "Aujourd'hui" },
@@ -274,28 +321,67 @@ export default function DepensesPage() {
             ].map(({ key, label }) => (
               <button
                 key={key}
-                onClick={() => setFilter(key)}
-                className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium ${
-                  filter === key
-                    ? 'bg-gray-700 dark:bg-gray-600 text-white'
+                onClick={() => setPeriodFilter(key)}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium',
+                  periodFilter === key
+                    ? 'bg-orange-600 text-white shadow-sm'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600'
-                }`}
+                )}
               >
                 {label}
               </button>
             ))}
           </div>
-        </div>
+
+          {/* Category Filter Dropdown */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Catégorie
+            </label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as ExpenseCategory | 'all')}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-400 transition-all"
+            >
+              <option value="all">Toutes les catégories</option>
+              {EXPENSE_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Rechercher une dépense..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </Card>
 
         {/* Total Card */}
         {filteredExpenses.length > 0 && (
-          <Card className="p-5 bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 rounded-lg">
+          <Card className="p-5 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">Total des dépenses</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(total)}</p>
+                <p className="text-sm text-orange-700 dark:text-orange-400 font-medium mb-2">
+                  Total des dépenses
+                </p>
+                <p className="text-3xl font-bold text-orange-900 dark:text-orange-300">
+                  {formatCurrency(totalAmount)}
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-500 mt-1">
+                  {filteredExpenses.length} dépense{filteredExpenses.length > 1 ? 's' : ''}
+                </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-gray-700 dark:bg-gray-600 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-lg bg-orange-600 flex items-center justify-center">
                 <Coins className="w-6 h-6 text-white" />
               </div>
             </div>
@@ -307,73 +393,87 @@ export default function DepensesPage() {
           {filteredExpenses.length === 0 ? (
             <Card className="p-12 text-center rounded-lg">
               <Coins className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">Aucune dépense</p>
+              <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">
+                Aucune dépense
+              </p>
               <p className="text-sm text-gray-400 dark:text-gray-500">
-                {filter !== 'all' ? 'pour cette période' : 'enregistrée'}
+                {periodFilter !== 'all' || categoryFilter !== 'all' || searchQuery
+                  ? 'pour cette sélection'
+                  : 'enregistrée'}
               </p>
             </Card>
           ) : (
-            filteredExpenses.map((expense) => (
-              <Card key={expense.id} className="p-5 rounded-lg shadow-sm">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="text-gray-900 dark:text-white font-semibold mb-1">{expense.description}</div>
-                    <div className="inline-block px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg">
-                      {getCategoryLabel(expense.category)}
+            filteredExpenses.map((expense) => {
+              const linkedOrder = getLinkedSupplierOrder(expense);
+              return (
+                <Card key={expense.id} className="p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="text-gray-900 dark:text-white font-semibold mb-2">
+                        {expense.description}
+                      </div>
+                      <div className="inline-block px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-medium rounded-lg">
+                        {getCategoryLabel(expense.category)}
+                      </div>
+                      {linkedOrder && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                          <Package className="w-3 h-3" />
+                          <span>Commande fournisseur liée</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                        {formatCurrency(expense.amount)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEdit(expense)}
+                          className="p-2 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-all active:scale-95"
+                          title="Modifier"
+                        >
+                          <Edit2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDelete(expense)}
+                          className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(expense.amount)}</div>
+                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-200 dark:border-gray-700 font-medium">
+                    <Calendar className="w-4 h-4" />
+                    <span>{formatDate(new Date(expense.date))}</span>
+                    <span>•</span>
+                    <span>{formatTime(new Date(expense.date))}</span>
                     {!expense.synced && (
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-medium">En attente</div>
+                      <>
+                        <span>•</span>
+                        <span className="text-amber-600 dark:text-amber-500">En attente de sync</span>
+                      </>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 font-medium">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      {new Date(expense.date).toLocaleDateString('fr-GN', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                      })}
-                    </span>
-                    <span>•</span>
-                    <span>{formatTime(expense.date)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleOpenEdit(expense)}
-                      className="h-10 w-10 rounded-lg flex items-center justify-center text-gray-600 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all active:scale-95"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(expense)}
-                      className="h-10 w-10 rounded-lg flex items-center justify-center text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-95"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ))
+                </Card>
+              );
+            })
           )}
         </div>
       </main>
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-t-2xl w-full p-6 max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center sm:justify-center z-50 p-4">
+          <Card className="w-full max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-gray-900 dark:text-white font-bold text-xl">
-                  {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+                  {selectedExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {editingExpense ? 'Mettez à jour les informations' : 'Ajoutez une nouvelle dépense'}
+                  {selectedExpense ? 'Mettez à jour les informations' : 'Ajoutez une nouvelle dépense'}
                 </p>
               </div>
               <button
@@ -396,7 +496,7 @@ export default function DepensesPage() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                  className="w-full h-12 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-emerald-500 dark:focus:border-emerald-400 transition-all"
+                  className="w-full h-12 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-400 transition-all"
                   required
                 >
                   {EXPENSE_CATEGORIES.map((cat) => (
@@ -419,6 +519,7 @@ export default function DepensesPage() {
                   placeholder="Ex: Achat de paracétamol chez Pharma Guinée"
                   className="h-12"
                   required
+                  autoFocus
                 />
               </div>
 
@@ -432,16 +533,28 @@ export default function DepensesPage() {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0"
+                  min="0"
+                  step="1"
                   className="h-12"
                   required
                 />
               </div>
 
-              <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300">
-                Cette dépense sera enregistrée avec la date et l'heure actuelles.
+              {/* Date */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Date *
+                </label>
+                <Input
+                  type="date"
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
+                  className="h-12"
+                  required
+                />
               </div>
 
-              {/* Submit Button */}
+              {/* Submit Buttons */}
               <div className="flex gap-3 pt-4">
                 <Button
                   type="button"
@@ -456,13 +569,54 @@ export default function DepensesPage() {
                 </Button>
                 <Button
                   type="submit"
-                  className="flex-1 h-12 rounded-lg bg-emerald-600 hover:bg-emerald-700"
+                  className="flex-1 h-12 rounded-lg bg-orange-600 hover:bg-orange-700 text-white"
                 >
-                  {editingExpense ? 'Modifier' : 'Enregistrer la dépense'}
+                  {selectedExpense ? 'Modifier' : 'Enregistrer'}
                 </Button>
               </div>
             </form>
-          </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && selectedExpense && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Supprimer la dépense ?
+              </h3>
+            </div>
+
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Êtes-vous sûr de vouloir supprimer cette dépense de{' '}
+              <strong className="text-gray-900 dark:text-white">{formatCurrency(selectedExpense.amount)}</strong> ?
+              Cette action est irréversible.
+            </p>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setSelectedExpense(null);
+                }}
+                variant="outline"
+                className="flex-1 h-12"
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={handleDelete}
+                className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white"
+              >
+                Supprimer
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 

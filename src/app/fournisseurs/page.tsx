@@ -364,24 +364,6 @@ export default function FournisseursPage() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Balance Badge */}
-                    <div className="text-right shrink-0 ml-3">
-                      {balance > 0 ? (
-                        <div className={cn(
-                          'px-3 py-1.5 rounded-lg font-bold text-sm mb-2',
-                          status === 'overdue'
-                            ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/30'
-                            : 'bg-slate-800 text-white'
-                        )}>
-                          {formatCurrency(balance)}
-                        </div>
-                      ) : (
-                        <div className="px-3 py-1.5 rounded-lg font-semibold text-sm bg-emerald-500/10 text-emerald-400 mb-2">
-                          Payé
-                        </div>
-                      )}
-                    </div>
                   </div>
 
                   {/* Next Payment Info */}

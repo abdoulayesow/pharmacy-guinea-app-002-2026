@@ -252,7 +252,7 @@ export default function OrderDetailPage() {
       // Wrap all database operations in a transaction for atomicity
       await db.transaction(
         'rw',
-        [db.products, db.supplier_order_items, db.product_suppliers, db.stock_movements, db.supplier_orders, db.sync_queue],
+        [db.products, db.supplier_order_items, db.product_suppliers, db.stock_movements, db.supplier_orders, db.product_batches, db.sync_queue],
         async () => {
           // Process each delivery item
           for (const deliveryItem of deliveryItems) {
@@ -316,6 +316,38 @@ export default function OrderDetailPage() {
                 is_primary: false,
                 last_ordered_date: new Date(),
               });
+
+              // 🆕 CREATE PRODUCT BATCH for new product (FEFO Phase 3)
+              const newProductBatch = await db.product_batches.add({
+                product_id: productId!,
+                lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId!}`,
+                expiration_date: deliveryItem.expirationDate
+                  ? new Date(deliveryItem.expirationDate)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default: 1 year from now
+                quantity: deliveryItem.receivedQuantity,
+                initial_qty: deliveryItem.receivedQuantity,
+                unit_cost: deliveryItem.unitPrice,
+                supplier_order_id: order.id,
+                received_date: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                synced: false,
+              });
+
+              // Queue batch for sync
+              await queueTransaction('PRODUCT_BATCH', 'CREATE', {
+                id: newProductBatch,
+                product_id: productId!,
+                lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId!}`,
+                expiration_date: deliveryItem.expirationDate
+                  ? new Date(deliveryItem.expirationDate)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                quantity: deliveryItem.receivedQuantity,
+                initial_qty: deliveryItem.receivedQuantity,
+                unit_cost: deliveryItem.unitPrice,
+                supplier_order_id: order.id,
+                received_date: new Date(),
+              });
             } else {
               // Existing product - update stock
               if (!productId) continue; // Skip if no product ID
@@ -339,6 +371,38 @@ export default function OrderDetailPage() {
                 }
 
                 await db.products.update(productId, productUpdates);
+
+                // 🆕 CREATE PRODUCT BATCH (FEFO Phase 3)
+                const newBatch = await db.product_batches.add({
+                  product_id: productId,
+                  lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId}`,
+                  expiration_date: deliveryItem.expirationDate
+                    ? new Date(deliveryItem.expirationDate)
+                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default: 1 year from now
+                  quantity: deliveryItem.receivedQuantity,
+                  initial_qty: deliveryItem.receivedQuantity,
+                  unit_cost: deliveryItem.unitPrice,
+                  supplier_order_id: order.id,
+                  received_date: new Date(),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  synced: false,
+                });
+
+                // Queue batch for sync
+                await queueTransaction('PRODUCT_BATCH', 'CREATE', {
+                  id: newBatch,
+                  product_id: productId,
+                  lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId}`,
+                  expiration_date: deliveryItem.expirationDate
+                    ? new Date(deliveryItem.expirationDate)
+                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                  quantity: deliveryItem.receivedQuantity,
+                  initial_qty: deliveryItem.receivedQuantity,
+                  unit_cost: deliveryItem.unitPrice,
+                  supplier_order_id: order.id,
+                  received_date: new Date(),
+                });
 
                 // Queue product update for sync
                 await queueTransaction('PRODUCT', 'UPDATE', {

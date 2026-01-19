@@ -218,6 +218,12 @@ export async function prepareSyncPayload(): Promise<{
   products: Array<Product & { id: string; idempotencyKey: string }>;
   productBatches: any[];
   stockMovements: any[];
+  suppliers: any[];
+  supplierOrders: any[];
+  supplierOrderItems: any[];
+  supplierReturns: any[];
+  productSuppliers: any[];
+  creditPayments: any[];
 }> {
   const items = await getPendingItems();
 
@@ -260,6 +266,12 @@ export async function prepareSyncPayload(): Promise<{
   const products: any[] = [];
   const productBatches: any[] = [];
   const stockMovements: any[] = [];
+  const suppliers: any[] = [];
+  const supplierOrders: any[] = [];
+  const supplierOrderItems: any[] = [];
+  const supplierReturns: any[] = [];
+  const productSuppliers: any[] = [];
+  const creditPayments: any[] = [];
 
   for (const item of sortedItems) {
     if (item.status === 'PENDING') {
@@ -285,6 +297,24 @@ export async function prepareSyncPayload(): Promise<{
         case 'STOCK_MOVEMENT':
           stockMovements.push(payloadWithKey);
           break;
+        case 'SUPPLIER':
+          suppliers.push(payloadWithKey);
+          break;
+        case 'SUPPLIER_ORDER':
+          supplierOrders.push(payloadWithKey);
+          break;
+        case 'SUPPLIER_ORDER_ITEM':
+          supplierOrderItems.push(payloadWithKey);
+          break;
+        case 'SUPPLIER_RETURN':
+          supplierReturns.push(payloadWithKey);
+          break;
+        case 'PRODUCT_SUPPLIER':
+          productSuppliers.push(payloadWithKey);
+          break;
+        case 'CREDIT_PAYMENT':
+          creditPayments.push(payloadWithKey);
+          break;
       }
     }
   }
@@ -300,7 +330,20 @@ export async function prepareSyncPayload(): Promise<{
     }
   }
 
-  return { sales, saleItems, expenses, products, productBatches, stockMovements };
+  return {
+    sales,
+    saleItems,
+    expenses,
+    products,
+    productBatches,
+    stockMovements,
+    suppliers,
+    supplierOrders,
+    supplierOrderItems,
+    supplierReturns,
+    productSuppliers,
+    creditPayments,
+  };
 }
 
 /**

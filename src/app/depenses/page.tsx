@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
 import {
@@ -16,6 +17,7 @@ import {
   AlertCircle,
   Search,
   Package,
+  Receipt,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
@@ -26,9 +28,10 @@ import type { Expense, ExpenseCategory } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
 import { Card } from '@/components/ui/card';
+import { ExpenseListSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
-type FilterPeriod = 'all' | 'today' | 'week' | 'month';
+type FilterTab = 'all' | 'today' | 'week' | 'month';
 
 const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'STOCK_PURCHASE', label: 'Achat de médicaments' },
@@ -66,7 +69,7 @@ export default function DepensesPage() {
   }, [sessionStatus, session, syncProfileFromSession]);
 
   // Filter states
-  const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -113,28 +116,68 @@ export default function DepensesPage() {
 
   if (userRole !== 'OWNER') {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
+      <div className="min-h-screen bg-slate-950 pb-24">
         <Header />
         <main className="max-w-md mx-auto px-4 py-6">
-          <Card className="p-8 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <Wallet className="w-8 h-8 text-red-600 dark:text-red-400" />
+          <div className="bg-slate-900 rounded-xl p-8 text-center border border-slate-700">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+              <Wallet className="w-8 h-8 text-red-400" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            <h2 className="text-xl font-semibold text-white mb-2">
               Accès restreint
             </h2>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-slate-400">
               Seuls les propriétaires peuvent accéder aux dépenses.
             </p>
-          </Card>
+          </div>
         </main>
         <Navigation />
       </div>
     );
   }
 
+  // Calculate summary statistics
+  const stats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const todayExpenses = expenses.filter((e) => {
+      const expDate = new Date(e.date);
+      expDate.setHours(0, 0, 0, 0);
+      return expDate.getTime() === today.getTime();
+    });
+
+    const weekExpenses = expenses.filter((e) => {
+      const expDate = new Date(e.date);
+      expDate.setHours(0, 0, 0, 0);
+      return expDate >= weekAgo;
+    });
+
+    const monthExpenses = expenses.filter((e) => {
+      const expDate = new Date(e.date);
+      expDate.setHours(0, 0, 0, 0);
+      return expDate >= monthStart;
+    });
+
+    return {
+      todayTotal: todayExpenses.reduce((sum, e) => sum + e.amount, 0),
+      todayCount: todayExpenses.length,
+      weekTotal: weekExpenses.reduce((sum, e) => sum + e.amount, 0),
+      weekCount: weekExpenses.length,
+      monthTotal: monthExpenses.reduce((sum, e) => sum + e.amount, 0),
+      monthCount: monthExpenses.length,
+      totalCount: expenses.length,
+    };
+  }, [expenses]);
+
   // Enhanced filter logic with category and search
-  const getFilteredExpenses = () => {
+  const filteredExpenses = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -150,9 +193,9 @@ export default function DepensesPage() {
       const expenseDate = new Date(expense.date);
       expenseDate.setHours(0, 0, 0, 0);
 
-      // Period filter
+      // Period filter based on active tab
       let periodMatch = true;
-      switch (periodFilter) {
+      switch (activeTab) {
         case 'today':
           periodMatch = expenseDate.getTime() === today.getTime();
           break;
@@ -177,9 +220,8 @@ export default function DepensesPage() {
 
       return periodMatch && categoryMatch && searchMatch;
     });
-  };
+  }, [expenses, activeTab, categoryFilter, searchQuery]);
 
-  const filteredExpenses = getFilteredExpenses();
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const resetForm = () => {
@@ -305,160 +347,193 @@ export default function DepensesPage() {
     return supplierOrders.find((order: any) => order.id === expense.supplier_order_id);
   };
 
+  // Loading state
+  if (!expenses) {
+    return (
+      <div className="min-h-screen bg-slate-950 pb-24">
+        <Header />
+        <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
+              <Coins className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-white text-xl font-bold">Dépenses</h1>
+          </div>
+          <ExpenseListSkeleton count={5} />
+        </main>
+        <Navigation />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
+    <div className="min-h-screen bg-slate-950 pb-24">
       <Header />
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        {/* Header with Title and Add Button */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
-              <TrendingDown className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-gray-900 dark:text-white text-xl font-bold">Dépenses</h1>
+      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
+            <Coins className="w-5 h-5 text-white" />
           </div>
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-all shadow-lg shadow-orange-600/20"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Nouvelle dépense</span>
-          </button>
+          <div>
+            <h1 className="text-white text-xl font-bold">Dépenses</h1>
+            <p className="text-slate-400 text-sm">{stats.totalCount} dépense{stats.totalCount !== 1 ? 's' : ''}</p>
+          </div>
         </div>
 
-        {/* Filters Card */}
-        <Card className="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200/50 dark:border-gray-700/50">
-          {/* Period Filter Pills */}
-          <div className="flex gap-1.5 overflow-x-auto pb-3 mb-3 -mx-1 px-1">
-            {[
-              { key: 'all' as FilterPeriod, label: 'Toutes' },
-              { key: 'today' as FilterPeriod, label: "Aujourd'hui" },
-              { key: 'week' as FilterPeriod, label: '7 jours' },
-              { key: 'month' as FilterPeriod, label: '30' },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setPeriodFilter(key)}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all font-medium',
-                  periodFilter === key
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                )}
-              >
-                {label}
-              </button>
-            ))}
+        {/* Summary Cards */}
+        <div className="grid grid-cols-3 gap-3">
+          {/* Today */}
+          <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <Calendar className="w-3.5 h-3.5 text-orange-400" />
+              </div>
+            </div>
+            <p className="text-white font-bold text-sm">{formatCurrency(stats.todayTotal)}</p>
+            <p className="text-slate-500 text-xs">Aujourd&apos;hui</p>
           </div>
 
-          {/* Category and Search Row */}
-          <div className="flex gap-2">
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value as ExpenseCategory | 'all')}
-              className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
+          {/* This Week */}
+          <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <TrendingDown className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+            </div>
+            <p className="text-white font-bold text-sm">{formatCurrency(stats.weekTotal)}</p>
+            <p className="text-slate-500 text-xs">Cette semaine</p>
+          </div>
+
+          {/* This Month */}
+          <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <Receipt className="w-3.5 h-3.5 text-red-400" />
+              </div>
+            </div>
+            <p className="text-white font-bold text-sm">{formatCurrency(stats.monthTotal)}</p>
+            <p className="text-slate-500 text-xs">Ce mois</p>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {[
+            { key: 'all' as FilterTab, label: 'Toutes', count: stats.totalCount },
+            { key: 'today' as FilterTab, label: "Aujourd'hui", count: stats.todayCount },
+            { key: 'week' as FilterTab, label: '7 jours', count: stats.weekCount },
+            { key: 'month' as FilterTab, label: 'Ce mois', count: stats.monthCount },
+          ].map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={cn(
+                'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+                activeTab === key
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              )}
             >
-              <option value="all">Catégorie</option>
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Rechercher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
-              />
-            </div>
-          </div>
-        </Card>
+              {label}
+              {count > 0 && (
+                <span className={cn(
+                  'ml-1.5 px-1.5 py-0.5 rounded-full text-xs',
+                  activeTab === key ? 'bg-orange-500' : 'bg-slate-700'
+                )}>
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
-        {/* Total Card */}
-        {filteredExpenses.length > 0 && (
-          <Card className="p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl border-0 shadow-lg shadow-orange-500/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-orange-100 font-medium mb-0.5 uppercase tracking-wide">
-                  Total
-                </p>
-                <p className="text-2xl font-bold text-white">
-                  {formatCurrency(totalAmount)}
-                </p>
-                <p className="text-xs text-orange-200 mt-0.5">
-                  {filteredExpenses.length} dépense{filteredExpenses.length > 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                <Coins className="w-5 h-5 text-white" />
-              </div>
-            </div>
-          </Card>
-        )}
+        {/* Search and Category Filter */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+            />
+          </div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value as ExpenseCategory | 'all')}
+            className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+          >
+            <option value="all">Toutes</option>
+            {EXPENSE_CATEGORIES.map((cat) => (
+              <option key={cat.value} value={cat.value}>
+                {cat.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Expense List */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           {filteredExpenses.length === 0 ? (
-            <Card className="p-10 text-center rounded-xl">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center">
-                <Coins className="w-7 h-7 text-gray-400 dark:text-gray-500" />
+            <div className="bg-slate-900 rounded-xl p-8 border border-slate-700 text-center">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-slate-800 flex items-center justify-center">
+                <Coins className="w-7 h-7 text-slate-600" />
               </div>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">
-                Aucune dépense
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                {periodFilter !== 'all' || categoryFilter !== 'all' || searchQuery
+              <p className="text-slate-400 font-medium">Aucune dépense</p>
+              <p className="text-slate-600 text-sm mt-1">
+                {activeTab !== 'all' || categoryFilter !== 'all' || searchQuery
                   ? 'pour cette sélection'
                   : 'enregistrée'}
               </p>
-            </Card>
+            </div>
           ) : (
             filteredExpenses.map((expense) => {
               const linkedOrder = getLinkedSupplierOrder(expense);
               return (
-                <Card key={expense.id} className="p-3.5 rounded-xl hover:shadow-md transition-all border border-gray-100 dark:border-gray-700/50">
+                <div
+                  key={expense.id}
+                  className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all"
+                >
                   <div className="flex items-start gap-3">
                     {/* Category Icon */}
-                    <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
-                      <Coins className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-600/20 flex items-center justify-center shrink-0">
+                      <Coins className="w-6 h-6 text-orange-400" />
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-gray-900 dark:text-white font-medium text-sm truncate">
+                          <p className="text-white font-medium truncate">
                             {expense.description}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-[10px] font-medium rounded-full">
+                            <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs font-medium rounded-full">
                               {getCategoryLabel(expense.category)}
                             </span>
                             {!expense.synced && (
-                              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium rounded-full">
+                              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs font-medium rounded-full">
                                 Non sync
                               </span>
                             )}
                           </div>
                         </div>
-                        <p className="text-base font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                        <p className="text-lg font-bold text-white whitespace-nowrap">
                           {formatCurrency(expense.amount)}
                         </p>
                       </div>
 
                       {/* Footer */}
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
                           <Calendar className="w-3.5 h-3.5" />
                           <span>{formatDate(new Date(expense.date))}</span>
                           {linkedOrder && (
                             <>
-                              <span className="text-gray-300 dark:text-gray-600">•</span>
+                              <span className="text-slate-600">•</span>
                               <Package className="w-3 h-3" />
                               <span>Commande liée</span>
                             </>
@@ -467,28 +542,36 @@ export default function DepensesPage() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleOpenEdit(expense)}
-                            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg transition-all active:scale-95"
+                            className="p-2 hover:bg-slate-800 rounded-lg transition-all active:scale-95"
                             title="Modifier"
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                            <Edit2 className="w-4 h-4 text-slate-400" />
                           </button>
                           <button
                             onClick={() => handleOpenDelete(expense)}
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
+                            className="p-2 hover:bg-red-500/20 rounded-lg transition-all active:scale-95"
                             title="Supprimer"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />
+                            <Trash2 className="w-4 h-4 text-red-400" />
                           </button>
                         </div>
                       </div>
                     </div>
                   </div>
-                </Card>
+                </div>
               );
             })
           )}
         </div>
       </main>
+
+      {/* Floating Action Button */}
+      <button
+        onClick={handleOpenAdd}
+        className="fixed bottom-24 right-4 w-14 h-14 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center hover:from-orange-600 hover:to-orange-700 active:scale-95 transition-all z-30"
+      >
+        <Plus className="w-6 h-6 text-white" />
+      </button>
 
       {/* Add/Edit Modal */}
       {showAddModal && (
@@ -497,15 +580,15 @@ export default function DepensesPage() {
             className="absolute inset-0"
             onClick={() => { setShowAddModal(false); resetForm(); }}
           />
-          <Card className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden shadow-2xl">
+          <div className="relative w-full max-w-md bg-slate-900 rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden shadow-2xl border border-slate-700">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-white font-semibold text-lg">
                 {selectedExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
               </h3>
               <button
                 onClick={() => { setShowAddModal(false); resetForm(); }}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-all"
+                className="text-slate-400 hover:text-white w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -515,13 +598,13 @@ export default function DepensesPage() {
             <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[calc(85vh-130px)]">
               {/* Category */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">
                   Catégorie
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                  className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                  className="w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-800 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
                   required
                 >
                   {EXPENSE_CATEGORIES.map((cat) => (
@@ -534,7 +617,7 @@ export default function DepensesPage() {
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">
                   Description
                 </label>
                 <input
@@ -542,7 +625,7 @@ export default function DepensesPage() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Ex: Achat de paracétamol"
-                  className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                  className="w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-800 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
                   required
                   autoFocus
                 />
@@ -551,7 +634,7 @@ export default function DepensesPage() {
               {/* Amount and Date Row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">
                     Montant (GNF)
                   </label>
                   <input
@@ -561,19 +644,19 @@ export default function DepensesPage() {
                     placeholder="0"
                     min="0"
                     step="1"
-                    className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                    className="w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-800 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">
                     Date
                   </label>
                   <input
                     type="date"
                     value={expenseDate}
                     onChange={(e) => setExpenseDate(e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                    className="w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-800 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
                     required
                   />
                 </div>
@@ -581,11 +664,11 @@ export default function DepensesPage() {
             </form>
 
             {/* Footer Buttons */}
-            <div className="flex gap-2 p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+            <div className="flex gap-2 p-4 border-t border-slate-700 bg-slate-900/50">
               <button
                 type="button"
                 onClick={() => { setShowAddModal(false); resetForm(); }}
-                className="flex-1 h-10 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                className="flex-1 h-10 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-800 transition-all"
               >
                 Annuler
               </button>
@@ -598,7 +681,7 @@ export default function DepensesPage() {
                 {selectedExpense ? 'Modifier' : 'Enregistrer'}
               </button>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
@@ -609,15 +692,15 @@ export default function DepensesPage() {
             className="absolute inset-0"
             onClick={() => { setShowDeleteDialog(false); setSelectedExpense(null); }}
           />
-          <Card className="relative w-full max-w-sm p-5 rounded-2xl shadow-2xl">
+          <div className="relative w-full max-w-sm p-5 bg-slate-900 rounded-2xl shadow-2xl border border-slate-700">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
-                <AlertCircle className="w-7 h-7 text-red-600 dark:text-red-400" />
+              <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center mb-3">
+                <AlertCircle className="w-7 h-7 text-red-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+              <h3 className="text-lg font-semibold text-white mb-1">
                 Supprimer la dépense ?
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-slate-400">
                 {formatCurrency(selectedExpense.amount)} sera supprimé définitivement.
               </p>
             </div>
@@ -625,7 +708,7 @@ export default function DepensesPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowDeleteDialog(false); setSelectedExpense(null); }}
-                className="flex-1 h-10 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                className="flex-1 h-10 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-800 transition-all"
               >
                 Annuler
               </button>
@@ -636,7 +719,7 @@ export default function DepensesPage() {
                 Supprimer
               </button>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 

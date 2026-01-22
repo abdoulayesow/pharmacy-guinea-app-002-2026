@@ -22,7 +22,7 @@ import {
   Save,
   Search,
 } from 'lucide-react';
-import type { ReturnReason, SupplierOrder } from '@/lib/shared/types';
+import type { ReturnReason, SupplierOrder, StockMovement } from '@/lib/shared/types';
 import { queueTransaction } from '@/lib/client/sync';
 import { toast } from 'sonner';
 
@@ -144,9 +144,8 @@ export default function NewReturnPage() {
       });
 
       // Create stock movement record
-      const movementId = generateId();
-      await db.stock_movements.add({
-        id: movementId,
+      const stockMovement: StockMovement = {
+        id: generateId(),
         product_id: selectedProductId,
         type: 'SUPPLIER_RETURN',
         quantity_change: -returnQty,
@@ -155,11 +154,13 @@ export default function NewReturnPage() {
         user_id: session?.user?.email || 'unknown',
         created_at: returnDateObj,
         synced: false,
-      });
+      };
+      await db.stock_movements.add(stockMovement);
 
       // Queue for sync
       await queueTransaction('SUPPLIER_ORDER', 'CREATE', returnOrder);
       await queueTransaction('PRODUCT', 'UPDATE', selectedProduct!);
+      await queueTransaction('STOCK_MOVEMENT', 'CREATE', stockMovement);
 
       toast.success('Retour enregistré - Stock réduit');
 

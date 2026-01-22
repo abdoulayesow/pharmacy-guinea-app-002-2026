@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
+import { queueTransaction } from '@/lib/client/sync';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Building2, Phone, Calendar, Save } from 'lucide-react';
@@ -34,7 +35,7 @@ export default function NewSupplierPage() {
     setIsSubmitting(true);
 
     try {
-      await db.suppliers.add({
+      const supplierData = {
         id: generateId(),
         name,
         phone: phone.trim() || undefined,
@@ -42,7 +43,9 @@ export default function NewSupplierPage() {
         createdAt: new Date(),
         updatedAt: new Date(),
         synced: false,
-      });
+      };
+      await db.suppliers.add(supplierData);
+      await queueTransaction('SUPPLIER', 'CREATE', supplierData);
 
       // Navigate back to supplier list
       router.push('/fournisseurs');

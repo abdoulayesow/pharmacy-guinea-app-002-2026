@@ -6,6 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
+import { queueTransaction } from '@/lib/client/sync';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/client/utils';
@@ -21,7 +22,7 @@ import {
   Save,
   Building2,
 } from 'lucide-react';
-import type { SupplierOrder } from '@/lib/shared/types';
+import type { SupplierOrder, Expense } from '@/lib/shared/types';
 import { toast } from 'sonner';
 
 export default function PaymentPage() {
@@ -189,16 +190,18 @@ export default function PaymentPage() {
 
       // Step 3: Record expense (only for cash payment, not credit)
       if (paymentAmountNum > 0) {
-        await db.expenses.add({
+        const expenseData: Expense = {
           id: generateId(),
           date: new Date(paymentDate),
           description: `Paiement ${selectedSupplier?.name || 'fournisseur'} - ${selectedOrders.length} commande(s)${creditApplied > 0 ? ` (Crédit: ${formatCurrency(creditApplied)})` : ''}`,
           amount: paymentAmountNum,
-          category: 'SUPPLIER_PAYMENT',
+          category: 'SUPPLIER_PAYMENT' as const,
           supplier_order_id: selectedOrders[0], // Link to first order
           user_id: currentUser?.id || 'unknown',
           synced: false,
-        });
+        };
+        await db.expenses.add(expenseData);
+        await queueTransaction('EXPENSE', 'CREATE', expenseData);
       }
 
       const successMessage = creditApplied > 0

@@ -26,7 +26,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
-import type { Supplier, SupplierOrder } from '@/lib/shared/types';
+import type { Supplier, SupplierOrder, StockMovement } from '@/lib/shared/types';
 import { toast } from 'sonner';
 import { queueTransaction } from '@/lib/client/sync';
 
@@ -258,7 +258,7 @@ export default function SupplierDetailPage() {
       });
 
       // Create stock movement for restoration (UUID migration: generate ID client-side)
-      await db.stock_movements.add({
+      const restorationMovement: StockMovement = {
         id: generateId(),
         product_id: returnOrder.returnProductId,
         type: 'ADJUSTMENT',
@@ -268,13 +268,15 @@ export default function SupplierDetailPage() {
         user_id: session?.user?.email || 'unknown',
         created_at: new Date(),
         synced: false,
-      });
+      };
+      await db.stock_movements.add(restorationMovement);
 
       // Queue for sync
       const updatedReturn = await db.supplier_orders.get(returnOrder.id);
       if (updatedReturn) {
         await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn);
         await queueTransaction('PRODUCT', 'UPDATE', { ...product, id: product.id, stock: product.stock + returnQty });
+        await queueTransaction('STOCK_MOVEMENT', 'CREATE', restorationMovement);
       }
 
       toast.success('Retour annulé - Stock restauré');

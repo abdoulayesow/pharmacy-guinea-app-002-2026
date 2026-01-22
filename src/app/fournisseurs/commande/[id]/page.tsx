@@ -262,7 +262,7 @@ export default function OrderDetailPage() {
             if (deliveryItem.isNewProduct || !productId) {
               const productCategory = deliveryItem.category || 'Autre'; // Use stored category or default
               const newProductId = generateId();
-              await db.products.add({
+              const newProduct = {
                 id: newProductId,
                 name: deliveryItem.productName,
                 category: productCategory,
@@ -272,7 +272,11 @@ export default function OrderDetailPage() {
                 minStock: 10,
                 synced: false,
                 updatedAt: new Date(),
-              });
+              };
+              await db.products.add(newProduct);
+
+              // Queue product creation for sync
+              await queueTransaction('PRODUCT', 'CREATE', newProduct);
 
               productId = newProductId;
 

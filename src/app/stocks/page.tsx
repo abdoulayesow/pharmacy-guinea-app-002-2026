@@ -7,7 +7,7 @@ import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
 import { useRouter } from 'next/navigation';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { queueTransaction } from '@/lib/client/sync';
 import { cn } from '@/lib/client/utils';
 import { Header } from '@/components/Header';
@@ -71,14 +71,14 @@ export default function StocksPage() {
 
   // 🆕 Batch receipt modal states
   const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchProductId, setBatchProductId] = useState<number | null>(null);
+  const [batchProductId, setBatchProductId] = useState<string | null>(null);
   const [batchLotNumber, setBatchLotNumber] = useState('');
   const [batchExpirationDate, setBatchExpirationDate] = useState('');
   const [batchQuantity, setBatchQuantity] = useState('');
   const [batchUnitCost, setBatchUnitCost] = useState('');
 
   // 🆕 Expanded batches state (track which products show batch details)
-  const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
 
   // Stock adjustment modal states
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -247,14 +247,13 @@ export default function StocksPage() {
         id: editingProduct.id,
       });
     } else {
-      // Add new product
-      const id = await db.products.add(productData);
+      // Add new product with UUID
+      const productId = generateId();
+      const newProduct = { ...productData, id: productId };
+      await db.products.add(newProduct);
 
       // Queue product creation for sync
-      await queueTransaction('PRODUCT', 'CREATE', {
-        ...productData,
-        id,
-      });
+      await queueTransaction('PRODUCT', 'CREATE', newProduct);
     }
 
     await updatePendingCount();
@@ -282,7 +281,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Open batch receipt modal
-  const handleOpenBatchReceipt = (productId: number) => {
+  const handleOpenBatchReceipt = (productId: string) => {
     setBatchProductId(productId);
     setBatchLotNumber('');
     setBatchExpirationDate('');
@@ -322,8 +321,10 @@ export default function StocksPage() {
       return;
     }
 
-    // 1. Create ProductBatch record
+    // 1. Create ProductBatch record with UUID
+    const batchId = generateId();
     const batch = {
+      id: batchId,
       product_id: batchProductId,
       lot_number: batchLotNumber.trim(),
       expiration_date: expirationDate,
@@ -336,10 +337,12 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const batchId = await db.product_batches.add(batch);
+    await db.product_batches.add(batch);
 
-    // 2. Create stock movement for receipt
+    // 2. Create stock movement for receipt with UUID
+    const movementId = generateId();
     const movement = {
+      id: movementId,
       product_id: batchProductId,
       type: 'RECEIPT' as StockMovementType,
       quantity_change: quantity,
@@ -349,7 +352,7 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const movementId = await db.stock_movements.add(movement);
+    await db.stock_movements.add(movement);
 
     // 3. Update product stock
     const product = products.find(p => p.id === batchProductId);
@@ -362,15 +365,9 @@ export default function StocksPage() {
       });
 
       // 4. Queue for sync
-      await queueTransaction('PRODUCT_BATCH', 'CREATE', {
-        ...batch,
-        id: batchId,
-      });
+      await queueTransaction('PRODUCT_BATCH', 'CREATE', batch);
 
-      await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
-        ...movement,
-        id: movementId,
-      });
+      await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
 
       await queueTransaction('PRODUCT', 'UPDATE', {
         id: batchProductId,
@@ -387,7 +384,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Toggle batch expansion
-  const toggleBatchExpansion = (productId: number) => {
+  const toggleBatchExpansion = (productId: string) => {
     setExpandedBatches(prev => {
       const next = new Set(prev);
       if (next.has(productId)) {
@@ -400,7 +397,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Get batches for a product
-  const getBatchesForProduct = (productId: number): ProductBatch[] => {
+  const getBatchesForProduct = (productId: string): ProductBatch[] => {
     return allBatches
       .filter(b => b.product_id === productId && b.quantity > 0)
       .sort((a, b) => {
@@ -429,8 +426,10 @@ export default function StocksPage() {
       return;
     }
 
-    // 1. Create stock movement record
+    // 1. Create stock movement record with UUID
+    const movementId = generateId();
     const movement = {
+      id: movementId,
       product_id: adjustingProduct.id!,
       type: adjustmentType,
       quantity_change: quantityChange,
@@ -440,7 +439,7 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const movementId = await db.stock_movements.add(movement);
+    await db.stock_movements.add(movement);
 
     // 2. Update product stock
     await db.products.update(adjustingProduct.id!, {
@@ -450,10 +449,7 @@ export default function StocksPage() {
     });
 
     // 3. Queue stock movement for sync
-    await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
-      ...movement,
-      id: movementId,
-    });
+    await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
 
     // 4. Queue product update for sync
     await queueTransaction('PRODUCT', 'UPDATE', {

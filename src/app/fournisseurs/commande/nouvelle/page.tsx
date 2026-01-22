@@ -12,7 +12,7 @@ import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 import { MobileSearchBar } from '@/components/ui/MobileSearchBar';
 import { QuantitySelector } from '@/components/ui/QuantitySelector';
 import { cn } from '@/lib/client/utils';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -28,7 +28,7 @@ import type { Product, SupplierOrderItem, ProductSupplier } from '@/lib/shared/t
 
 interface OrderItem {
   id?: string; // Temporary ID for items not yet saved
-  product_id?: number;
+  product_id?: string; // UUID migration: string ID
   product_name: string;
   category?: string; // Category for new products (stored for creation during delivery)
   quantity: number;
@@ -82,7 +82,7 @@ export default function NewOrderPage() {
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
   const productSuppliers = useLiveQuery(() => db.product_suppliers.toArray()) ?? [];
-  const selectedSupplier = suppliers.find(s => s.id === parseInt(supplierId));
+  const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
   // Get products linked to selected supplier
   // If no products are linked yet, show all products (allows ordering before links are set up)
@@ -139,7 +139,7 @@ export default function NewOrderPage() {
     setSelectedProduct(product);
     // Get last price from supplier if available
     const productSupplier = productSuppliers.find(
-      ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
+      ps => ps.product_id === product.id && ps.supplier_id === supplierId
     );
     setUnitPrice(productSupplier?.default_price || product.priceBuy || product.price);
     setQuantity(1);
@@ -320,9 +320,11 @@ export default function NewOrderPage() {
     setIsSubmitting(true);
 
     try {
-      // Create order
-      const orderId = await db.supplier_orders.add({
-        supplierId: parseInt(supplierId),
+      // Create order with UUID
+      const orderId = generateId();
+      await db.supplier_orders.add({
+        id: orderId,
+        supplierId: supplierId,
         type: 'ORDER',
         orderDate: new Date(orderDate),
         deliveryDate: undefined,
@@ -340,7 +342,9 @@ export default function NewOrderPage() {
 
       // Create order items
       for (const item of orderItems) {
+        const itemId = generateId();
         await db.supplier_order_items.add({
+          id: itemId,
           order_id: orderId,
           product_id: item.product_id,
           product_name: item.product_name,
@@ -356,7 +360,7 @@ export default function NewOrderPage() {
       // Queue for sync
       await queueTransaction('SUPPLIER_ORDER', 'CREATE', {
         id: orderId,
-        supplierId: parseInt(supplierId),
+        supplierId: supplierId,
         orderDate: new Date(orderDate),
         deliveryDate: undefined,
         totalAmount: calculatedTotal,
@@ -739,7 +743,7 @@ export default function NewOrderPage() {
                 </p>
                 {filteredProducts.map((product) => {
                   const productSupplier = productSuppliers.find(
-                    ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
+                    ps => ps.product_id === product.id && ps.supplier_id === supplierId
                   );
                   const lastPrice = productSupplier?.default_price;
 

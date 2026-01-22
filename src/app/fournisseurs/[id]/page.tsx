@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { cn } from '@/lib/client/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -210,7 +210,7 @@ export default function SupplierDetailPage() {
       // Queue for sync
       const updatedReturn = await db.supplier_orders.get(returnOrder.id);
       if (updatedReturn) {
-        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn);
       }
 
       toast.success('Livraison confirmée - Crédit disponible pour paiements');
@@ -257,8 +257,9 @@ export default function SupplierDetailPage() {
         synced: false,
       });
 
-      // Create stock movement for restoration
+      // Create stock movement for restoration (UUID migration: generate ID client-side)
       await db.stock_movements.add({
+        id: generateId(),
         product_id: returnOrder.returnProductId,
         type: 'ADJUSTMENT',
         quantity_change: returnQty,
@@ -272,8 +273,8 @@ export default function SupplierDetailPage() {
       // Queue for sync
       const updatedReturn = await db.supplier_orders.get(returnOrder.id);
       if (updatedReturn) {
-        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
-        await queueTransaction('PRODUCT', 'UPDATE', { ...product, stock: product.stock + returnQty }, String(returnOrder.returnProductId));
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn);
+        await queueTransaction('PRODUCT', 'UPDATE', { ...product, id: product.id, stock: product.stock + returnQty });
       }
 
       toast.success('Retour annulé - Stock restauré');

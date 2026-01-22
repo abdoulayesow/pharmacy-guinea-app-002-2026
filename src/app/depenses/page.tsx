@@ -19,14 +19,12 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
-import { formatCurrency, formatDate, formatTime } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, formatTime, generateId } from '@/lib/shared/utils';
 import { queueTransaction } from '@/lib/client/sync';
 import { cn } from '@/lib/client/utils';
 import type { Expense, ExpenseCategory } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 
@@ -45,12 +43,27 @@ const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
 export default function DepensesPage() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
+  const { isAuthenticated, currentUser, isInactive, lastActivityAt, syncProfileFromSession } = useAuthStore();
 
   // Check if user is authenticated via Zustand OR via Google session + recently active
   const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
   const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
   const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
+
+  // Use session role (source of truth) with fallback to Zustand
+  const userRole = session?.user?.role || currentUser?.role;
+
+  // Sync profile from session when available (ensures Zustand stays updated)
+  useEffect(() => {
+    if (sessionStatus === 'authenticated' && session?.user?.id) {
+      syncProfileFromSession({
+        id: session.user.id,
+        name: session.user.name,
+        role: session.user.role,
+        image: session.user.image,
+      });
+    }
+  }, [sessionStatus, session, syncProfileFromSession]);
 
   // Filter states
   const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
@@ -85,20 +98,20 @@ export default function DepensesPage() {
 
   // Only owners can access expenses
   useEffect(() => {
-    if (isFullyAuthenticated && currentUser?.role !== 'OWNER') {
+    if (isFullyAuthenticated && userRole && userRole !== 'OWNER') {
       toast.error('Accès refusé', {
         description: 'Seul le propriétaire peut gérer les dépenses',
       });
       router.push('/dashboard');
     }
-  }, [isFullyAuthenticated, currentUser, router]);
+  }, [isFullyAuthenticated, userRole, router]);
 
   // Show nothing while loading or redirecting
   if (sessionStatus === 'loading' || !isFullyAuthenticated) {
     return null;
   }
 
-  if (currentUser?.role !== 'OWNER') {
+  if (userRole !== 'OWNER') {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
         <Header />
@@ -220,7 +233,11 @@ export default function DepensesPage() {
       return;
     }
 
+    // UUID migration: Generate ID client-side for new expenses
+    const expenseId = selectedExpense?.id || generateId();
+
     const expenseData: Expense = {
+      id: expenseId,
       amount: parseFloat(amount),
       category,
       description: description.trim(),
@@ -233,15 +250,15 @@ export default function DepensesPage() {
       if (selectedExpense?.id) {
         // Update existing expense
         await db.expenses.update(selectedExpense.id, expenseData);
-        await queueTransaction('EXPENSE', 'UPDATE', { ...expenseData, id: selectedExpense.id });
+        await queueTransaction('EXPENSE', 'UPDATE', expenseData);
 
         toast.success('Dépense modifiée', {
           description: 'Les modifications ont été enregistrées',
         });
       } else {
-        // Create new expense
-        const id = await db.expenses.add(expenseData);
-        await queueTransaction('EXPENSE', 'CREATE', { ...expenseData, id });
+        // Create new expense with client-generated ID
+        await db.expenses.add(expenseData);
+        await queueTransaction('EXPENSE', 'CREATE', expenseData);
 
         toast.success('Dépense ajoutée', {
           description: `${formatCurrency(expenseData.amount)} enregistré`,
@@ -293,40 +310,41 @@ export default function DepensesPage() {
       <Header />
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        {/* Header Card */}
-        <Card className="p-5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-lg bg-orange-600 flex items-center justify-center">
-                <TrendingDown className="w-6 h-6 text-white" />
-              </div>
-              <h2 className="text-gray-900 dark:text-white text-xl font-semibold">Dépenses</h2>
+        {/* Header with Title and Add Button */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <TrendingDown className="w-5 h-5 text-white" />
             </div>
-            <Button
-              onClick={handleOpenAdd}
-              className="bg-orange-600 hover:bg-orange-700 text-white rounded-md active:scale-95 transition-all h-11"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Nouvelle dépense
-            </Button>
+            <h1 className="text-gray-900 dark:text-white text-xl font-bold">Dépenses</h1>
           </div>
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-all shadow-lg shadow-orange-600/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Nouvelle dépense</span>
+          </button>
+        </div>
 
-          {/* Period Filter Buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+        {/* Filters Card */}
+        <Card className="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200/50 dark:border-gray-700/50">
+          {/* Period Filter Pills */}
+          <div className="flex gap-1.5 overflow-x-auto pb-3 mb-3 -mx-1 px-1">
             {[
               { key: 'all' as FilterPeriod, label: 'Toutes' },
               { key: 'today' as FilterPeriod, label: "Aujourd'hui" },
               { key: 'week' as FilterPeriod, label: '7 jours' },
-              { key: 'month' as FilterPeriod, label: '30 jours' },
+              { key: 'month' as FilterPeriod, label: '30' },
             ].map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setPeriodFilter(key)}
                 className={cn(
-                  'px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all font-medium',
+                  'px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all font-medium',
                   periodFilter === key
-                    ? 'bg-orange-600 text-white shadow-sm'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600'
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                 )}
               >
                 {label}
@@ -334,69 +352,66 @@ export default function DepensesPage() {
             ))}
           </div>
 
-          {/* Category Filter Dropdown */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Catégorie
-            </label>
+          {/* Category and Search Row */}
+          <div className="flex gap-2">
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as ExpenseCategory | 'all')}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-400 transition-all"
+              className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
             >
-              <option value="all">Toutes les catégories</option>
+              <option value="all">Catégorie</option>
               {EXPENSE_CATEGORIES.map((cat) => (
                 <option key={cat.value} value={cat.value}>
                   {cat.label}
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Rechercher une dépense..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
+              />
+            </div>
           </div>
         </Card>
 
         {/* Total Card */}
         {filteredExpenses.length > 0 && (
-          <Card className="p-5 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 rounded-lg">
+          <Card className="p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl border-0 shadow-lg shadow-orange-500/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-orange-700 dark:text-orange-400 font-medium mb-2">
-                  Total des dépenses
+                <p className="text-xs text-orange-100 font-medium mb-0.5 uppercase tracking-wide">
+                  Total
                 </p>
-                <p className="text-3xl font-bold text-orange-900 dark:text-orange-300">
+                <p className="text-2xl font-bold text-white">
                   {formatCurrency(totalAmount)}
                 </p>
-                <p className="text-xs text-orange-600 dark:text-orange-500 mt-1">
+                <p className="text-xs text-orange-200 mt-0.5">
                   {filteredExpenses.length} dépense{filteredExpenses.length > 1 ? 's' : ''}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-orange-600 flex items-center justify-center">
-                <Coins className="w-6 h-6 text-white" />
+              <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                <Coins className="w-5 h-5 text-white" />
               </div>
             </div>
           </Card>
         )}
 
         {/* Expense List */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {filteredExpenses.length === 0 ? (
-            <Card className="p-12 text-center rounded-lg">
-              <Coins className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">
+            <Card className="p-10 text-center rounded-xl">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center">
+                <Coins className="w-7 h-7 text-gray-400 dark:text-gray-500" />
+              </div>
+              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">
                 Aucune dépense
               </p>
-              <p className="text-sm text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                 {periodFilter !== 'all' || categoryFilter !== 'all' || searchQuery
                   ? 'pour cette sélection'
                   : 'enregistrée'}
@@ -406,55 +421,67 @@ export default function DepensesPage() {
             filteredExpenses.map((expense) => {
               const linkedOrder = getLinkedSupplierOrder(expense);
               return (
-                <Card key={expense.id} className="p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="text-gray-900 dark:text-white font-semibold mb-2">
-                        {expense.description}
-                      </div>
-                      <div className="inline-block px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-medium rounded-lg">
-                        {getCategoryLabel(expense.category)}
-                      </div>
-                      {linkedOrder && (
-                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
-                          <Package className="w-3 h-3" />
-                          <span>Commande fournisseur liée</span>
+                <Card key={expense.id} className="p-3.5 rounded-xl hover:shadow-md transition-all border border-gray-100 dark:border-gray-700/50">
+                  <div className="flex items-start gap-3">
+                    {/* Category Icon */}
+                    <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+                      <Coins className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-gray-900 dark:text-white font-medium text-sm truncate">
+                            {expense.description}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-[10px] font-medium rounded-full">
+                              {getCategoryLabel(expense.category)}
+                            </span>
+                            {!expense.synced && (
+                              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium rounded-full">
+                                Non sync
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                        {formatCurrency(expense.amount)}
+                        <p className="text-base font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                          {formatCurrency(expense.amount)}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOpenEdit(expense)}
-                          className="p-2 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-all active:scale-95"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenDelete(expense)}
-                          className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
-                        </button>
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>{formatDate(new Date(expense.date))}</span>
+                          {linkedOrder && (
+                            <>
+                              <span className="text-gray-300 dark:text-gray-600">•</span>
+                              <Package className="w-3 h-3" />
+                              <span>Commande liée</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(expense)}
+                            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg transition-all active:scale-95"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenDelete(expense)}
+                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-200 dark:border-gray-700 font-medium">
-                    <Calendar className="w-4 h-4" />
-                    <span>{formatDate(new Date(expense.date))}</span>
-                    <span>•</span>
-                    <span>{formatTime(new Date(expense.date))}</span>
-                    {!expense.synced && (
-                      <>
-                        <span>•</span>
-                        <span className="text-amber-600 dark:text-amber-500">En attente de sync</span>
-                      </>
-                    )}
                   </div>
                 </Card>
               );
@@ -465,38 +492,36 @@ export default function DepensesPage() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center sm:justify-center z-50 p-4">
-          <Card className="w-full max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-gray-900 dark:text-white font-bold text-xl">
-                  {selectedExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {selectedExpense ? 'Mettez à jour les informations' : 'Ajoutez une nouvelle dépense'}
-                </p>
-              </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center sm:justify-center z-50">
+          <div
+            className="absolute inset-0"
+            onClick={() => { setShowAddModal(false); resetForm(); }}
+          />
+          <Card className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
+              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">
+                {selectedExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+              </h3>
               <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 w-10 h-10 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-all"
+                onClick={() => { setShowAddModal(false); resetForm(); }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-all"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[calc(85vh-130px)]">
               {/* Category */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Catégorie *
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                  Catégorie
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                  className="w-full h-12 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-400 transition-all"
+                  className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
                   required
                 >
                   {EXPENSE_CATEGORIES.map((cat) => (
@@ -509,112 +534,107 @@ export default function DepensesPage() {
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Description *
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                  Description
                 </label>
-                <Input
+                <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ex: Achat de paracétamol chez Pharma Guinée"
-                  className="h-12"
+                  placeholder="Ex: Achat de paracétamol"
+                  className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
                   required
                   autoFocus
                 />
               </div>
 
-              {/* Amount */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Montant (GNF) *
-                </label>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0"
-                  min="0"
-                  step="1"
-                  className="h-12"
-                  required
-                />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Date *
-                </label>
-                <Input
-                  type="date"
-                  value={expenseDate}
-                  onChange={(e) => setExpenseDate(e.target.value)}
-                  className="h-12"
-                  required
-                />
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    resetForm();
-                  }}
-                  className="flex-1 h-12 rounded-lg"
-                >
-                  Annuler
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 h-12 rounded-lg bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  {selectedExpense ? 'Modifier' : 'Enregistrer'}
-                </Button>
+              {/* Amount and Date Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                    Montant (GNF)
+                  </label>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0"
+                    min="0"
+                    step="1"
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => setExpenseDate(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
+                    required
+                  />
+                </div>
               </div>
             </form>
+
+            {/* Footer Buttons */}
+            <div className="flex gap-2 p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+              <button
+                type="button"
+                onClick={() => { setShowAddModal(false); resetForm(); }}
+                className="flex-1 h-10 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                form="expense-form"
+                onClick={handleSubmit}
+                className="flex-1 h-10 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium shadow-lg shadow-orange-600/20 active:scale-[0.98] transition-all"
+              >
+                {selectedExpense ? 'Modifier' : 'Enregistrer'}
+              </button>
+            </div>
           </Card>
         </div>
       )}
 
       {/* Delete Confirmation Dialog */}
       {showDeleteDialog && selectedExpense && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
-                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className="absolute inset-0"
+            onClick={() => { setShowDeleteDialog(false); setSelectedExpense(null); }}
+          />
+          <Card className="relative w-full max-w-sm p-5 rounded-2xl shadow-2xl">
+            <div className="flex flex-col items-center text-center mb-5">
+              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+                <AlertCircle className="w-7 h-7 text-red-600 dark:text-red-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
                 Supprimer la dépense ?
               </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {formatCurrency(selectedExpense.amount)} sera supprimé définitivement.
+              </p>
             </div>
 
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Êtes-vous sûr de vouloir supprimer cette dépense de{' '}
-              <strong className="text-gray-900 dark:text-white">{formatCurrency(selectedExpense.amount)}</strong> ?
-              Cette action est irréversible.
-            </p>
-
-            <div className="flex gap-3">
-              <Button
-                onClick={() => {
-                  setShowDeleteDialog(false);
-                  setSelectedExpense(null);
-                }}
-                variant="outline"
-                className="flex-1 h-12"
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowDeleteDialog(false); setSelectedExpense(null); }}
+                className="flex-1 h-10 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
               >
                 Annuler
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={handleDelete}
-                className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white"
+                className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-lg shadow-red-600/20 active:scale-[0.98] transition-all"
               >
                 Supprimer
-              </Button>
+              </button>
             </div>
           </Card>
         </div>

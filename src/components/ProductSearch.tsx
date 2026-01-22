@@ -25,7 +25,7 @@ interface ProductSearchProps {
   open: boolean;
   onClose: () => void;
   onAddProduct: (product: Product, quantity: number) => void;
-  excludeProductIds?: number[]; // Products already in the sale
+  excludeProductIds?: string[]; // Products already in the sale (UUIDs)
 }
 
 export function ProductSearch({

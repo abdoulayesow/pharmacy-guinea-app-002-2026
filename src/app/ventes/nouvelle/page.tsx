@@ -25,7 +25,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { db, selectBatchForSale, type BatchAllocation } from '@/lib/client/db';
 import { queueTransaction, processSyncQueue } from '@/lib/client/sync';
-import { formatCurrency } from '@/lib/shared/utils';
+import { formatCurrency, generateId } from '@/lib/shared/utils';
 import type { Product, Sale, SaleItem, CartItem, StockMovement } from '@/lib/shared/types';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
@@ -210,7 +210,9 @@ export default function NouvelleVentePage() {
       const saleItems = [...cartItems];
 
       // Create sale record with customer info and payment tracking
+      const saleId = generateId();
       const sale: Sale = {
+        id: saleId,
         created_at: new Date(),
         total: cartTotal,
         payment_method: method,
@@ -228,10 +230,10 @@ export default function NouvelleVentePage() {
       };
 
       // Add sale to database
-      const saleId = await db.sales.add(sale);
+      await db.sales.add(sale);
 
       // 🆕 FEFO: Allocate batches for each product before creating sale items
-      const batchAllocationsMap = new Map<number, BatchAllocation[]>();
+      const batchAllocationsMap = new Map<string, BatchAllocation[]>();
 
       try {
         for (const item of saleItems) {
@@ -265,7 +267,8 @@ export default function NouvelleVentePage() {
         // Create one sale item per batch allocation (may span multiple batches)
         for (const allocation of allocations) {
           saleItemsToAdd.push({
-            sale_id: saleId as number,
+            id: generateId(),
+            sale_id: saleId,
             product_id: item.product.id,
             product_batch_id: allocation.batchId,
             quantity: allocation.quantity,
@@ -296,8 +299,7 @@ export default function NouvelleVentePage() {
             await queueTransaction(
               'PRODUCT_BATCH',
               'UPDATE',
-              { ...batch, quantity: batch.quantity - allocation.quantity, updatedAt: new Date() },
-              String(allocation.batchId)
+              { ...batch, quantity: batch.quantity - allocation.quantity, updatedAt: new Date() }
             );
           }
         }
@@ -309,7 +311,9 @@ export default function NouvelleVentePage() {
         const product = await db.products.get(item.product.id!);
         if (product) {
           // Create stock movement record (source of truth for stock changes)
+          const movementId = generateId();
           const movement: StockMovement = {
+            id: movementId,
             product_id: item.product.id!,
             type: 'SALE',
             quantity_change: -item.quantity,
@@ -319,10 +323,10 @@ export default function NouvelleVentePage() {
             synced: false,
           };
 
-          const movementId = await db.stock_movements.add(movement);
+          await db.stock_movements.add(movement);
 
           // Queue stock movement for sync
-          await queueTransaction('STOCK_MOVEMENT', 'CREATE', { ...movement, id: movementId }, String(movementId));
+          await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
 
           // Mark product as unsynced (for background sync to pick up)
           await db.products.update(item.product.id!, {
@@ -333,7 +337,7 @@ export default function NouvelleVentePage() {
       }
 
       // Queue sale for sync
-      await queueTransaction('SALE', 'CREATE', { ...sale, id: saleId }, String(saleId));
+      await queueTransaction('SALE', 'CREATE', sale);
 
       // 🆕 OPTIMISTIC LOCKING: Try immediate sync with 5s timeout
       let syncFailed = false;
@@ -419,7 +423,7 @@ export default function NouvelleVentePage() {
       // Set last sale for receipt (with stored items)
       setLastSale({
         ...sale,
-        id: saleId as number,
+        id: saleId,
         items: saleItems,
       });
 

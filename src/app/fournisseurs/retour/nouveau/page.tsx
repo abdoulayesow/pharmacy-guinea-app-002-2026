@@ -9,7 +9,7 @@ import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/client/utils';
-import { formatCurrency } from '@/lib/shared/utils';
+import { formatCurrency, generateId } from '@/lib/shared/utils';
 import {
   ArrowLeft,
   RotateCcw,
@@ -41,7 +41,7 @@ export default function NewReturnPage() {
 
   const [supplierId, setSupplierId] = useState(preselectedSupplierId || '');
   const [productSearch, setProductSearch] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState<ReturnReason>('EXPIRING');
   const [creditAmount, setCreditAmount] = useState('');
@@ -53,7 +53,7 @@ export default function NewReturnPage() {
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
   
   // Get supplier to calculate due date (not used for returns, but needed for structure)
-  const selectedSupplier = suppliers.find((s) => s.id === parseInt(supplierId));
+  const selectedSupplier = suppliers.find((s) => s.id === supplierId);
   const selectedProduct = selectedProductId
     ? products.find((p) => p.id === selectedProductId)
     : null;
@@ -82,7 +82,7 @@ export default function NewReturnPage() {
     }
   }, [selectedProduct, quantity]);
 
-  const handleSelectProduct = (productId: number) => {
+  const handleSelectProduct = (productId: string) => {
     setSelectedProductId(productId);
     setShowProductSearch(false);
     const product = products.find((p) => p.id === productId);
@@ -113,8 +113,10 @@ export default function NewReturnPage() {
       }
 
       // Create return as a SupplierOrder with type='RETURN'
-      const returnOrder: Omit<SupplierOrder, 'id' | 'serverId'> = {
-        supplierId: parseInt(supplierId),
+      const returnOrderId = generateId();
+      const returnOrder: SupplierOrder = {
+        id: returnOrderId,
+        supplierId: supplierId,
         type: 'RETURN',
         orderDate: returnDateObj,
         totalAmount: returnAmount,
@@ -132,7 +134,7 @@ export default function NewReturnPage() {
       };
 
       // Save to IndexedDB
-      const localId = await db.supplier_orders.add(returnOrder);
+      await db.supplier_orders.add(returnOrder);
 
       // Reduce stock immediately
       await db.products.update(selectedProductId, {
@@ -142,20 +144,22 @@ export default function NewReturnPage() {
       });
 
       // Create stock movement record
+      const movementId = generateId();
       await db.stock_movements.add({
+        id: movementId,
         product_id: selectedProductId,
         type: 'SUPPLIER_RETURN',
         quantity_change: -returnQty,
         reason: `Retour fournisseur: ${RETURN_REASONS.find(r => r.value === reason)?.label || reason}`,
-        supplier_order_id: localId,
+        supplier_order_id: returnOrderId,
         user_id: session?.user?.email || 'unknown',
         created_at: returnDateObj,
         synced: false,
       });
 
       // Queue for sync
-      await queueTransaction('SUPPLIER_ORDER', 'CREATE', returnOrder, localId);
-      await queueTransaction('PRODUCT', 'UPDATE', selectedProduct!, String(selectedProductId));
+      await queueTransaction('SUPPLIER_ORDER', 'CREATE', returnOrder);
+      await queueTransaction('PRODUCT', 'UPDATE', selectedProduct!);
 
       toast.success('Retour enregistré - Stock réduit');
 

@@ -9,7 +9,7 @@ import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/client/utils';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import {
   ArrowLeft,
   CreditCard,
@@ -33,7 +33,7 @@ export default function PaymentPage() {
 
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [applyCreditFirst, setApplyCreditFirst] = useState(true); // Auto-apply credit by default
 
@@ -45,7 +45,7 @@ export default function PaymentPage() {
     (o) =>
       (o.type === 'ORDER' || !o.type) && // Only orders, not returns
       o.totalAmount > o.amountPaid &&
-      (!supplierId || o.supplierId === parseInt(supplierId))
+      (!supplierId || o.supplierId === supplierId)
   );
 
   // Calculate available credit from approved returns (DELIVERED status)
@@ -55,13 +55,13 @@ export default function PaymentPage() {
         o.type === 'RETURN' &&
         o.status === 'DELIVERED' &&
         o.paymentStatus !== 'PAID' && // Return credit not yet applied
-        (!supplierId || o.supplierId === parseInt(supplierId))
+        (!supplierId || o.supplierId === supplierId)
     )
     .reduce((sum, r) => sum + (r.totalAmount - r.amountPaid), 0);
 
   // Get selected supplier if filtered
   const selectedSupplier = supplierId
-    ? suppliers.find((s) => s.id === parseInt(supplierId))
+    ? suppliers.find((s) => s.id === supplierId)
     : null;
 
   // Redirect if not authenticated (check both OAuth session and Zustand store)
@@ -82,7 +82,7 @@ export default function PaymentPage() {
   const paymentAmountNum = parseInt(paymentAmount) || 0;
   const remainingAfterPayment = totalDue - paymentAmountNum;
 
-  const toggleOrder = (orderId: number) => {
+  const toggleOrder = (orderId: string) => {
     if (selectedOrders.includes(orderId)) {
       setSelectedOrders(selectedOrders.filter((id) => id !== orderId));
     } else {
@@ -132,7 +132,7 @@ export default function PaymentPage() {
             o.type === 'RETURN' &&
             o.status === 'DELIVERED' &&
             o.paymentStatus !== 'PAID' &&
-            (!supplierId || o.supplierId === parseInt(supplierId))
+            (!supplierId || o.supplierId === supplierId)
         );
 
         let remainingCreditToApply = creditToApply;
@@ -190,6 +190,7 @@ export default function PaymentPage() {
       // Step 3: Record expense (only for cash payment, not credit)
       if (paymentAmountNum > 0) {
         await db.expenses.add({
+          id: generateId(),
           date: new Date(paymentDate),
           description: `Paiement ${selectedSupplier?.name || 'fournisseur'} - ${selectedOrders.length} commande(s)${creditApplied > 0 ? ` (Crédit: ${formatCurrency(creditApplied)})` : ''}`,
           amount: paymentAmountNum,

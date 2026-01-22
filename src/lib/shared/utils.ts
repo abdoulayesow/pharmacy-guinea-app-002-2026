@@ -6,6 +6,8 @@
  * - Backend (API for formatting responses)
  */
 
+import { createId } from '@paralleldrive/cuid2';
+
 // ============================================================================
 // Currency Formatting
 // ============================================================================
@@ -29,12 +31,20 @@ export function formatCurrency(amount: number): string {
  * Format date as DD/MM/YYYY (French format)
  * Example: 2026-01-15 -> "15/01/2026"
  */
-export function formatDate(date: Date): string {
+export function formatDate(date: Date | string | number): string {
+  const dateObj = date instanceof Date ? date : new Date(date);
+
+  // Validate date
+  if (isNaN(dateObj.getTime())) {
+    console.warn('[formatDate] Invalid date:', date);
+    return 'Date invalide';
+  }
+
   return new Intl.DateTimeFormat('fr-GN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(date);
+  }).format(dateObj);
 }
 
 /**
@@ -127,10 +137,26 @@ export function getExpenseCategoryLabel(category: string): string {
 // ============================================================================
 
 /**
- * Generate a unique local ID for offline-first operations
+ * Generate a unique CUID for offline-first entity creation
+ * Uses cuid2 for collision-resistant, sortable IDs
+ *
+ * CUIDs are:
+ * - 25 characters long
+ * - URL-safe (lowercase alphanumeric)
+ * - Collision-resistant for distributed systems
+ * - Contain timestamp component (sortable)
+ *
+ * @example generateId() // "clh3k4j0x0000qw..."
+ */
+export function generateId(): string {
+  return createId();
+}
+
+/**
+ * @deprecated Use generateId() instead - keeping for backward compatibility
  */
 export function generateLocalId(): string {
-  return `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return generateId();
 }
 
 // ============================================================================

@@ -111,9 +111,9 @@ export async function GET(request: NextRequest) {
     console.log('[API] Fetched product batches:', productBatches.length);
 
     // Transform product batches to client format (match ProductBatch interface)
+    // UUID migration: No serverId needed - id is the same on client and server
     const transformedProductBatches = productBatches.map((b) => ({
       id: b.id,
-      serverId: b.id,
       product_id: b.productId,
       lot_number: b.lotNumber,
       expiration_date: b.expirationDate,

@@ -54,12 +54,12 @@ export default function FournisseursPage() {
   const supplierOrders = supplierOrdersQuery ?? [];
 
   // Calculate supplier balances and status
-  const getSupplierBalance = (supplierId: number) => {
+  const getSupplierBalance = (supplierId: string) => {
     const orders = supplierOrders.filter(o => o.supplierId === supplierId);
     return orders.reduce((sum, o) => sum + (o.totalAmount - o.amountPaid), 0);
   };
 
-  const getSupplierNextPayment = (supplierId: number) => {
+  const getSupplierNextPayment = (supplierId: string) => {
     const pendingOrders = supplierOrders
       .filter(o => o.supplierId === supplierId && o.totalAmount > o.amountPaid)
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());

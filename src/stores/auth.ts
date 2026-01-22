@@ -110,16 +110,17 @@ export const useAuthStore = create<AuthState>()(
 
       syncProfileFromSession: (sessionUser: { id: string; name?: string | null; role?: string; image?: string | null }) => {
         const { currentUser } = get();
+        const newRole = (sessionUser.role as 'OWNER' | 'EMPLOYEE') || 'EMPLOYEE';
 
-        // Only sync if user changed (profile data sync only, NOT auth state)
-        if (currentUser?.id !== sessionUser.id) {
+        // Sync if user changed OR if role changed (role can be updated in database)
+        if (currentUser?.id !== sessionUser.id || currentUser?.role !== newRole) {
           set({
             currentUser: {
               id: sessionUser.id,
               name: sessionUser.name || 'Utilisateur',
-              role: (sessionUser.role as 'OWNER' | 'EMPLOYEE') || 'EMPLOYEE',
+              role: newRole,
               image: sessionUser.image || undefined,
-              createdAt: new Date(),
+              createdAt: currentUser?.createdAt || new Date(),
             },
             // Note: Does NOT set isAuthenticated - that requires PIN verification
           });

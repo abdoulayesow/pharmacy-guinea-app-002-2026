@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client';
 import { neonConfig } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import { hash } from 'bcryptjs';
+import { createId } from '@paralleldrive/cuid2';
 
 // Configure Neon WebSocket for Node.js environment
 // Use dynamic import to handle ESM/CJS interop with Node.js v24
@@ -150,7 +151,7 @@ async function main() {
       });
 
       const created = await prisma.product.upsert({
-        where: { id: existing?.id ?? -1 }, // Use existing ID or -1 if not found
+        where: { id: existing?.id ?? createId() }, // Use existing ID or new CUID if not found
         update: {
           price: product.price,
           priceBuy: product.priceBuy,
@@ -269,7 +270,7 @@ async function main() {
       });
 
       await prisma.productBatch.upsert({
-        where: { id: existing?.id ?? -1 },
+        where: { id: existing?.id ?? createId() },
         update: {
           // Update quantities and dates if batch exists
           quantity: batch.quantity,

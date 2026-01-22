@@ -8,6 +8,7 @@ import { db } from '@/lib/client/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Building2, Phone, Calendar, Save } from 'lucide-react';
+import { generateId } from '@/lib/shared/utils';
 
 export default function NewSupplierPage() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function NewSupplierPage() {
 
     try {
       await db.suppliers.add({
+        id: generateId(),
         name,
         phone: phone.trim() || undefined,
         paymentTermsDays: parseInt(paymentTermsDays),

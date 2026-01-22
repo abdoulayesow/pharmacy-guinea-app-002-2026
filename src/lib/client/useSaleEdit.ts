@@ -18,10 +18,11 @@ import { toast } from 'sonner';
 import { db } from '@/lib/client/db';
 import { queueTransaction } from '@/lib/client/sync';
 import type { Sale, SaleItem, Product } from '@/lib/shared/types';
+import { generateId } from '@/lib/shared/utils';
 
 // Edit item structure (includes product reference for UI)
 export interface EditItem {
-  id?: number; // sale_item id (undefined for new items)
+  id?: string; // sale_item id (undefined for new items) - UUID migration
   product: Product;
   quantity: number;
   unit_price: number;
@@ -220,6 +221,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
         });
 
         await db.stock_movements.add({
+          id: generateId(),
           product_id: originalItem.product_id,
           type: 'SALE_EDIT',
           quantity_change: originalItem.quantity, // positive = adding back
@@ -236,6 +238,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
       // Step 3: Create new sale items and apply stock movements
       for (const item of editItems) {
         await db.sale_items.add({
+          id: generateId(),
           sale_id: sale.id!,
           product_id: item.product.id!,
           quantity: item.quantity,
@@ -252,6 +255,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
         });
 
         await db.stock_movements.add({
+          id: generateId(),
           product_id: item.product.id!,
           type: 'SALE_EDIT',
           quantity_change: -item.quantity, // negative = removing
@@ -275,7 +279,7 @@ export function useSaleEdit({ sale, saleItems, onEditComplete }: UseSaleEditOpti
       });
 
       // Step 5: Add to sync queue
-      await queueTransaction('SALE', 'UPDATE', { id: sale.id }, String(sale.id!));
+      await queueTransaction('SALE', 'UPDATE', { id: sale.id });
 
       toast.success('Vente modifiée avec succès');
       setIsEditMode(false);

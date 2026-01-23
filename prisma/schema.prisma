@@ -90,6 +90,7 @@ model Product {
   saleItems        SaleItem[]
   stockMovements   StockMovement[]
   productSuppliers ProductSupplier[]
+  stockoutReports  StockoutReport[]
 
   @@map("products")
 }
@@ -142,6 +143,7 @@ model Sale {
   user            User             @relation(fields: [userId], references: [id])
   items           SaleItem[]
   creditPayments  CreditPayment[]
+  prescriptions   SalePrescription[]
 
   @@map("sales")
 }
@@ -316,6 +318,47 @@ model SupplierReturn {
   appliedToOrder   SupplierOrder? @relation("AppliedToOrder", fields: [appliedToOrderId], references: [id])
 
   @@map("supplier_returns")
+}
+
+// ============================================================================
+// Phase 4: Pharmacy Workflow Models
+// ============================================================================
+
+// Stockout reports - Track missed sales for demand forecasting
+model StockoutReport {
+  id            String    @id @default(cuid())
+  productName   String    @map("product_name")     // What was requested (may not exist in DB)
+  productId     String?   @map("product_id")       // FK to products (if known product)
+  requestedQty  Int       @map("requested_qty")    // How many were needed
+  customerName  String?   @map("customer_name")    // Optional: client info for follow-up
+  customerPhone String?   @map("customer_phone")   // Optional: for callback when stock arrives
+  notes         String?
+  reportedBy    String    @map("reported_by")      // User ID who reported
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  product       Product?  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("stockout_reports")
+}
+
+// Sale prescriptions - Attach prescription images to sales for compliance
+model SalePrescription {
+  id          String    @id @default(cuid())
+  saleId      String    @map("sale_id")
+  imageData   String    @map("image_data") @db.Text  // Base64 encoded image (compressed)
+  imageType   String    @map("image_type")           // image/jpeg | image/png
+  capturedAt  DateTime  @map("captured_at")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_prescriptions")
 }
 
 // ============================================================================

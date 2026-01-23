@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
-    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments, stockoutReports, salePrescriptions } = body;
 
     // Basic validation: ensure arrays are actually arrays
     const validationErrors: string[] = [];
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     if (supplierReturns && !Array.isArray(supplierReturns)) validationErrors.push('supplierReturns must be an array');
     if (productSuppliers && !Array.isArray(productSuppliers)) validationErrors.push('productSuppliers must be an array');
     if (creditPayments && !Array.isArray(creditPayments)) validationErrors.push('creditPayments must be an array');
+    if (stockoutReports && !Array.isArray(stockoutReports)) validationErrors.push('stockoutReports must be an array');
+    if (salePrescriptions && !Array.isArray(salePrescriptions)) validationErrors.push('salePrescriptions must be an array');
 
     if (validationErrors.length > 0) {
       console.error('[API] Sync push validation errors:', validationErrors);
@@ -53,6 +55,8 @@ export async function POST(request: NextRequest) {
             supplierReturns: [],
             productSuppliers: [],
             creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
           },
         },
         { status: 400 }
@@ -88,6 +92,8 @@ export async function POST(request: NextRequest) {
     const syncedSupplierReturns: string[] = [];
     const syncedProductSuppliers: string[] = [];
     const syncedCreditPayments: string[] = [];
+    const syncedStockoutReports: string[] = [];
+    const syncedSalePrescriptions: string[] = [];
     const errors: string[] = [];
 
     // Sync Sales (with nested sale items)
@@ -806,6 +812,77 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync Stockout Reports - Phase 4
+    if (stockoutReports && stockoutReports.length > 0) {
+      for (const report of stockoutReports) {
+        try {
+          // Check if report exists by its ID
+          const existingReport = await prisma.stockoutReport.findUnique({
+            where: { id: report.id },
+          });
+
+          if (!existingReport) {
+            // New report - use client-generated ID
+            await prisma.stockoutReport.create({
+              data: {
+                id: report.id,
+                productName: report.product_name,
+                productId: report.product_id || null,
+                requestedQty: report.requested_qty,
+                customerName: report.customer_name || null,
+                customerPhone: report.customer_phone || null,
+                notes: report.notes || null,
+                reportedBy: report.reported_by || user.userId,
+                createdAt: report.created_at ? new Date(report.created_at) : new Date(),
+              },
+            });
+            syncedStockoutReports.push(report.id);
+          } else {
+            // Already exists
+            syncedStockoutReports.push(report.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync stockout report ${report.id}: ${errorMsg}`);
+          console.error('[API] Stockout report sync error:', error);
+        }
+      }
+    }
+
+    // Sync Sale Prescriptions - Phase 4
+    if (salePrescriptions && salePrescriptions.length > 0) {
+      for (const prescription of salePrescriptions) {
+        try {
+          // Check if prescription exists by its ID
+          const existingPrescription = await prisma.salePrescription.findUnique({
+            where: { id: prescription.id },
+          });
+
+          if (!existingPrescription) {
+            // New prescription - use client-generated ID
+            await prisma.salePrescription.create({
+              data: {
+                id: prescription.id,
+                saleId: prescription.sale_id,
+                imageData: prescription.image_data,
+                imageType: prescription.image_type,
+                capturedAt: prescription.captured_at ? new Date(prescription.captured_at) : new Date(),
+                notes: prescription.notes || null,
+              },
+            });
+            syncedSalePrescriptions.push(prescription.id);
+          } else {
+            // Already exists
+            syncedSalePrescriptions.push(prescription.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync sale prescription ${prescription.id}: ${errorMsg}`);
+          console.error('[API] Sale prescription sync error:', error);
+        }
+      }
+    }
+
     return NextResponse.json<SyncPushResponse>({
       success: true,
       synced: {
@@ -821,6 +898,8 @@ export async function POST(request: NextRequest) {
         supplierReturns: syncedSupplierReturns,
         productSuppliers: syncedProductSuppliers,
         creditPayments: syncedCreditPayments,
+        stockoutReports: syncedStockoutReports,
+        salePrescriptions: syncedSalePrescriptions,
       },
       errors: errors.length > 0 ? errors : undefined,
     });
@@ -961,6 +1040,8 @@ export async function POST(request: NextRequest) {
             supplierReturns: [],
             productSuppliers: [],
             creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
           },
           errors: ['Non autorisé'],
         },
@@ -984,6 +1065,8 @@ export async function POST(request: NextRequest) {
           supplierReturns: [],
           productSuppliers: [],
           creditPayments: [],
+          stockoutReports: [],
+          salePrescriptions: [],
         },
         errors: ['Erreur serveur'],
       },

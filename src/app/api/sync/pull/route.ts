@@ -389,6 +389,8 @@ export async function GET(request: NextRequest) {
         productSuppliers: transformedProductSuppliers,
         productBatches: transformedProductBatches, // 🆕 FEFO Phase 3
         creditPayments: transformedCreditPayments,
+        stockoutReports: [], // 🆕 Phase 4: Fetched from backend when implemented
+        salePrescriptions: [], // 🆕 Phase 4: Fetched from backend when implemented
       },
       serverTime,
     });
@@ -412,6 +414,8 @@ export async function GET(request: NextRequest) {
             productSuppliers: [],
             productBatches: [], // 🆕 FEFO Phase 3
             creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
           },
           serverTime: new Date(),
         },
@@ -435,6 +439,8 @@ export async function GET(request: NextRequest) {
           productSuppliers: [],
           productBatches: [], // 🆕 FEFO Phase 3
           creditPayments: [],
+          stockoutReports: [],
+          salePrescriptions: [],
         },
         serverTime: new Date(),
       },

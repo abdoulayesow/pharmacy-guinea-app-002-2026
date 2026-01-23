@@ -27,6 +27,9 @@ import type {
   SupplierReturn,
   ProductSupplier,
   CreditPayment,
+  StockoutReport,
+  SalePrescription,
+  ProductSubstitute,
 } from '@/lib/shared/types';
 
 // Database name - changed for UUID migration (Dexie can't change PK types)
@@ -82,6 +85,10 @@ class SeriDatabase extends Dexie {
   supplier_returns!: Table<SupplierReturn>;
   product_suppliers!: Table<ProductSupplier>;
   credit_payments!: Table<CreditPayment>;
+  // Phase 4: Pharmacy workflow
+  stockout_reports!: Table<StockoutReport>;
+  sale_prescriptions!: Table<SalePrescription>;
+  product_substitutes!: Table<ProductSubstitute>;
 
   constructor() {
     super(DB_NAME);
@@ -112,6 +119,32 @@ class SeriDatabase extends Dexie {
 
       // Sync queue: Keep auto-increment for queue management (local only)
       sync_queue: '++id, type, status, entityId, createdAt',
+    });
+
+    // ============================================================================
+    // Version 2: Pharmacy Workflow - Stockouts, Prescriptions, Substitutes
+    // ============================================================================
+    this.version(2).stores({
+      // Existing tables unchanged (null = keep as-is)
+      users: null,
+      products: null,
+      product_batches: null,
+      sales: null,
+      sale_items: null,
+      expenses: null,
+      stock_movements: null,
+      suppliers: null,
+      supplier_orders: null,
+      supplier_order_items: null,
+      supplier_returns: null,
+      product_suppliers: null,
+      credit_payments: null,
+      sync_queue: null,
+
+      // New Phase 4 tables
+      stockout_reports: '&id, product_id, product_name, created_at, reported_by, synced',
+      sale_prescriptions: '&id, sale_id, captured_at, synced',
+      product_substitutes: '&id, product_id, substitute_id, equivalence_type, priority, synced',
     });
   }
 }
@@ -695,6 +728,10 @@ export async function clearDatabase() {
   await db.supplier_returns.clear();
   await db.product_suppliers.clear();
   await db.credit_payments.clear();
+  // Phase 4 tables
+  await db.stockout_reports.clear();
+  await db.sale_prescriptions.clear();
+  await db.product_substitutes.clear();
   console.log('[Seri DB] Database cleared');
 }
 
@@ -715,6 +752,10 @@ export async function getDatabaseStats() {
     supplierReturns: await db.supplier_returns.count(),
     productSuppliers: await db.product_suppliers.count(),
     creditPayments: await db.credit_payments.count(),
+    // Phase 4 stats
+    stockoutReports: await db.stockout_reports.count(),
+    salePrescriptions: await db.sale_prescriptions.count(),
+    productSubstitutes: await db.product_substitutes.count(),
     pendingSync: await db.sync_queue.where('status').equals('PENDING').count(),
   };
 }

@@ -171,8 +171,8 @@ function LoginPageContent() {
     syncSessionUserToIndexedDB();
   }, [session, sessionStatus]);
 
-  // Get users from IndexedDB
-  const users = useLiveQuery(() => db.users.toArray()) ?? [];
+  // Get users from IndexedDB (with safety check for db initialization)
+  const users = useLiveQuery(() => db.users?.toArray() ?? []) ?? [];
 
   // Check if any users have PIN set
   const usersWithPin = users.filter((u) => u.pinHash);

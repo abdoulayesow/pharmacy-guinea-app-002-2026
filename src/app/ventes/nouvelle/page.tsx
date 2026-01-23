@@ -34,6 +34,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+// Phase 4: Pharmacy workflow components
+import { PrescriptionCapture, PrescriptionIndicator, type CapturedPrescription } from '@/components/features/PrescriptionCapture';
+import { ProductSubstitutes } from '@/components/features/ProductSubstitutes';
+import { StockoutReportModal } from '@/components/features/StockoutReportModal';
+import type { SalePrescription } from '@/lib/shared/types';
 
 type Step = 'search' | 'cart' | 'customer_info' | 'payment' | 'receipt'; // 🆕 Added customer_info step
 type PaymentMethod = 'CASH' | 'ORANGE_MONEY' | 'CREDIT'; // 🆕 Added CREDIT
@@ -77,6 +82,13 @@ export default function NouvelleVentePage() {
   const [creditDueDate, setCreditDueDate] = useState<Date>(
     new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // Default: 3 days from now
   );
+
+  // 🆕 Phase 4: Pharmacy workflow state
+  const [prescriptions, setPrescriptions] = useState<CapturedPrescription[]>([]);
+  const [showStockoutModal, setShowStockoutModal] = useState(false);
+  const [stockoutProduct, setStockoutProduct] = useState<Product | null>(null);
+  const [showSubstitutes, setShowSubstitutes] = useState(false);
+  const [outOfStockProduct, setOutOfStockProduct] = useState<Product | null>(null);
 
   // Get products from IndexedDB with calculated stock
   // Note: Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
@@ -339,6 +351,23 @@ export default function NouvelleVentePage() {
       // Queue sale for sync
       await queueTransaction('SALE', 'CREATE', sale);
 
+      // 🆕 Save prescriptions if any were captured
+      if (prescriptions.length > 0) {
+        for (const prescription of prescriptions) {
+          const salePrescription: SalePrescription = {
+            id: generateId(),
+            sale_id: saleId,
+            image_data: prescription.imageData,
+            image_type: prescription.imageType,
+            captured_at: prescription.capturedAt,
+            synced: false,
+          };
+
+          await db.sale_prescriptions.add(salePrescription);
+          // Note: Prescription sync can be added later when backend supports it
+        }
+      }
+
       // 🆕 OPTIMISTIC LOCKING: Try immediate sync with 5s timeout
       let syncFailed = false;
       let stockError: string | null = null;
@@ -437,6 +466,7 @@ export default function NouvelleVentePage() {
       setShowOrangeMoneyDialog(false);
       setShowCreditDialog(false);
       setCreditDueDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
+      setPrescriptions([]); // 🆕 Clear prescriptions
 
       // Show success toast
       toast.success('Vente enregistrée avec succès!');
@@ -465,6 +495,9 @@ export default function NouvelleVentePage() {
     setShowOrangeMoneyDialog(false);
     setShowCreditDialog(false);
     setCreditDueDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
+    setPrescriptions([]); // 🆕 Clear prescriptions
+    setShowSubstitutes(false); // 🆕 Clear substitutes panel
+    setOutOfStockProduct(null); // 🆕 Clear out-of-stock product
   };
 
   // (Removed old quickAmounts - now using smartAmounts algorithm)
@@ -536,7 +569,9 @@ export default function NouvelleVentePage() {
                   )}
                   onClick={() => {
                     if (product.stock === 0) {
-                      toast.error('Produit en rupture de stock');
+                      // Show substitutes panel for out-of-stock products
+                      setOutOfStockProduct(product);
+                      setShowSubstitutes(true);
                       return;
                     }
                     setSelectedProduct(product);
@@ -688,6 +723,65 @@ export default function NouvelleVentePage() {
               </div>
             </div>
           )}
+
+          {/* 🆕 Product Substitutes Panel (shown when clicking out-of-stock product) */}
+          {showSubstitutes && outOfStockProduct && (
+            <div
+              className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-end z-50 animate-in fade-in duration-200"
+              onClick={() => {
+                setShowSubstitutes(false);
+                setOutOfStockProduct(null);
+              }}
+            >
+              <div
+                className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-3xl w-full p-5 max-h-[85vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-300"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-white font-bold text-lg">Alternatives disponibles</h3>
+                  <button
+                    onClick={() => {
+                      setShowSubstitutes(false);
+                      setOutOfStockProduct(null);
+                    }}
+                    className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+                  >
+                    <X className="w-5 h-5 text-slate-400" />
+                  </button>
+                </div>
+
+                <ProductSubstitutes
+                  product={outOfStockProduct}
+                  onAddToCart={(product, qty) => {
+                    for (let i = 0; i < qty; i++) {
+                      addToCart(product);
+                    }
+                    setShowSubstitutes(false);
+                    setOutOfStockProduct(null);
+                  }}
+                  onReportStockout={() => {
+                    setStockoutProduct(outOfStockProduct);
+                    setShowStockoutModal(true);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 🆕 Stockout Report Modal */}
+          <StockoutReportModal
+            isOpen={showStockoutModal}
+            onClose={() => {
+              setShowStockoutModal(false);
+              setStockoutProduct(null);
+            }}
+            product={stockoutProduct}
+            userId={session?.user?.id || currentUser?.id || ''}
+            onReported={() => {
+              setShowSubstitutes(false);
+              setOutOfStockProduct(null);
+            }}
+          />
         </main>
 
         <Navigation />
@@ -709,6 +803,11 @@ export default function NouvelleVentePage() {
                   <ShoppingCart className="w-6 h-6 text-white" />
                 </div>
                 <h2 className="text-white text-xl font-bold tracking-tight">Panier</h2>
+                {/* 🆕 Prescription indicator */}
+                <PrescriptionIndicator
+                  count={prescriptions.length}
+                  onClick={() => {/* Scroll to prescription section */}}
+                />
               </div>
               <button
                 onClick={() => setStep('search')}
@@ -786,6 +885,18 @@ export default function NouvelleVentePage() {
                   </Card>
                 ))}
               </div>
+
+              {/* 🆕 Prescription Capture Section */}
+              <PrescriptionCapture
+                prescriptions={prescriptions}
+                onCapture={(prescription) => {
+                  setPrescriptions(prev => [...prev, prescription]);
+                }}
+                onRemove={(id) => {
+                  setPrescriptions(prev => prev.filter(p => p.id !== id));
+                }}
+                maxPrescriptions={3}
+              />
 
               {/* Total and Payment Button */}
               <div className="fixed bottom-20 left-0 right-0 bg-slate-900 border-t border-slate-700 pt-4 pb-4 px-4 z-30">

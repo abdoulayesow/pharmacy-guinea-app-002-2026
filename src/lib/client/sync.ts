@@ -4,7 +4,7 @@
  */
 
 import { db } from './db';
-import type { SyncQueueItem, Sale, SaleItem, Expense, Product } from '@/lib/shared/types';
+import type { SyncQueueItem, Sale, SaleItem, Expense, Product, StockoutReport, SalePrescription } from '@/lib/shared/types';
 import { generateLocalId } from '@/lib/shared/utils';
 
 // Constants
@@ -70,7 +70,7 @@ function generateUUID(): string {
  * UUID migration: entities now have client-generated IDs that are the same on server
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'PRODUCT_BATCH' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'PRODUCT_BATCH' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT' | 'STOCKOUT_REPORT' | 'SALE_PRESCRIPTION',
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
   payload: any
 ): Promise<SyncQueueItem> {
@@ -162,6 +162,12 @@ export async function markSynced(itemId: string | number): Promise<void> {
         case 'CREDIT_PAYMENT':
           await db.credit_payments.update(entityId, { synced: true });
           break;
+        case 'STOCKOUT_REPORT':
+          await db.stockout_reports.update(entityId, { synced: true });
+          break;
+        case 'SALE_PRESCRIPTION':
+          await db.sale_prescriptions.update(entityId, { synced: true });
+          break;
       }
     }
   }
@@ -246,6 +252,8 @@ export async function prepareSyncPayload(): Promise<{
   supplierReturns: any[];
   productSuppliers: any[];
   creditPayments: any[];
+  stockoutReports: any[];
+  salePrescriptions: any[];
 }> {
   const items = await getPendingItems();
 
@@ -269,6 +277,8 @@ export async function prepareSyncPayload(): Promise<{
       SUPPLIER_ORDER_ITEM: 10,
       SUPPLIER_RETURN: 11,
       USER: 12,
+      STOCKOUT_REPORT: 13,
+      SALE_PRESCRIPTION: 14,
     };
 
     const priorityA = typePriority[a.type] || 99;
@@ -294,6 +304,8 @@ export async function prepareSyncPayload(): Promise<{
   const supplierReturns: any[] = [];
   const productSuppliers: any[] = [];
   const creditPayments: any[] = [];
+  const stockoutReports: any[] = [];
+  const salePrescriptions: any[] = [];
 
   for (const item of sortedItems) {
     if (item.status === 'PENDING') {
@@ -333,6 +345,12 @@ export async function prepareSyncPayload(): Promise<{
           break;
         case 'CREDIT_PAYMENT':
           creditPayments.push(payload);
+          break;
+        case 'STOCKOUT_REPORT':
+          stockoutReports.push(payload);
+          break;
+        case 'SALE_PRESCRIPTION':
+          salePrescriptions.push(payload);
           break;
       }
     }
@@ -396,6 +414,8 @@ export async function prepareSyncPayload(): Promise<{
     supplierReturns,
     productSuppliers,
     creditPayments,
+    stockoutReports,
+    salePrescriptions,
   };
 }
 

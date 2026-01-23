@@ -203,7 +203,9 @@ export type SyncType =
   | 'SUPPLIER_RETURN'
   | 'PRODUCT_SUPPLIER' // Product-supplier links
   | 'CREDIT_PAYMENT' // Partial payment tracking
-  | 'USER'; // User PIN updates
+  | 'USER' // User PIN updates
+  | 'STOCKOUT_REPORT' // Phase 4: Missed sales tracking
+  | 'SALE_PRESCRIPTION'; // Phase 4: Prescription images
 export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN';
 
 export interface SyncQueueItem {
@@ -312,6 +314,58 @@ export interface SupplierReturn {
 }
 
 // ============================================================================
+// Stockout & Prescription Types (Phase 4 - Pharmacy Workflow)
+// ============================================================================
+
+/**
+ * Stockout Report - Track products requested but unavailable (missed sales)
+ * Helps pharmacy owner understand demand for out-of-stock items
+ */
+export interface StockoutReport {
+  id: string;                    // CUID
+  product_name: string;          // What was requested (may not exist in DB)
+  product_id?: string;           // FK to products (if known product)
+  requested_qty: number;         // How many were needed
+  customer_name?: string;        // Optional: client info for follow-up
+  customer_phone?: string;       // Optional: for callback when stock arrives
+  notes?: string;                // Additional context
+  reported_by: string;           // User ID who reported
+  created_at: Date;
+  synced: boolean;
+}
+
+/**
+ * Sale Prescription - Attach prescription photos to sales
+ * Important for compliance and record-keeping in pharmacies
+ */
+export interface SalePrescription {
+  id: string;                    // CUID
+  sale_id: string;               // FK to sales
+  image_data: string;            // Base64 encoded image (compressed)
+  image_type: 'image/jpeg' | 'image/png';
+  captured_at: Date;
+  notes?: string;                // Pharmacist notes about prescription
+  synced: boolean;
+}
+
+/**
+ * Product Substitute - Define equivalent products for recommendations
+ * Helps suggest alternatives when requested product is out of stock
+ */
+export type SubstituteEquivalenceType = 'DCI' | 'THERAPEUTIC_CLASS' | 'MANUAL';
+
+export interface ProductSubstitute {
+  id: string;                    // CUID
+  product_id: string;            // Primary product (FK to Product.id)
+  substitute_id: string;         // Alternative product (FK to Product.id)
+  equivalence_type: SubstituteEquivalenceType;
+  notes?: string;                // e.g., "Même principe actif - paracétamol"
+  priority: number;              // Lower = better match (1 = best)
+  created_at: Date;
+  synced: boolean;
+}
+
+// ============================================================================
 // API Request/Response Types
 // ============================================================================
 
@@ -340,6 +394,8 @@ export interface SyncPushRequest {
   supplierReturns?: SupplierReturn[];
   productSuppliers?: ProductSupplier[]; // Product-supplier links
   creditPayments?: CreditPayment[]; // Partial payment tracking
+  stockoutReports?: StockoutReport[]; // Phase 4: Missed sales
+  salePrescriptions?: SalePrescription[]; // Phase 4: Prescription images
 }
 
 export interface SyncPushResponse {
@@ -358,6 +414,8 @@ export interface SyncPushResponse {
     supplierReturns: string[];
     productSuppliers: string[];
     creditPayments: string[];
+    stockoutReports: string[];
+    salePrescriptions: string[];
   };
   errors?: string[];
 }
@@ -381,6 +439,8 @@ export interface SyncPullResponse {
     productSuppliers: ProductSupplier[];
     productBatches: ProductBatch[];
     creditPayments: CreditPayment[];
+    stockoutReports: StockoutReport[];
+    salePrescriptions: SalePrescription[];
   };
   serverTime: Date;
 }

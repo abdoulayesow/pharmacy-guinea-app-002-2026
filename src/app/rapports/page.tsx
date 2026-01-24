@@ -30,6 +30,7 @@ import { db } from '@/lib/client/db';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
 import { cn } from '@/lib/client/utils';
 import { Navigation } from '@/components/Navigation';
+import { getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
 import type { ExpenseCategory } from '@/lib/shared/types';
 
 // Expense category labels
@@ -201,27 +202,33 @@ export default function ReportsPage() {
       .slice(0, 5);
   }, [filteredSales, saleItems, productMap]);
 
-  // Stock alerts
+  // Stock alerts with batch-level expiration analytics
   const stockAlerts = useMemo(() => {
     const lowStock = products.filter(p => p.stock > 0 && p.stock <= p.minStock).length;
     const outOfStock = products.filter(p => p.stock === 0).length;
 
-    // Expiring batches (within 30 days)
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    const expiringSoon = productBatches.filter(batch => {
-      if (!batch.expiration_date || batch.quantity <= 0) return false;
-      const expiryDate = new Date(batch.expiration_date);
-      return expiryDate <= thirtyDaysFromNow && expiryDate >= new Date();
-    }).length;
+    // Use batch expiration summary for detailed analytics
+    const batchSummary = getBatchExpirationSummary(productBatches);
 
-    const expired = productBatches.filter(batch => {
-      if (!batch.expiration_date || batch.quantity <= 0) return false;
-      return new Date(batch.expiration_date) < new Date();
-    }).length;
-
-    return { lowStock, outOfStock, expiringSoon, expired };
+    return {
+      lowStock,
+      outOfStock,
+      expiringSoon: batchSummary.critical + batchSummary.warning,
+      expired: batchSummary.expired,
+      // Value at risk
+      expiredValue: batchSummary.expiredValue,
+      criticalValue: batchSummary.criticalValue,
+      warningValue: batchSummary.warningValue,
+      totalValueAtRisk: batchSummary.totalValueAtRisk,
+      // Unit counts
+      totalUnitsAtRisk: batchSummary.totalUnits,
+    };
   }, [products, productBatches]);
+
+  // Get alert batches for detailed display
+  const alertBatches = useMemo(() => {
+    return getAlertBatchesWithProducts(productBatches, products);
+  }, [productBatches, products]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-24">
@@ -487,9 +494,17 @@ export default function ReportsPage() {
 
         {/* Stock Alerts Summary */}
         <div className="bg-gradient-to-br from-slate-800/80 to-slate-800/40 rounded-xl p-4 border border-slate-700/50">
-          <div className="flex items-center gap-2 mb-4">
-            <Package className="w-4 h-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Alertes stock</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Package className="w-4 h-4 text-purple-400" />
+              <h3 className="text-sm font-semibold text-slate-300">Alertes stock</h3>
+            </div>
+            {stockAlerts.totalValueAtRisk > 0 && (
+              <div className="text-right">
+                <div className="text-xs text-slate-500">Valeur à risque</div>
+                <div className="text-sm font-bold text-red-400">{formatCurrency(stockAlerts.totalValueAtRisk)}</div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -515,6 +530,9 @@ export default function ReportsPage() {
                 <span className="text-xs text-orange-300">Expire bientôt</span>
               </div>
               <p className="text-xl font-bold text-orange-400 tabular-nums">{stockAlerts.expiringSoon}</p>
+              {stockAlerts.criticalValue + stockAlerts.warningValue > 0 && (
+                <p className="text-xs text-orange-400/70 mt-0.5">{formatCurrency(stockAlerts.criticalValue + stockAlerts.warningValue)}</p>
+              )}
             </div>
 
             <div className="p-3 bg-rose-500/10 rounded-lg border border-rose-500/20">
@@ -523,8 +541,46 @@ export default function ReportsPage() {
                 <span className="text-xs text-rose-300">Expiré</span>
               </div>
               <p className="text-xl font-bold text-rose-400 tabular-nums">{stockAlerts.expired}</p>
+              {stockAlerts.expiredValue > 0 && (
+                <p className="text-xs text-rose-400/70 mt-0.5">{formatCurrency(stockAlerts.expiredValue)}</p>
+              )}
             </div>
           </div>
+
+          {/* Expiring batches detail */}
+          {alertBatches.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-700/50">
+              <h4 className="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wide">Lots à risque</h4>
+              <div className="space-y-2">
+                {alertBatches.slice(0, 3).map(batch => {
+                  const daysUntil = Math.ceil((new Date(batch.expiration_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                  const isExpired = daysUntil < 0;
+                  return (
+                    <div key={batch.id} className="flex items-center justify-between p-2.5 bg-slate-700/30 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{batch.productName}</p>
+                        <p className="text-xs text-slate-500 truncate">{batch.lot_number}</p>
+                      </div>
+                      <div className="text-right ml-2">
+                        <p className={cn(
+                          'text-sm font-semibold',
+                          isExpired ? 'text-rose-400' : daysUntil <= 30 ? 'text-orange-400' : 'text-amber-400'
+                        )}>
+                          {isExpired ? 'Périmé' : `${daysUntil}j`}
+                        </p>
+                        <p className="text-xs text-slate-500">{batch.quantity} unités</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {alertBatches.length > 3 && (
+                  <p className="text-xs text-center text-slate-500 pt-1">
+                    +{alertBatches.length - 3} autres lots
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Period Summary */}

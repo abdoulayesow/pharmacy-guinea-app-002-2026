@@ -15,7 +15,7 @@ import { Navigation } from '@/components/Navigation';
 import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBanner } from '@/components/NotificationBadge';
 import { formatCurrency, formatDate } from '@/lib/shared/utils';
-import { getExpirationSummary, getExpirationStatus } from '@/lib/client/expiration';
+import { getExpirationSummary, getExpirationStatus, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
 import type { ExpenseCategory } from '@/lib/shared/types';
 
 const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
@@ -89,8 +89,9 @@ export default function DashboardPage() {
   }) ?? [];
   const sales = useLiveQuery(() => db.sales.toArray()) ?? [];
   const expenses = useLiveQuery(() => db.expenses.toArray()) ?? [];
-  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? []; // 🆕
-  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? []; // 🆕
+  const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
+  const supplierOrders = useLiveQuery(() => db.supplier_orders.toArray()) ?? [];
+  const productBatches = useLiveQuery(() => db.product_batches.toArray()) ?? []; // FEFO batch tracking
 
   // Calculate today's stats
   const today = new Date();
@@ -127,8 +128,12 @@ export default function DashboardPage() {
   const lowStockProducts = products.filter(p => p.stock <= p.minStock);
   const outOfStockProducts = products.filter(p => p.stock === 0);
 
-  // 🆕 Expiration alerts
-  const expirationSummary = getExpirationSummary(products);
+  // 🆕 Expiration alerts - Batch-level (FEFO Phase 3)
+  const batchExpirationSummary = getBatchExpirationSummary(productBatches);
+  const alertBatches = getAlertBatchesWithProducts(productBatches, products);
+
+  // Fallback to product-level if no batches exist
+  const expirationSummary = productBatches.length > 0 ? batchExpirationSummary : getExpirationSummary(products);
   const expiringProducts = products.filter(p => {
     if (!p.expirationDate) return false;
     const info = getExpirationStatus(p.expirationDate);
@@ -359,7 +364,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* 🆕 Expiration Alerts */}
+        {/* 🆕 Expiration Alerts - Batch Level (FEFO) */}
         {expirationSummary.total > 0 && (
           <div>
             <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">Péremption</h3>
@@ -373,31 +378,72 @@ export default function DashboardPage() {
                   }`}>
                     <Clock className={`w-5 h-5 ${expirationSummary.expired > 0 || expirationSummary.critical > 0 ? 'text-red-400' : 'text-amber-400'}`} />
                   </div>
-                  <div>
-                    <h4 className="text-white font-semibold">Produits expirant bientôt</h4>
+                  <div className="flex-1">
+                    <h4 className="text-white font-semibold">
+                      {alertBatches.length > 0 ? 'Lots expirant bientôt' : 'Produits expirant bientôt'}
+                    </h4>
                     <p className="text-sm text-slate-400">
                       {expirationSummary.expired > 0 && `${expirationSummary.expired} périmé(s) • `}
                       {expirationSummary.critical > 0 && `${expirationSummary.critical} critique(s) • `}
                       {expirationSummary.warning > 0 && `${expirationSummary.warning} alerte(s)`}
                     </p>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  {expiringProducts.slice(0, 3).map(product => {
-                    const expInfo = getExpirationStatus(product.expirationDate);
-                    return (
-                      <div key={product.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-                        <div className="flex-1">
-                          <div className="text-white font-medium">{product.name}</div>
-                          <div className={`text-sm ${expInfo.color}`}>{expInfo.label}</div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-lg font-semibold text-sm ${expInfo.bgColor} ${expInfo.color}`}>
-                          {product.stock}
-                        </div>
+                  {/* Value at risk indicator */}
+                  {batchExpirationSummary.totalValueAtRisk > 0 && (
+                    <div className="text-right">
+                      <div className="text-xs text-slate-500">Valeur à risque</div>
+                      <div className="text-sm font-semibold text-red-400">
+                        {formatCurrency(batchExpirationSummary.totalValueAtRisk)}
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
                 </div>
+
+                {/* Batch-level alerts (preferred) */}
+                {alertBatches.length > 0 ? (
+                  <div className="space-y-2">
+                    {alertBatches.slice(0, 4).map(batch => {
+                      const expInfo = getExpirationStatus(batch.expiration_date);
+                      return (
+                        <div key={batch.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white font-medium truncate">{batch.productName}</div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <span className="truncate">{batch.lot_number}</span>
+                              <span className={expInfo.color}>{expInfo.label}</span>
+                            </div>
+                          </div>
+                          <div className={`px-3 py-1 rounded-lg font-semibold text-sm ${expInfo.bgColor} ${expInfo.color} ml-2 shrink-0`}>
+                            {batch.quantity} unités
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {alertBatches.length > 4 && (
+                      <div className="text-center text-sm text-slate-500 pt-1">
+                        +{alertBatches.length - 4} autres lots
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Fallback to product-level */
+                  <div className="space-y-2">
+                    {expiringProducts.slice(0, 3).map(product => {
+                      const expInfo = getExpirationStatus(product.expirationDate);
+                      return (
+                        <div key={product.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                          <div className="flex-1">
+                            <div className="text-white font-medium">{product.name}</div>
+                            <div className={`text-sm ${expInfo.color}`}>{expInfo.label}</div>
+                          </div>
+                          <div className={`px-3 py-1 rounded-lg font-semibold text-sm ${expInfo.bgColor} ${expInfo.color}`}>
+                            {product.stock}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </Link>
           </div>

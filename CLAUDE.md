@@ -216,9 +216,9 @@ Connection is a bonus.
 - **Sync Status**: UI shows last push/pull times and pending count
 - **Idempotency**: Uses UUID keys to prevent duplicate transactions on retry
 
-### FEFO Batch Tracking (Phase 3 - In Progress)
+### FEFO Batch Tracking (Phase 3 - Completed)
 
-**Status:** 🚧 90% infrastructure ready, missing 3 critical implementations
+**Status:** ✅ Fully implemented
 
 **Overview:**
 - Track product batches with expiration dates (First Expired, First Out)
@@ -242,29 +242,26 @@ SaleItem tracks product_batch_id
 Sync to PostgreSQL (bidirectional)
 ```
 
-**Critical Missing Implementations:**
+**Implemented Features:**
 
-1. **❌ Batch Creation** (Priority P0)
-   - Location: `src/app/fournisseurs/commande/[id]/page.tsx:240-447`
-   - Issue: Delivery confirmation updates product stock but never creates ProductBatch records
-   - Fix: Add `db.product_batches.add()` after product stock update
+1. **✅ Batch Creation** - `src/app/fournisseurs/commande/[id]/page.tsx:329-418`
+   - Delivery confirmation creates ProductBatch records for both new and existing products
+   - Includes lot number, expiration date, quantity, supplier order linkage
 
-2. **❌ FEFO Sales Deduction** (Priority P0)
-   - Location: All sale creation flows
-   - Issue: Sales deduct from `product.stock` directly, not from batches
-   - Fix: Call `selectBatchForSale()` (already exists) before creating sale
+2. **✅ FEFO Sales Deduction** - `src/app/ventes/nouvelle/page.tsx:247-318`
+   - Uses `selectBatchForSale()` to allocate from earliest-expiring batches
+   - Sale items track `product_batch_id` for traceability
+   - Batch quantities decremented atomically with rollback on failure
 
-3. **❌ Sync Queue Completion** (Priority P0)
-   - Location: `src/lib/client/sync.ts:214-304`
-   - Issue: `prepareSyncPayload` doesn't handle SUPPLIER_ORDER_ITEM and other entities
-   - Fix: Add missing entity types to switch statement
+3. **✅ Sync Queue Completion** - `src/lib/client/sync.ts:318-360`
+   - All entity types handled: SUPPLIER_ORDER_ITEM, SUPPLIER_RETURN, PRODUCT_SUPPLIER, CREDIT_PAYMENT, STOCKOUT_REPORT, SALE_PRESCRIPTION, PRODUCT_SUBSTITUTE
 
 **Key Design Decisions:**
 
 - **One Product, Many Batches**: Each delivery creates a new batch with unique lot number and expiration
 - **Batch Quantity Tracking**: `quantity` (current) vs `initialQty` (original) for waste calculation
 - **Optional Batch Tracking**: `sale_items.product_batch_id` is optional for backwards compatibility
-- **ID Mapping**: Client uses local IDs (17+), server uses PostgreSQL IDs (1+), mapped via `serverId`
+- **UUID Migration**: Client and server share the same UUIDs (no ID mapping needed)
 
 **Documentation:** See [docs/SUPPLIER_STOCK_INTEGRATION_ARCHITECTURE.md](docs/SUPPLIER_STOCK_INTEGRATION_ARCHITECTURE.md) for complete architecture.
 

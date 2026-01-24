@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { queueTransaction } from '@/lib/client/sync';
 import { cn } from '@/lib/client/utils';
@@ -33,7 +33,7 @@ import {
   History,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
-import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
+import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
 import { getExpirationAlertLevel } from '@/lib/client/db';
 import { SubstituteLinkingSection } from '@/components/features/SubstituteLinkingSection';
 
@@ -58,6 +58,7 @@ const MOVEMENT_TYPES: { value: StockMovementType; label: string }[] = [
 
 export default function StocksPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
   const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
   const { updatePendingCount } = useSyncStore();
@@ -67,7 +68,12 @@ export default function StocksPage() {
   const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
   const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
   const [selectedCategory, setSelectedCategory] = useState('Tous');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>('all'); // 🆕
+
+  // Read initial filter from URL params (e.g., /stocks?filter=expiring)
+  const urlFilter = searchParams.get('filter') as 'all' | 'alerts' | 'expiring' | null;
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>(
+    urlFilter === 'expiring' || urlFilter === 'alerts' ? urlFilter : 'all'
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -154,6 +160,11 @@ export default function StocksPage() {
   // 🆕 Get batches for all products
   const allBatches = useLiveQuery(() => db.product_batches.toArray()) ?? [];
 
+  // Build set of product IDs with expiring batches for filter
+  const productsWithExpiringBatches = new Set(
+    getAlertBatchesWithProducts(allBatches, products).map(b => b.product_id)
+  );
+
   // Filter products
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -164,22 +175,25 @@ export default function StocksPage() {
       selectedCategory === 'Tous' ||
       product.category === selectedCategory;
 
-    // 🆕 Apply filter by type (all, alerts, expiring)
+    // Apply filter by type (all, alerts, expiring)
     let matchesFilter = true;
     if (selectedFilter === 'alerts') {
       matchesFilter = product.stock <= product.minStock;
     } else if (selectedFilter === 'expiring') {
-      if (!product.expirationDate) return false;
-      const expInfo = getExpirationStatus(product.expirationDate);
-      matchesFilter = expInfo.status === 'warning' || expInfo.status === 'critical' || expInfo.status === 'expired';
+      // Check both product-level expiration AND batch-level expiration
+      const hasExpiringProduct = product.expirationDate &&
+        ['warning', 'critical', 'expired'].includes(getExpirationStatus(product.expirationDate).status);
+      const hasExpiringBatch = productsWithExpiringBatches.has(product.id!);
+      matchesFilter = hasExpiringProduct || hasExpiringBatch;
     }
 
     return matchesSearch && matchesCategory && matchesFilter;
   });
 
-  // Calculate stats
+  // Calculate stats - use batch-level if available, fallback to product-level
   const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length;
-  const expirationSummary = getExpirationSummary(products); // 🆕
+  const batchExpirationSummary = getBatchExpirationSummary(allBatches);
+  const expirationSummary = allBatches.length > 0 ? batchExpirationSummary : getExpirationSummary(products);
 
   // Stock level indicator - red (zero), gray (low), emerald (good)
   const getStockLevel = (product: Product) => {

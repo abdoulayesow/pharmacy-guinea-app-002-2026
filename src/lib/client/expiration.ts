@@ -11,9 +11,15 @@
  * - ⚫ Black: Expired
  */
 
-import type { Product } from '@/lib/shared/types';
+import type { Product, ProductBatch } from '@/lib/shared/types';
 
 export type ExpirationStatus = 'ok' | 'warning' | 'critical' | 'expired';
+
+// Batch with product info for display
+export interface BatchWithProduct extends ProductBatch {
+  productName: string;
+  productCategory?: string;
+}
 
 export interface ExpirationInfo {
   status: ExpirationStatus;
@@ -160,4 +166,130 @@ export function getExpirationSummary(products: Product[]) {
     total,
     hasAlerts: total > 0,
   };
+}
+
+// ============================================================================
+// Batch-Level Expiration Functions (FEFO Phase 3)
+// ============================================================================
+
+/**
+ * Get batch expiration status
+ */
+export function getBatchExpirationStatus(expirationDate: Date): ExpirationInfo {
+  return getExpirationStatus(expirationDate);
+}
+
+/**
+ * Get batches expiring within a certain number of days
+ */
+export function getExpiringBatches(
+  batches: ProductBatch[],
+  daysThreshold: number
+): ProductBatch[] {
+  return batches.filter((batch) => {
+    if (!batch.expiration_date || batch.quantity <= 0) return false;
+    const days = getDaysUntilExpiration(batch.expiration_date);
+    return days >= 0 && days <= daysThreshold;
+  });
+}
+
+/**
+ * Get expired batches (with remaining quantity)
+ */
+export function getExpiredBatches(batches: ProductBatch[]): ProductBatch[] {
+  return batches.filter((batch) => {
+    if (!batch.expiration_date || batch.quantity <= 0) return false;
+    return getDaysUntilExpiration(batch.expiration_date) < 0;
+  });
+}
+
+/**
+ * Get batches by expiration status
+ */
+export function getBatchesByExpirationStatus(
+  batches: ProductBatch[],
+  status: ExpirationStatus
+): ProductBatch[] {
+  return batches.filter((batch) => {
+    if (batch.quantity <= 0) return false;
+    const info = getExpirationStatus(batch.expiration_date);
+    return info.status === status;
+  });
+}
+
+/**
+ * Sort batches by expiration date (soonest first) - FEFO order
+ */
+export function sortBatchesByExpiration(batches: ProductBatch[]): ProductBatch[] {
+  return [...batches].sort((a, b) => {
+    const daysA = getDaysUntilExpiration(a.expiration_date);
+    const daysB = getDaysUntilExpiration(b.expiration_date);
+    return daysA - daysB;
+  });
+}
+
+/**
+ * Get batch expiration summary statistics
+ */
+export function getBatchExpirationSummary(batches: ProductBatch[]) {
+  // Only count batches with remaining quantity
+  const activeBatches = batches.filter(b => b.quantity > 0);
+
+  const expired = getExpiredBatches(activeBatches);
+  const critical = getBatchesByExpirationStatus(activeBatches, 'critical');
+  const warning = getBatchesByExpirationStatus(activeBatches, 'warning');
+
+  // Calculate total value at risk (quantity * unit_cost)
+  const expiredValue = expired.reduce((sum, b) => sum + (b.quantity * (b.unit_cost || 0)), 0);
+  const criticalValue = critical.reduce((sum, b) => sum + (b.quantity * (b.unit_cost || 0)), 0);
+  const warningValue = warning.reduce((sum, b) => sum + (b.quantity * (b.unit_cost || 0)), 0);
+
+  const total = expired.length + critical.length + warning.length;
+  const totalUnits = expired.reduce((s, b) => s + b.quantity, 0)
+    + critical.reduce((s, b) => s + b.quantity, 0)
+    + warning.reduce((s, b) => s + b.quantity, 0);
+
+  return {
+    expired: expired.length,
+    critical: critical.length,
+    warning: warning.length,
+    total,
+    totalUnits,
+    expiredValue,
+    criticalValue,
+    warningValue,
+    totalValueAtRisk: expiredValue + criticalValue + warningValue,
+    hasAlerts: total > 0,
+  };
+}
+
+/**
+ * Get alert batches with product info for display
+ */
+export function getAlertBatchesWithProducts(
+  batches: ProductBatch[],
+  products: Product[]
+): BatchWithProduct[] {
+  const productMap = new Map(products.map(p => [p.id, p]));
+
+  return batches
+    .filter(batch => {
+      if (batch.quantity <= 0) return false;
+      const info = getExpirationStatus(batch.expiration_date);
+      return info.status === 'expired' || info.status === 'critical' || info.status === 'warning';
+    })
+    .map(batch => {
+      const product = productMap.get(batch.product_id);
+      return {
+        ...batch,
+        productName: product?.name || 'Produit inconnu',
+        productCategory: product?.category,
+      };
+    })
+    .sort((a, b) => {
+      // Sort by expiration date (soonest first)
+      const daysA = getDaysUntilExpiration(a.expiration_date);
+      const daysB = getDaysUntilExpiration(b.expiration_date);
+      return daysA - daysB;
+    });
 }

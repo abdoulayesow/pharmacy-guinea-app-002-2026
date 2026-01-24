@@ -243,6 +243,7 @@ export interface Supplier {
 
 export interface SupplierOrder {
   id: string; // CUID generated client-side
+  orderNumber?: string; // Human-readable order number (e.g., CMD-240123-AB12)
   supplierId: string; // FK to Supplier.id (UUID)
   type: SupplierTransactionType; // 'ORDER' or 'RETURN'
   orderDate: Date; // For returns, this is the return submission date

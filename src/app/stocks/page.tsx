@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, Suspense } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -56,7 +56,7 @@ const MOVEMENT_TYPES: { value: StockMovementType; label: string }[] = [
   { value: 'EXPIRED', label: 'Périmé' },
 ];
 
-export default function StocksPage() {
+function StocksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
@@ -1242,5 +1242,18 @@ export default function StocksPage() {
 
       <Navigation />
     </div>
+  );
+}
+
+// Wrapper with Suspense for useSearchParams
+export default function StocksPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <div className="text-white">Chargement...</div>
+      </div>
+    }>
+      <StocksPageContent />
+    </Suspense>
   );
 }

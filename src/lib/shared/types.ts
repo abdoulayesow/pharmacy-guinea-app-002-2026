@@ -205,7 +205,8 @@ export type SyncType =
   | 'CREDIT_PAYMENT' // Partial payment tracking
   | 'USER' // User PIN updates
   | 'STOCKOUT_REPORT' // Phase 4: Missed sales tracking
-  | 'SALE_PRESCRIPTION'; // Phase 4: Prescription images
+  | 'SALE_PRESCRIPTION' // Phase 4: Prescription images
+  | 'PRODUCT_SUBSTITUTE'; // Phase 4: Product substitutes
 export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN';
 
 export interface SyncQueueItem {
@@ -396,6 +397,7 @@ export interface SyncPushRequest {
   creditPayments?: CreditPayment[]; // Partial payment tracking
   stockoutReports?: StockoutReport[]; // Phase 4: Missed sales
   salePrescriptions?: SalePrescription[]; // Phase 4: Prescription images
+  productSubstitutes?: ProductSubstitute[]; // Phase 4: Product substitutes
 }
 
 export interface SyncPushResponse {
@@ -416,6 +418,7 @@ export interface SyncPushResponse {
     creditPayments: string[];
     stockoutReports: string[];
     salePrescriptions: string[];
+    productSubstitutes: string[];
   };
   errors?: string[];
 }
@@ -441,6 +444,7 @@ export interface SyncPullResponse {
     creditPayments: CreditPayment[];
     stockoutReports: StockoutReport[];
     salePrescriptions: SalePrescription[];
+    productSubstitutes: ProductSubstitute[];
   };
   serverTime: Date;
 }

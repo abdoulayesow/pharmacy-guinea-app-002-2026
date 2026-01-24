@@ -33,6 +33,7 @@ import {
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
 import { getExpirationAlertLevel } from '@/lib/client/db';
+import { SubstituteLinkingSection } from '@/components/features/SubstituteLinkingSection';
 
 const CATEGORIES = [
   'Antidouleur',
@@ -897,9 +898,17 @@ export default function StocksPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
-                  💡 La date d&apos;expiration permettra de suivre les produits périmés et d&apos;envoyer des alertes
+                  La date d&apos;expiration permettra de suivre les produits périmés et d&apos;envoyer des alertes
                 </p>
               </div>
+
+              {/* Substitute Linking Section - Only show when editing */}
+              {editingProduct && editingProduct.id && (
+                <SubstituteLinkingSection
+                  productId={editingProduct.id}
+                  productName={editingProduct.name}
+                />
+              )}
 
               {/* Submit Buttons */}
               <div className="flex gap-3 pt-4">

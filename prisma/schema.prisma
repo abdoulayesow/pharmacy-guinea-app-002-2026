@@ -91,6 +91,8 @@ model Product {
   stockMovements   StockMovement[]
   productSuppliers ProductSupplier[]
   stockoutReports  StockoutReport[]
+  substitutes      ProductSubstitute[] @relation("ProductToSubstitutes")
+  substituteFor    ProductSubstitute[] @relation("SubstituteProducts")
 
   @@map("products")
 }
@@ -359,6 +361,26 @@ model SalePrescription {
 
   @@index([saleId])
   @@map("sale_prescriptions")
+}
+
+// Product substitutes - Link replacement products for stockouts
+model ProductSubstitute {
+  id              String    @id @default(cuid())
+  productId       String    @map("product_id")       // Primary product (FK to products)
+  substituteId    String    @map("substitute_id")    // Alternative product (FK to products)
+  equivalenceType String    @map("equivalence_type") // DCI | THERAPEUTIC_CLASS | MANUAL
+  notes           String?                            // e.g., "Same active ingredient - paracetamol"
+  priority        Int       @default(1)              // Lower = better match (1 = best)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  product         Product   @relation("ProductToSubstitutes", fields: [productId], references: [id], onDelete: Cascade)
+  substituteProduct Product @relation("SubstituteProducts", fields: [substituteId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, substituteId])
+  @@index([productId])
+  @@index([substituteId])
+  @@map("product_substitutes")
 }
 
 // ============================================================================

@@ -146,6 +146,16 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: 'asc' },
     });
 
+    // Query Product Substitutes (created after lastSyncAt) - Phase 4
+    const productSubstitutes = await prisma.productSubstitute.findMany({
+      where: lastSyncAt
+        ? {
+            createdAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { createdAt: 'asc' },
+    });
+
     // Transform Prisma models to client types
     // UUID migration: No serverId needed - id is the same on client and server
     const transformedProducts = products.map((p) => ({
@@ -374,6 +384,18 @@ export async function GET(request: NextRequest) {
       synced: true,
     }));
 
+    // Transform Product Substitutes - Phase 4
+    const transformedProductSubstitutes = productSubstitutes.map((ps) => ({
+      id: ps.id,
+      product_id: ps.productId,
+      substitute_id: ps.substituteId,
+      equivalence_type: ps.equivalenceType as 'DCI' | 'THERAPEUTIC_CLASS' | 'MANUAL',
+      notes: ps.notes || undefined,
+      priority: ps.priority,
+      created_at: ps.createdAt,
+      synced: true,
+    }));
+
     return NextResponse.json<SyncPullResponse>({
       success: true,
       data: {
@@ -391,6 +413,7 @@ export async function GET(request: NextRequest) {
         creditPayments: transformedCreditPayments,
         stockoutReports: [], // 🆕 Phase 4: Fetched from backend when implemented
         salePrescriptions: [], // 🆕 Phase 4: Fetched from backend when implemented
+        productSubstitutes: transformedProductSubstitutes, // 🆕 Phase 4
       },
       serverTime,
     });
@@ -416,6 +439,7 @@ export async function GET(request: NextRequest) {
             creditPayments: [],
             stockoutReports: [],
             salePrescriptions: [],
+            productSubstitutes: [], // 🆕 Phase 4
           },
           serverTime: new Date(),
         },
@@ -441,6 +465,7 @@ export async function GET(request: NextRequest) {
           creditPayments: [],
           stockoutReports: [],
           salePrescriptions: [],
+          productSubstitutes: [], // 🆕 Phase 4
         },
         serverTime: new Date(),
       },

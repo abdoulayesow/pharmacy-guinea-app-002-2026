@@ -254,6 +254,7 @@ export async function prepareSyncPayload(): Promise<{
   creditPayments: any[];
   stockoutReports: any[];
   salePrescriptions: any[];
+  productSubstitutes: any[];
 }> {
   const items = await getPendingItems();
 
@@ -279,6 +280,7 @@ export async function prepareSyncPayload(): Promise<{
       USER: 12,
       STOCKOUT_REPORT: 13,
       SALE_PRESCRIPTION: 14,
+      PRODUCT_SUBSTITUTE: 15,
     };
 
     const priorityA = typePriority[a.type] || 99;
@@ -306,6 +308,7 @@ export async function prepareSyncPayload(): Promise<{
   const creditPayments: any[] = [];
   const stockoutReports: any[] = [];
   const salePrescriptions: any[] = [];
+  const productSubstitutes: any[] = [];
 
   for (const item of sortedItems) {
     if (item.status === 'PENDING') {
@@ -351,6 +354,9 @@ export async function prepareSyncPayload(): Promise<{
           break;
         case 'SALE_PRESCRIPTION':
           salePrescriptions.push(payload);
+          break;
+        case 'PRODUCT_SUBSTITUTE':
+          productSubstitutes.push(payload);
           break;
       }
     }
@@ -416,6 +422,7 @@ export async function prepareSyncPayload(): Promise<{
     creditPayments,
     stockoutReports,
     salePrescriptions,
+    productSubstitutes,
   };
 }
 
@@ -791,6 +798,7 @@ async function mergePulledData(data: {
   supplierOrderItems?: any[];
   supplierReturns?: any[];
   productSuppliers?: any[];
+  productSubstitutes?: any[];
 }): Promise<{
   merged: number;
   conflicts: number;
@@ -1118,6 +1126,28 @@ async function mergePulledData(data: {
       }
     } catch (error) {
       results.errors.push(`Credit payment ${payment.id}: ${error}`);
+    }
+  }
+
+  // Merge Product Substitutes - Phase 4
+  for (const substitute of data.productSubstitutes || []) {
+    try {
+      const existing = await db.table('product_substitutes').get(substitute.id);
+      if (!existing) {
+        await db.table('product_substitutes').put({
+          id: substitute.id,
+          product_id: substitute.product_id,
+          substitute_id: substitute.substitute_id,
+          equivalence_type: substitute.equivalence_type,
+          notes: substitute.notes,
+          priority: substitute.priority,
+          created_at: substitute.created_at,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Product substitute ${substitute.id}: ${error}`);
     }
   }
 

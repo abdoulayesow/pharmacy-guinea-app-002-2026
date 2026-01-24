@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
-    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments, stockoutReports, salePrescriptions } = body;
+    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments, stockoutReports, salePrescriptions, productSubstitutes } = body;
 
     // Basic validation: ensure arrays are actually arrays
     const validationErrors: string[] = [];
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     if (creditPayments && !Array.isArray(creditPayments)) validationErrors.push('creditPayments must be an array');
     if (stockoutReports && !Array.isArray(stockoutReports)) validationErrors.push('stockoutReports must be an array');
     if (salePrescriptions && !Array.isArray(salePrescriptions)) validationErrors.push('salePrescriptions must be an array');
+    if (productSubstitutes && !Array.isArray(productSubstitutes)) validationErrors.push('productSubstitutes must be an array');
 
     if (validationErrors.length > 0) {
       console.error('[API] Sync push validation errors:', validationErrors);
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
             creditPayments: [],
             stockoutReports: [],
             salePrescriptions: [],
+            productSubstitutes: [],
           },
         },
         { status: 400 }
@@ -94,6 +96,7 @@ export async function POST(request: NextRequest) {
     const syncedCreditPayments: string[] = [];
     const syncedStockoutReports: string[] = [];
     const syncedSalePrescriptions: string[] = [];
+    const syncedProductSubstitutes: string[] = [];
     const errors: string[] = [];
 
     // Sync Sales (with nested sale items)
@@ -883,6 +886,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync Product Substitutes - Phase 4
+    if (productSubstitutes && productSubstitutes.length > 0) {
+      for (const substitute of productSubstitutes) {
+        try {
+          // Check if substitute link exists by its ID
+          const existingSubstitute = await prisma.productSubstitute.findUnique({
+            where: { id: substitute.id },
+          });
+
+          if (!existingSubstitute) {
+            // Check if this product-substitute pair already exists
+            const existingPair = await prisma.productSubstitute.findUnique({
+              where: {
+                productId_substituteId: {
+                  productId: substitute.product_id,
+                  substituteId: substitute.substitute_id,
+                },
+              },
+            });
+
+            if (!existingPair) {
+              // New substitute link - use client-generated ID
+              await prisma.productSubstitute.create({
+                data: {
+                  id: substitute.id,
+                  productId: substitute.product_id,
+                  substituteId: substitute.substitute_id,
+                  equivalenceType: substitute.equivalence_type,
+                  notes: substitute.notes || null,
+                  priority: substitute.priority || 1,
+                },
+              });
+              syncedProductSubstitutes.push(substitute.id);
+            } else {
+              // Pair already exists with different ID
+              syncedProductSubstitutes.push(substitute.id);
+            }
+          } else {
+            // Already exists
+            syncedProductSubstitutes.push(substitute.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product substitute ${substitute.id}: ${errorMsg}`);
+          console.error('[API] Product substitute sync error:', error);
+        }
+      }
+    }
+
     return NextResponse.json<SyncPushResponse>({
       success: true,
       synced: {
@@ -900,6 +952,7 @@ export async function POST(request: NextRequest) {
         creditPayments: syncedCreditPayments,
         stockoutReports: syncedStockoutReports,
         salePrescriptions: syncedSalePrescriptions,
+        productSubstitutes: syncedProductSubstitutes,
       },
       errors: errors.length > 0 ? errors : undefined,
     });
@@ -1042,6 +1095,7 @@ export async function POST(request: NextRequest) {
             creditPayments: [],
             stockoutReports: [],
             salePrescriptions: [],
+            productSubstitutes: [],
           },
           errors: ['Non autorisé'],
         },
@@ -1067,6 +1121,7 @@ export async function POST(request: NextRequest) {
           creditPayments: [],
           stockoutReports: [],
           salePrescriptions: [],
+          productSubstitutes: [],
         },
         errors: ['Erreur serveur'],
       },

@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
@@ -29,6 +30,7 @@ import {
   Hash,
   ChevronDown,
   ChevronUp,
+  History,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
@@ -481,7 +483,13 @@ export default function StocksPage() {
                 <h2 className="text-white text-lg font-bold">Stock</h2>
               </div>
             </div>
-{/* FAB moved to bottom of page */}
+            <Link
+              href="/stocks/historique"
+              className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 rounded-lg transition-all duration-200 ring-1 ring-purple-500/30 active:scale-95"
+            >
+              <History className="w-4 h-4" />
+              <span className="text-sm font-medium">Historique</span>
+            </Link>
           </div>
 
           {/* Search Bar - Dark Theme */}

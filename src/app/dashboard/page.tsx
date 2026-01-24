@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History, Wallet } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertTriangle, ShoppingCart, Banknote, Clock, Building2, FileText, AlertCircle, History, Wallet, BarChart3, ChevronRight } from 'lucide-react';
 import { db, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useActivityMonitor } from '@/hooks/useActivityMonitor';
@@ -335,6 +335,24 @@ export default function DashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
+                </div>
+              </div>
+            </Link>
+
+            {/* Reports Link */}
+            <Link href="/rapports" className="block mt-3">
+              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl p-4 border border-blue-500/20 hover:border-blue-500/40 transition-all group">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center ring-1 ring-blue-500/30 group-hover:scale-105 transition-transform">
+                      <BarChart3 className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-semibold">Rapports & Analyses</h4>
+                      <p className="text-xs text-slate-400">Ventes, dépenses, bénéfices</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
             </Link>

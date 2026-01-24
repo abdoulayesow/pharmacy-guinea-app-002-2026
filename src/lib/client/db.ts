@@ -124,22 +124,23 @@ class SeriDatabase extends Dexie {
     // ============================================================================
     // Version 2: Pharmacy Workflow - Stockouts, Prescriptions, Substitutes
     // ============================================================================
+    // Note: Explicitly redefine all tables (not using null) to ensure proper initialization
     this.version(2).stores({
-      // Existing tables unchanged (null = keep as-is)
-      users: null,
-      products: null,
-      product_batches: null,
-      sales: null,
-      sale_items: null,
-      expenses: null,
-      stock_movements: null,
-      suppliers: null,
-      supplier_orders: null,
-      supplier_order_items: null,
-      supplier_returns: null,
-      product_suppliers: null,
-      credit_payments: null,
-      sync_queue: null,
+      // Core tables (same schema as v1)
+      users: '&id, role',
+      products: '&id, name, category, synced',
+      product_batches: '&id, product_id, expiration_date, quantity, synced',
+      sales: '&id, created_at, payment_method, payment_status, due_date, modified_at, user_id, customer_name, synced',
+      sale_items: '&id, sale_id, product_id, product_batch_id, synced',
+      expenses: '&id, date, category, supplier_order_id, user_id, synced',
+      stock_movements: '&id, product_id, created_at, supplier_order_id, synced',
+      suppliers: '&id, name, synced',
+      supplier_orders: '&id, supplierId, type, status, paymentStatus, dueDate, synced',
+      supplier_order_items: '&id, order_id, product_id, synced',
+      supplier_returns: '&id, supplierId, productId, applied, synced',
+      product_suppliers: '&id, product_id, supplier_id, is_primary, synced',
+      credit_payments: '&id, sale_id, synced',
+      sync_queue: '++id, type, status, entityId, createdAt',
 
       // New Phase 4 tables
       stockout_reports: '&id, product_id, product_name, created_at, reported_by, synced',

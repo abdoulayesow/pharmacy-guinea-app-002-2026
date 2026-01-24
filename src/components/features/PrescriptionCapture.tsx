@@ -4,16 +4,14 @@ import { useState, useRef, useCallback } from 'react';
 import {
   Camera,
   X,
-  Image as ImageIcon,
+  Upload,
   Trash2,
-  Check,
   Loader2,
   FileImage,
   ZoomIn,
-  RotateCw,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export interface CapturedPrescription {
@@ -97,7 +95,8 @@ export function PrescriptionCapture({
   maxPrescriptions = 3,
   className,
 }: PrescriptionCaptureProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -140,171 +139,306 @@ export function PrescriptionCapture({
         toast.error("Erreur lors du traitement de l'image");
       } finally {
         setIsProcessing(false);
-        // Reset input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
+        // Reset inputs
+        if (cameraInputRef.current) {
+          cameraInputRef.current.value = '';
+        }
+        if (galleryInputRef.current) {
+          galleryInputRef.current.value = '';
         }
       }
     },
     [onCapture]
   );
 
-  const handleCaptureClick = () => {
+  const handleCameraClick = () => {
     if (!canAddMore) {
       toast.error(`Maximum ${maxPrescriptions} ordonnances`);
       return;
     }
-    fileInputRef.current?.click();
+    cameraInputRef.current?.click();
+  };
+
+  const handleGalleryClick = () => {
+    if (!canAddMore) {
+      toast.error(`Maximum ${maxPrescriptions} ordonnances`);
+      return;
+    }
+    galleryInputRef.current?.click();
   };
 
   return (
     <div className={cn('space-y-3', className)}>
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
       <input
-        ref={fileInputRef}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handleFileSelect}
         className="hidden"
       />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
 
-      {/* Capture Button - Pharmacy-themed design */}
-      <button
-        onClick={handleCaptureClick}
-        disabled={isProcessing || !canAddMore}
+      {/* Main Container - Medical Document Scanner Theme */}
+      <div
         className={cn(
-          "group relative w-full p-4 rounded-xl border-2 border-dashed transition-all active:scale-[0.98]",
-          "bg-gradient-to-br from-blue-950/30 to-blue-900/10",
-          canAddMore
-            ? "border-blue-600/50 hover:border-blue-500 hover:bg-blue-900/20"
-            : "border-slate-700 opacity-50 cursor-not-allowed",
-          isProcessing && "animate-pulse"
+          "relative overflow-hidden rounded-2xl",
+          "bg-gradient-to-br from-slate-900 via-blue-950/40 to-slate-900",
+          "border border-blue-500/30",
+          !canAddMore && "opacity-60"
         )}
+        style={{
+          boxShadow: canAddMore
+            ? '0 4px 24px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255,255,255,0.05)'
+            : undefined,
+        }}
       >
-        <div className="flex items-center justify-center gap-3">
-          {isProcessing ? (
-            <>
-              <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
-              <span className="text-blue-300 font-medium">Traitement...</span>
-            </>
-          ) : (
-            <>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
-                <Camera className="w-6 h-6 text-white" />
-              </div>
-              <div className="text-left">
-                <div className="text-white font-semibold">
-                  {prescriptions.length === 0
-                    ? 'Photographier l\'ordonnance'
-                    : 'Ajouter une ordonnance'}
-                </div>
-                <div className="text-xs text-blue-400">
-                  {prescriptions.length}/{maxPrescriptions} ordonnances
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Decorative corner elements */}
-        {canAddMore && !isProcessing && (
-          <>
-            <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-blue-500/50 rounded-tl-md" />
-            <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-blue-500/50 rounded-tr-md" />
-            <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-blue-500/50 rounded-bl-md" />
-            <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-blue-500/50 rounded-br-md" />
-          </>
-        )}
-      </button>
-
-      {/* Prescription Thumbnails */}
-      {prescriptions.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          {prescriptions.map((rx) => (
+        {/* Subtle scan line effect */}
+        {isProcessing && (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div
-              key={rx.id}
-              className="relative group aspect-[3/4] rounded-lg overflow-hidden border-2 border-blue-700/50 bg-slate-900"
-            >
-              {/* Thumbnail Image */}
-              <img
-                src={rx.imageData}
-                alt="Ordonnance"
-                className="w-full h-full object-cover cursor-pointer transition-transform group-hover:scale-105"
-                onClick={() => setPreviewImage(rx.imageData)}
-              />
+              className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-60"
+              style={{
+                animation: 'scan 1.5s ease-in-out infinite',
+                top: '0%',
+              }}
+            />
+            <style jsx>{`
+              @keyframes scan {
+                0%, 100% { top: 0%; opacity: 0; }
+                50% { top: 100%; opacity: 0.6; }
+              }
+            `}</style>
+          </div>
+        )}
 
-              {/* Overlay with actions */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                {/* Prescription badge */}
-                <div className="absolute top-1 left-1">
-                  <div className="bg-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold text-white flex items-center gap-1">
-                    <FileImage className="w-3 h-3" />
-                    Rx
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 border-b border-blue-900/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                  <FileImage className="w-5 h-5 text-white" />
+                </div>
+                {prescriptions.length > 0 && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white border-2 border-slate-900">
+                    {prescriptions.length}
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="absolute bottom-1 right-1 flex gap-1">
-                  <button
-                    onClick={() => setPreviewImage(rx.imageData)}
-                    className="w-7 h-7 rounded-md bg-blue-600 hover:bg-blue-500 flex items-center justify-center transition-colors"
-                  >
-                    <ZoomIn className="w-4 h-4 text-white" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      onRemove(rx.id);
-                      toast.info('Ordonnance supprimée');
-                    }}
-                    className="w-7 h-7 rounded-md bg-red-600 hover:bg-red-500 flex items-center justify-center transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4 text-white" />
-                  </button>
-                </div>
+                )}
               </div>
-
-              {/* Time stamp */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 group-hover:opacity-0 transition-opacity">
-                <div className="text-[10px] text-slate-300 font-medium">
-                  {rx.capturedAt.toLocaleTimeString('fr-GN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
+              <div>
+                <h3 className="text-white font-semibold text-sm">
+                  Ordonnance médicale
+                </h3>
+                <p className="text-blue-400/80 text-xs">
+                  {prescriptions.length}/{maxPrescriptions} document{prescriptions.length !== 1 ? 's' : ''}
+                </p>
               </div>
             </div>
-          ))}
+            {isProcessing && (
+              <div className="flex items-center gap-2 text-blue-400 text-xs font-medium">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Traitement...
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Action Buttons - Side by Side */}
+        <div className="p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Camera Button */}
+            <button
+              onClick={handleCameraClick}
+              disabled={isProcessing || !canAddMore}
+              className={cn(
+                "group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl",
+                "min-h-[100px] transition-all duration-200",
+                "bg-gradient-to-br from-blue-600/20 to-blue-700/10",
+                "border-2 border-dashed border-blue-500/40",
+                "hover:border-blue-400 hover:bg-blue-600/30",
+                "active:scale-[0.97]",
+                "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-600/20"
+              )}
+            >
+              {/* Icon container */}
+              <div className={cn(
+                "w-12 h-12 rounded-xl flex items-center justify-center",
+                "bg-gradient-to-br from-blue-500 to-blue-600",
+                "shadow-lg shadow-blue-500/30",
+                "group-hover:scale-110 group-hover:shadow-blue-500/40",
+                "transition-all duration-200"
+              )}>
+                <Camera className="w-6 h-6 text-white" />
+              </div>
+
+              {/* Label */}
+              <div className="text-center">
+                <span className="block text-white font-semibold text-sm">
+                  Prendre photo
+                </span>
+                <span className="block text-blue-400/70 text-[11px] mt-0.5">
+                  Appareil photo
+                </span>
+              </div>
+
+              {/* Subtle corner accents */}
+              <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-blue-400/40 rounded-tl" />
+              <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-blue-400/40 rounded-tr" />
+              <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-blue-400/40 rounded-bl" />
+              <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-blue-400/40 rounded-br" />
+            </button>
+
+            {/* Gallery/Upload Button */}
+            <button
+              onClick={handleGalleryClick}
+              disabled={isProcessing || !canAddMore}
+              className={cn(
+                "group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl",
+                "min-h-[100px] transition-all duration-200",
+                "bg-gradient-to-br from-emerald-600/20 to-emerald-700/10",
+                "border-2 border-dashed border-emerald-500/40",
+                "hover:border-emerald-400 hover:bg-emerald-600/30",
+                "active:scale-[0.97]",
+                "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-600/20"
+              )}
+            >
+              {/* Icon container */}
+              <div className={cn(
+                "w-12 h-12 rounded-xl flex items-center justify-center",
+                "bg-gradient-to-br from-emerald-500 to-emerald-600",
+                "shadow-lg shadow-emerald-500/30",
+                "group-hover:scale-110 group-hover:shadow-emerald-500/40",
+                "transition-all duration-200"
+              )}>
+                <Upload className="w-6 h-6 text-white" />
+              </div>
+
+              {/* Label */}
+              <div className="text-center">
+                <span className="block text-white font-semibold text-sm">
+                  Importer
+                </span>
+                <span className="block text-emerald-400/70 text-[11px] mt-0.5">
+                  Depuis galerie
+                </span>
+              </div>
+
+              {/* Subtle corner accents */}
+              <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400/40 rounded-tl" />
+              <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400/40 rounded-tr" />
+              <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400/40 rounded-bl" />
+              <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400/40 rounded-br" />
+            </button>
+          </div>
+        </div>
+
+        {/* Prescription Thumbnails */}
+        {prescriptions.length > 0 && (
+          <div className="px-4 pb-4">
+            <div className="grid grid-cols-3 gap-2">
+              {prescriptions.map((rx, index) => (
+                <div
+                  key={rx.id}
+                  className="relative group aspect-[3/4] rounded-xl overflow-hidden bg-slate-800 ring-2 ring-blue-500/30 hover:ring-blue-400/50 transition-all"
+                >
+                  {/* Thumbnail Image */}
+                  <img
+                    src={rx.imageData}
+                    alt={`Ordonnance ${index + 1}`}
+                    className="w-full h-full object-cover cursor-pointer transition-transform duration-200 group-hover:scale-105"
+                    onClick={() => setPreviewImage(rx.imageData)}
+                  />
+
+                  {/* Gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+
+                  {/* Document number badge */}
+                  <div className="absolute top-1.5 left-1.5">
+                    <div className="bg-blue-600/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md text-[10px] font-bold text-white flex items-center gap-1">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      {index + 1}
+                    </div>
+                  </div>
+
+                  {/* Actions - Always visible on mobile, hover on desktop */}
+                  <div className="absolute bottom-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewImage(rx.imageData);
+                      }}
+                      className="w-8 h-8 rounded-lg bg-blue-600/90 hover:bg-blue-500 flex items-center justify-center transition-colors backdrop-blur-sm"
+                      aria-label="Agrandir"
+                    >
+                      <ZoomIn className="w-4 h-4 text-white" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(rx.id);
+                        toast.info('Ordonnance supprimée');
+                      }}
+                      className="w-8 h-8 rounded-lg bg-red-600/90 hover:bg-red-500 flex items-center justify-center transition-colors backdrop-blur-sm"
+                      aria-label="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+
+                  {/* Time stamp */}
+                  <div className="absolute bottom-1.5 left-1.5 sm:group-hover:opacity-0 transition-opacity">
+                    <span className="text-[10px] text-white/80 font-medium bg-black/40 backdrop-blur-sm px-1.5 py-0.5 rounded">
+                      {rx.capturedAt.toLocaleTimeString('fr-GN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Full-screen Preview Modal */}
       {previewImage && (
         <div
-          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/95 backdrop-blur-xl z-50 flex items-center justify-center animate-in fade-in duration-200"
           onClick={() => setPreviewImage(null)}
         >
+          {/* Close button */}
           <button
             onClick={() => setPreviewImage(null)}
-            className="absolute top-4 right-4 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
+            className="absolute top-4 right-4 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10 backdrop-blur-sm"
+            aria-label="Fermer"
           >
             <X className="w-6 h-6 text-white" />
           </button>
 
+          {/* Image */}
           <div className="max-w-full max-h-full p-4">
             <img
               src={previewImage}
               alt="Ordonnance (aperçu)"
-              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl ring-1 ring-white/10"
               onClick={(e) => e.stopPropagation()}
             />
           </div>
 
           {/* Caption */}
-          <div className="absolute bottom-4 left-0 right-0 text-center">
-            <div className="inline-flex items-center gap-2 bg-blue-600/90 text-white text-sm font-medium px-4 py-2 rounded-full">
+          <div className="absolute bottom-6 left-0 right-0 text-center">
+            <div className="inline-flex items-center gap-2 bg-blue-600/90 backdrop-blur-sm text-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-lg">
               <FileImage className="w-4 h-4" />
-              Ordonnance
+              Ordonnance médicale
             </div>
           </div>
         </div>
@@ -328,11 +462,11 @@ export function PrescriptionIndicator({
   return (
     <button
       onClick={onClick}
-      className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-600/20 border border-blue-500/50 rounded-lg hover:bg-blue-600/30 transition-colors"
+      className="relative flex items-center gap-1.5 px-3 py-2 bg-blue-600/20 border border-blue-500/50 rounded-xl hover:bg-blue-600/30 hover:border-blue-400/60 transition-all active:scale-95"
     >
       <FileImage className="w-4 h-4 text-blue-400" />
       <span className="text-xs font-bold text-blue-300">{count}</span>
-      <span className="text-xs text-blue-400 hidden sm:inline">
+      <span className="text-xs text-blue-400/80 hidden sm:inline">
         ordonnance{count > 1 ? 's' : ''}
       </span>
     </button>

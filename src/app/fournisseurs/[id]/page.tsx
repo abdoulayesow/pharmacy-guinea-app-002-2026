@@ -35,7 +35,7 @@ export default function SupplierDetailPage() {
   const params = useParams();
   const { data: session, status } = useSession();
   const { isAuthenticated } = useAuthStore();
-  const supplierId = parseInt(params.id as string);
+  const supplierId = params.id as string;
 
   // Check auth status
   const hasOAuthSession = status === 'authenticated' && !!session?.user;

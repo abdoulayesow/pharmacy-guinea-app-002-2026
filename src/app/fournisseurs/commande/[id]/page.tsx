@@ -60,7 +60,7 @@ export default function OrderDetailPage() {
   const params = useParams();
   const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
-  const orderId = parseInt(params.id as string);
+  const orderId = params.id as string;
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);

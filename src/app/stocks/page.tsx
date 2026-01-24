@@ -481,15 +481,7 @@ export default function StocksPage() {
                 <h2 className="text-white text-lg font-bold">Stock</h2>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleOpenAdd}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-10 px-3 font-semibold text-xs"
-              >
-                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
-                Nouveau produit
-              </Button>
-            </div>
+{/* FAB moved to bottom of page */}
           </div>
 
           {/* Search Bar - Dark Theme */}
@@ -1216,6 +1208,15 @@ export default function StocksPage() {
           </div>
         </div>
       )}
+
+      {/* FAB - Add Product */}
+      <button
+        onClick={handleOpenAdd}
+        className="fixed right-4 bottom-24 w-14 h-14 bg-purple-600 hover:bg-purple-500 text-white rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 ring-4 ring-purple-500/20 hover:ring-8"
+        aria-label="Ajouter un produit"
+      >
+        <Plus className="w-7 h-7" />
+      </button>
 
       <Navigation />
     </div>

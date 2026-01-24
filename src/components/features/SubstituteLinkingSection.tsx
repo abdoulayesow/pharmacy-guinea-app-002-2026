@@ -191,6 +191,7 @@ export function SubstituteLinkingSection({
     <div className={cn('space-y-3', className)}>
       {/* Section Header - Collapsible */}
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
           'w-full flex items-center justify-between p-4 rounded-xl transition-all duration-300',

@@ -460,7 +460,7 @@ export default function SupplierDetailPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-white">
-                            {isReturn ? 'Retour' : 'Commande'} #{order.id}
+                            {isReturn ? 'Retour' : 'Commande'} {order.orderNumber || `#${order.id?.slice(0, 8)}`}
                           </p>
                           <p className="text-xs text-slate-500">
                             {isReturn ? 'Date retour' : 'Date commande'}: {formatDate(order.orderDate)}

@@ -468,7 +468,7 @@ export default function OrderDetailPage() {
                 product_id: productId,
                 type: 'RECEIPT',
                 quantity_change: deliveryItem.receivedQuantity,
-                reason: `Réception commande #${order.id} - ${supplier.name}`,
+                reason: `Réception commande ${order.orderNumber || '#' + order.id?.slice(0, 8)} - ${supplier.name}`,
                 created_at: new Date(),
                 user_id: currentUser.id,
                 supplier_order_id: order.id,
@@ -646,7 +646,7 @@ export default function OrderDetailPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate">Commande #{order.id}</h1>
+            <h1 className="text-xl font-bold truncate">Commande {order.orderNumber || `#${order.id?.slice(0, 8)}`}</h1>
             <p className="text-sm text-slate-400 truncate">{supplier.name}</p>
           </div>
         </div>

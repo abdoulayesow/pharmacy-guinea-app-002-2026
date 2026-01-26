@@ -437,7 +437,7 @@ export default function PaymentPage() {
                                 {supplier?.name || 'Fournisseur inconnu'}
                               </p>
                               <p className="text-xs text-slate-500">
-                                Commande #{order.id} • {formatDate(order.orderDate)}
+                                Commande {order.orderNumber || `#${order.id?.slice(0, 8)}`} • {formatDate(order.orderDate)}
                               </p>
                             </div>
                             <div className="text-right">

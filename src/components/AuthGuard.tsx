@@ -114,10 +114,22 @@ export function AuthGuard({ children }: AuthGuardProps) {
     if (!_hasHydrated) return; // Wait for Zustand to hydrate from localStorage
 
     const hasOAuthSession = status === 'authenticated' && !!session?.user;
+
+    // Debug logging to help identify redirect issues
+    console.log('[AuthGuard] Auth check:', {
+      status,
+      hasSession: !!session?.user,
+      isAuthenticated,
+      _hasHydrated,
+      pathname,
+      willRedirect: !isAuthenticated && !hasOAuthSession,
+    });
+
     if (!isAuthenticated && !hasOAuthSession) {
+      console.log('[AuthGuard] ⚠️ Redirecting to login - no auth');
       router.push('/login');
     }
-  }, [isAuthenticated, session, status, router, _hasHydrated]);
+  }, [isAuthenticated, session, status, router, _hasHydrated, pathname]);
 
   // Show loading while checking auth
   // Wait for both NextAuth and Zustand hydration before deciding

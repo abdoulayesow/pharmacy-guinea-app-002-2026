@@ -187,18 +187,17 @@ function LoginPageContent() {
       return 'google-only';
     }
 
-    // Has Google session → check if this is first login or returning user
-    // First login (lastActivityAt is null): will redirect to dashboard (show loading)
-    if (!lastActivityAt) {
-      return 'loading';
-    }
-
-    // Returning user: check if inactive > 5min → PIN required
-    if (isInactive()) {
+    // Has Google session → check activity state
+    // If no lastActivityAt OR user is inactive → require PIN
+    // This handles:
+    // - Cleared browser data (lastActivityAt is null)
+    // - Inactivity timeout (isInactive() returns true)
+    // - Fresh install with existing PIN (lastActivityAt is null)
+    if (!lastActivityAt || isInactive()) {
       return 'pin-only';
     }
 
-    // Google session + recently active → will redirect to dashboard
+    // Google session + recently active → will redirect to dashboard (show loading)
     return 'loading';
   }, [sessionStatus, session, lastActivityAt, isInactive]);
 
@@ -209,8 +208,19 @@ function LoginPageContent() {
 
     const hasGoogleSession = sessionStatus === 'authenticated' && !!session?.user;
 
+    // Debug logging to help identify redirect issues
+    console.log('[Login] Redirect check:', {
+      sessionStatus,
+      hasGoogleSession,
+      isAuthenticated,
+      lastActivityAt,
+      isInactive: isInactive(),
+      hasRedirected: hasRedirectedRef.current,
+    });
+
     // If authenticated via Zustand (PIN), go to callback URL
     if (isAuthenticated) {
+      console.log('[Login] → Redirecting to callbackUrl (PIN authenticated):', callbackUrl);
       hasRedirectedRef.current = true;
       router.push(callbackUrl);
       return;
@@ -218,6 +228,7 @@ function LoginPageContent() {
 
     // If Google session but must change PIN, redirect to PIN setup
     if (hasGoogleSession && (session.user as { mustChangePin?: boolean }).mustChangePin) {
+      console.log('[Login] → Redirecting to setup-pin (must change PIN)');
       hasRedirectedRef.current = true;
       router.push('/auth/setup-pin?force=true');
       return;
@@ -225,29 +236,38 @@ function LoginPageContent() {
 
     // If Google session but no PIN setup, go to PIN setup first
     if (hasGoogleSession && !(session.user as { hasPin?: boolean }).hasPin) {
+      console.log('[Login] → Redirecting to setup-pin (no PIN yet)');
       hasRedirectedRef.current = true;
       router.push('/auth/setup-pin');
       return;
     }
 
-    // If Google session exists and user is still active (or first login), go to callback URL
-    // First login: lastActivityAt is null, we initialize it and go to callback URL
-    // Returning user: check if inactive > 5min
+    // If Google session exists and user is still active, go to callback URL
+    // Note: We only auto-redirect if:
+    // 1. User was recently active (< 5 min since last activity)
+    // 2. AND has been authenticated in this session (lastActivityAt is set)
+    //
+    // If lastActivityAt is null, it means either:
+    // - First time user (no PIN set) → handled by hasPin check above
+    // - User cleared browser data → require PIN verification
+    // - Inactivity logout preserved old timestamp → isInactive() returns true
+    if (hasGoogleSession && lastActivityAt && !isInactive()) {
+      // User is still active (< 5 min since last activity)
+      console.log('[Login] → Redirecting to callbackUrl (still active):', callbackUrl);
+      hasRedirectedRef.current = true;
+      useAuthStore.getState().updateActivity();
+      router.push(callbackUrl);
+      return;
+    }
+
+    // Stay on login page for PIN entry if:
+    // - No lastActivityAt (cleared browser data or fresh install)
+    // - Or inactive > 5min (normal inactivity timeout)
     if (hasGoogleSession) {
-      if (!lastActivityAt) {
-        // First time after Google login - set activity and go to callback URL
-        hasRedirectedRef.current = true;
-        useAuthStore.getState().updateActivity();
-        router.push(callbackUrl);
-        return;
-      } else if (!isInactive()) {
-        // User is still active (< 5 min since last activity)
-        hasRedirectedRef.current = true;
-        useAuthStore.getState().updateActivity();
-        router.push(callbackUrl);
-        return;
-      }
-      // Otherwise: inactive > 5min, stay on login page for PIN entry
+      console.log('[Login] Staying on login (PIN required):', {
+        hasLastActivity: !!lastActivityAt,
+        isInactive: lastActivityAt ? isInactive() : 'N/A',
+      });
     }
   }, [sessionStatus, session, isAuthenticated, lastActivityAt, isInactive, router, callbackUrl]);
 

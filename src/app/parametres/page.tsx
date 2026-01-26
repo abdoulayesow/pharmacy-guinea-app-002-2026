@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { Navigation } from '@/components/Navigation';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { NotificationToggle } from '@/components/NotificationToggle';
 import { cn } from '@/lib/client/utils';
 import type { User as UserType } from '@/lib/shared/types';
 import { AUTH_CONFIG } from '@/lib/shared/config';
@@ -491,6 +492,9 @@ export default function ParametresPage() {
           </div>
 
           <div className="space-y-3">
+            {/* Push notification toggle for expiration alerts */}
+            <NotificationToggle />
+
             <label className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors">
               <div>
                 <span className="text-white font-medium block">Stock faible</span>

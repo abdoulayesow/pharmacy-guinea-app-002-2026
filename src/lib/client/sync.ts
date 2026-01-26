@@ -6,6 +6,7 @@
 import { db } from './db';
 import type { SyncQueueItem, Sale, SaleItem, Expense, Product, StockoutReport, SalePrescription } from '@/lib/shared/types';
 import { generateLocalId } from '@/lib/shared/utils';
+import { checkExpirationAndNotify } from './notification';
 
 // Constants
 const MAX_RETRIES = 3;
@@ -1211,6 +1212,14 @@ export async function pullFromServer(): Promise<{
     // Update last sync timestamp
     if (data.serverTime) {
       setLastSyncAt(new Date(data.serverTime));
+    }
+
+    // Check for expiring products and show notification if enabled
+    try {
+      await checkExpirationAndNotify();
+    } catch (notificationError) {
+      console.warn('[Sync] Notification check failed:', notificationError);
+      // Don't fail the sync if notification check fails
     }
 
     return {

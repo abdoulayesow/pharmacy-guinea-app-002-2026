@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { cn } from '@/lib/client/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,7 +26,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
-import type { Supplier, SupplierOrder } from '@/lib/shared/types';
+import type { Supplier, SupplierOrder, StockMovement } from '@/lib/shared/types';
 import { toast } from 'sonner';
 import { queueTransaction } from '@/lib/client/sync';
 
@@ -35,7 +35,7 @@ export default function SupplierDetailPage() {
   const params = useParams();
   const { data: session, status } = useSession();
   const { isAuthenticated } = useAuthStore();
-  const supplierId = parseInt(params.id as string);
+  const supplierId = params.id as string;
 
   // Check auth status
   const hasOAuthSession = status === 'authenticated' && !!session?.user;
@@ -210,7 +210,7 @@ export default function SupplierDetailPage() {
       // Queue for sync
       const updatedReturn = await db.supplier_orders.get(returnOrder.id);
       if (updatedReturn) {
-        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn);
       }
 
       toast.success('Livraison confirmée - Crédit disponible pour paiements');
@@ -257,8 +257,9 @@ export default function SupplierDetailPage() {
         synced: false,
       });
 
-      // Create stock movement for restoration
-      await db.stock_movements.add({
+      // Create stock movement for restoration (UUID migration: generate ID client-side)
+      const restorationMovement: StockMovement = {
+        id: generateId(),
         product_id: returnOrder.returnProductId,
         type: 'ADJUSTMENT',
         quantity_change: returnQty,
@@ -267,13 +268,15 @@ export default function SupplierDetailPage() {
         user_id: session?.user?.email || 'unknown',
         created_at: new Date(),
         synced: false,
-      });
+      };
+      await db.stock_movements.add(restorationMovement);
 
       // Queue for sync
       const updatedReturn = await db.supplier_orders.get(returnOrder.id);
       if (updatedReturn) {
-        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn, String(returnOrder.id));
-        await queueTransaction('PRODUCT', 'UPDATE', { ...product, stock: product.stock + returnQty }, String(returnOrder.returnProductId));
+        await queueTransaction('SUPPLIER_ORDER', 'UPDATE', updatedReturn);
+        await queueTransaction('PRODUCT', 'UPDATE', { ...product, id: product.id, stock: product.stock + returnQty });
+        await queueTransaction('STOCK_MOVEMENT', 'CREATE', restorationMovement);
       }
 
       toast.success('Retour annulé - Stock restauré');
@@ -457,7 +460,7 @@ export default function SupplierDetailPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-white">
-                            {isReturn ? 'Retour' : 'Commande'} #{order.id}
+                            {isReturn ? 'Retour' : 'Commande'} {order.orderNumber || `#${order.id?.slice(0, 8)}`}
                           </p>
                           <p className="text-xs text-slate-500">
                             {isReturn ? 'Date retour' : 'Date commande'}: {formatDate(order.orderDate)}

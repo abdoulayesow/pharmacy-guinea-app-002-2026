@@ -30,7 +30,9 @@
       "Bash(npm run type-check:*)",
       "Bash(npm run db:seed:*)",
       "Bash(npx tsx:*)",
-      "Bash(timeout /t 1)"
+      "Bash(timeout /t 1)",
+      "Bash(git commit:*)",
+      "Bash(cd:*)"
     ]
   }
 }

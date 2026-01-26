@@ -146,10 +146,20 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: 'asc' },
     });
 
+    // Query Product Substitutes (created after lastSyncAt) - Phase 4
+    const productSubstitutes = await prisma.productSubstitute.findMany({
+      where: lastSyncAt
+        ? {
+            createdAt: { gt: lastSyncAt },
+          }
+        : undefined,
+      orderBy: { createdAt: 'asc' },
+    });
+
     // Transform Prisma models to client types
+    // UUID migration: No serverId needed - id is the same on client and server
     const transformedProducts = products.map((p) => ({
       id: p.id,
-      serverId: p.id,
       name: p.name,
       category: p.category || '',
       price: p.price,
@@ -164,7 +174,6 @@ export async function GET(request: NextRequest) {
 
     const transformedSales = sales.map((s) => ({
       id: s.id,
-      serverId: s.id,
       created_at: s.createdAt,
       total: s.total,
       payment_method: s.paymentMethod as 'CASH' | 'ORANGE_MONEY' | 'CREDIT',
@@ -192,9 +201,22 @@ export async function GET(request: NextRequest) {
       })),
     }));
 
+    // Extract sale items as a flat array
+    const transformedSaleItems = sales.flatMap((s) =>
+      s.items.map((item) => ({
+        id: item.id,
+        sale_id: item.saleId,
+        product_id: item.productId,
+        product_batch_id: item.productBatchId || undefined,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        subtotal: item.subtotal,
+        synced: true,
+      }))
+    );
+
     const transformedExpenses = expenses.map((e) => ({
       id: e.id,
-      serverId: e.id,
       date: e.date,
       description: e.description,
       amount: e.amount,
@@ -205,7 +227,6 @@ export async function GET(request: NextRequest) {
 
     const transformedStockMovements = stockMovements.map((m) => ({
       id: m.id,
-      serverId: m.id,
       product_id: m.productId,
       type: m.type as any,
       quantity_change: m.quantityChange,
@@ -217,7 +238,6 @@ export async function GET(request: NextRequest) {
 
     const transformedCreditPayments = creditPayments.map((p) => ({
       id: p.id,
-      serverId: p.id,
       sale_id: p.saleId,
       amount: p.amount,
       payment_method: p.method as 'CASH' | 'ORANGE_MONEY',
@@ -231,7 +251,6 @@ export async function GET(request: NextRequest) {
     // Transform Suppliers
     const transformedSuppliers = suppliers.map((s) => ({
       id: s.id,
-      serverId: s.id,
       name: s.name,
       phone: s.phone || undefined,
       paymentTermsDays: s.paymentTermsDays,
@@ -270,7 +289,6 @@ export async function GET(request: NextRequest) {
 
       return {
         id: o.id,
-        serverId: o.id,
         supplierId: o.supplierId,
         type: 'ORDER' as const, // Default to ORDER for supplier orders
         orderDate: o.orderDate,
@@ -292,7 +310,6 @@ export async function GET(request: NextRequest) {
     const transformedSupplierOrderItems = supplierOrders.flatMap((o) =>
       o.items.map((item) => ({
         id: item.id,
-        serverId: item.id,
         order_id: item.orderId,
         product_id: item.productId || undefined,
         product_name: item.productName,
@@ -324,7 +341,6 @@ export async function GET(request: NextRequest) {
 
       return {
         id: r.id,
-        serverId: r.id,
         supplierId: r.supplierId,
         supplierOrderId: r.supplierOrderId || undefined,
         productId: r.productId,
@@ -342,7 +358,6 @@ export async function GET(request: NextRequest) {
     // Transform Product-Supplier Links
     const transformedProductSuppliers = productSuppliers.map((ps) => ({
       id: ps.id,
-      serverId: ps.id,
       product_id: ps.productId,
       supplier_id: ps.supplierId,
       supplier_product_code: ps.supplierProductCode || undefined,
@@ -356,7 +371,6 @@ export async function GET(request: NextRequest) {
     // Transform Product Batches - FEFO Phase 3
     const transformedProductBatches = productBatches.map((b) => ({
       id: b.id,
-      serverId: b.id,
       product_id: b.productId,
       lot_number: b.lotNumber,
       expiration_date: b.expirationDate,
@@ -370,11 +384,24 @@ export async function GET(request: NextRequest) {
       synced: true,
     }));
 
+    // Transform Product Substitutes - Phase 4
+    const transformedProductSubstitutes = productSubstitutes.map((ps) => ({
+      id: ps.id,
+      product_id: ps.productId,
+      substitute_id: ps.substituteId,
+      equivalence_type: ps.equivalenceType as 'DCI' | 'THERAPEUTIC_CLASS' | 'MANUAL',
+      notes: ps.notes || undefined,
+      priority: ps.priority,
+      created_at: ps.createdAt,
+      synced: true,
+    }));
+
     return NextResponse.json<SyncPullResponse>({
       success: true,
       data: {
         products: transformedProducts,
         sales: transformedSales,
+        saleItems: transformedSaleItems,
         expenses: transformedExpenses,
         stockMovements: transformedStockMovements,
         suppliers: transformedSuppliers,
@@ -384,6 +411,9 @@ export async function GET(request: NextRequest) {
         productSuppliers: transformedProductSuppliers,
         productBatches: transformedProductBatches, // 🆕 FEFO Phase 3
         creditPayments: transformedCreditPayments,
+        stockoutReports: [], // 🆕 Phase 4: Fetched from backend when implemented
+        salePrescriptions: [], // 🆕 Phase 4: Fetched from backend when implemented
+        productSubstitutes: transformedProductSubstitutes, // 🆕 Phase 4
       },
       serverTime,
     });
@@ -397,6 +427,7 @@ export async function GET(request: NextRequest) {
           data: {
             products: [],
             sales: [],
+            saleItems: [],
             expenses: [],
             stockMovements: [],
             suppliers: [],
@@ -406,6 +437,9 @@ export async function GET(request: NextRequest) {
             productSuppliers: [],
             productBatches: [], // 🆕 FEFO Phase 3
             creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
+            productSubstitutes: [], // 🆕 Phase 4
           },
           serverTime: new Date(),
         },
@@ -419,6 +453,7 @@ export async function GET(request: NextRequest) {
         data: {
           products: [],
           sales: [],
+          saleItems: [],
           expenses: [],
           stockMovements: [],
           suppliers: [],
@@ -428,6 +463,9 @@ export async function GET(request: NextRequest) {
           productSuppliers: [],
           productBatches: [], // 🆕 FEFO Phase 3
           creditPayments: [],
+          stockoutReports: [],
+          salePrescriptions: [],
+          productSubstitutes: [], // 🆕 Phase 4
         },
         serverTime: new Date(),
       },

@@ -73,7 +73,7 @@ model VerificationToken {
 }
 
 model Product {
-  id             Int       @id @default(autoincrement())
+  id             String    @id @default(cuid())
   name           String
   price          Int       // Stored in GNF
   priceBuy       Int?      @map("price_buy")
@@ -90,6 +90,9 @@ model Product {
   saleItems        SaleItem[]
   stockMovements   StockMovement[]
   productSuppliers ProductSupplier[]
+  stockoutReports  StockoutReport[]
+  substitutes      ProductSubstitute[] @relation("ProductToSubstitutes")
+  substituteFor    ProductSubstitute[] @relation("SubstituteProducts")
 
   @@map("products")
 }
@@ -99,14 +102,14 @@ model Product {
 // ============================================================================
 
 model ProductBatch {
-  id              Int       @id @default(autoincrement())
-  productId       Int       @map("product_id")
+  id              String    @id @default(cuid())
+  productId       String    @map("product_id")
   lotNumber       String    @map("lot_number")         // e.g., "LOT-2024-001"
   expirationDate  DateTime  @map("expiration_date")    // e.g., "2026-12-31"
   quantity        Int       @default(0)                // Current quantity in this batch
   initialQty      Int       @map("initial_qty")        // Original quantity received
   unitCost        Int?      @map("unit_cost")          // Cost per unit (optional)
-  supplierOrderId Int?      @map("supplier_order_id")  // Link to supplier order
+  supplierOrderId String?   @map("supplier_order_id")  // Link to supplier order
   receivedDate    DateTime  @default(now()) @map("received_date")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -122,7 +125,7 @@ model ProductBatch {
 }
 
 model Sale {
-  id              Int       @id @default(autoincrement())
+  id              String    @id @default(cuid())
   total           Int
   paymentMethod   String    @map("payment_method") // CASH | ORANGE_MONEY | CREDIT
   paymentStatus   String    @default("PAID") @map("payment_status") // PAID | PENDING | PARTIAL
@@ -142,17 +145,18 @@ model Sale {
   user            User             @relation(fields: [userId], references: [id])
   items           SaleItem[]
   creditPayments  CreditPayment[]
+  prescriptions   SalePrescription[]
 
   @@map("sales")
 }
 
 model SaleItem {
-  id             Int   @id @default(autoincrement())
-  saleId         Int   @map("sale_id")
-  productId      Int   @map("product_id")
-  productBatchId Int?  @map("product_batch_id") // Optional: which batch was sold (FEFO tracking)
+  id             String @id @default(cuid())
+  saleId         String @map("sale_id")
+  productId      String @map("product_id")
+  productBatchId String? @map("product_batch_id") // Optional: which batch was sold (FEFO tracking)
   quantity       Int
-  unitPrice      Int   @map("unit_price")
+  unitPrice      Int    @map("unit_price")
   subtotal       Int
 
   // Relations
@@ -164,8 +168,8 @@ model SaleItem {
 }
 
 model CreditPayment {
-  id          Int       @id @default(autoincrement())
-  saleId      Int       @map("sale_id")
+  id          String   @id @default(cuid())
+  saleId      String   @map("sale_id")
   amount      Int
   method      String    // CASH | ORANGE_MONEY
   reference   String?
@@ -180,7 +184,7 @@ model CreditPayment {
 }
 
 model Expense {
-  id          Int       @id @default(autoincrement())
+  id          String    @id @default(cuid())
   amount      Int
   category    String    // STOCK_PURCHASE | RENT | SALARY | ELECTRICITY | TRANSPORT | OTHER
   description String
@@ -195,8 +199,8 @@ model Expense {
 }
 
 model StockMovement {
-  id             Int       @id @default(autoincrement())
-  productId      Int       @map("product_id")
+  id             String    @id @default(cuid())
+  productId      String    @map("product_id")
   type           String    // SALE | SALE_EDIT | ADJUSTMENT | INVENTORY | DAMAGED | EXPIRED
   quantityChange Int       @map("quantity_change") // Can be negative
   reason         String?
@@ -215,7 +219,7 @@ model StockMovement {
 // ============================================================================
 
 model Supplier {
-  id               Int       @id @default(autoincrement())
+  id               String    @id @default(cuid())
   name             String
   phone            String?
   paymentTermsDays Int       @default(30) @map("payment_terms_days")
@@ -231,8 +235,8 @@ model Supplier {
 }
 
 model SupplierOrder {
-  id              Int       @id @default(autoincrement())
-  supplierId      Int       @map("supplier_id")
+  id              String    @id @default(cuid())
+  supplierId      String    @map("supplier_id")
   type            String    @default("ORDER") // ORDER | RETURN
   orderDate       DateTime  @default(now()) @map("order_date") // For returns, this is submission date
   deliveryDate    DateTime? @map("delivery_date")
@@ -246,7 +250,7 @@ model SupplierOrder {
   notes           String?
   // Return-specific fields (only used when type === 'RETURN')
   returnReason    String?   @map("return_reason") // EXPIRING | DAMAGED | OTHER
-  returnProductId Int?      @map("return_product_id") // Product being returned (for single-product returns)
+  returnProductId String?   @map("return_product_id") // Product being returned (for single-product returns)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -261,9 +265,9 @@ model SupplierOrder {
 }
 
 model SupplierOrderItem {
-  id               Int       @id @default(autoincrement())
-  orderId          Int       @map("order_id")
-  productId        Int?      @map("product_id") // Null if new product not yet created
+  id               String    @id @default(cuid())
+  orderId          String    @map("order_id")
+  productId        String?   @map("product_id") // Null if new product not yet created
   productName      String    @map("product_name")
   category         String?   // Category for new products
   quantity         Int       // Ordered quantity
@@ -280,9 +284,9 @@ model SupplierOrderItem {
 }
 
 model ProductSupplier {
-  id                  Int       @id @default(autoincrement())
-  productId           Int       @map("product_id")
-  supplierId          Int       @map("supplier_id")
+  id                  String    @id @default(cuid())
+  productId           String    @map("product_id")
+  supplierId          String    @map("supplier_id")
   supplierProductCode String?   @map("supplier_product_code")
   supplierProductName String?   @map("supplier_product_name")
   defaultPrice        Int?      @map("default_price")
@@ -299,16 +303,16 @@ model ProductSupplier {
 }
 
 model SupplierReturn {
-  id               Int       @id @default(autoincrement())
-  supplierId       Int       @map("supplier_id")
-  supplierOrderId  Int?      @map("supplier_order_id") // Optional link for deduction
-  productId        Int       @map("product_id")
+  id               String    @id @default(cuid())
+  supplierId       String    @map("supplier_id")
+  supplierOrderId  String?   @map("supplier_order_id") // Optional link for deduction
+  productId        String    @map("product_id")
   quantity         Int
   reason           String    // EXPIRED | DAMAGED | WRONG_PRODUCT | QUALITY_ISSUE | OTHER
   creditAmount     Int       @map("credit_amount")
   returnDate       DateTime  @default(now()) @map("return_date")
   applied          Boolean   @default(false) // Credit applied to payment
-  appliedToOrderId Int?      @map("applied_to_order_id")
+  appliedToOrderId String?   @map("applied_to_order_id")
   createdAt        DateTime  @default(now()) @map("created_at")
 
   // Relations
@@ -319,15 +323,76 @@ model SupplierReturn {
 }
 
 // ============================================================================
+// Phase 4: Pharmacy Workflow Models
+// ============================================================================
+
+// Stockout reports - Track missed sales for demand forecasting
+model StockoutReport {
+  id            String    @id @default(cuid())
+  productName   String    @map("product_name")     // What was requested (may not exist in DB)
+  productId     String?   @map("product_id")       // FK to products (if known product)
+  requestedQty  Int       @map("requested_qty")    // How many were needed
+  customerName  String?   @map("customer_name")    // Optional: client info for follow-up
+  customerPhone String?   @map("customer_phone")   // Optional: for callback when stock arrives
+  notes         String?
+  reportedBy    String    @map("reported_by")      // User ID who reported
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  product       Product?  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("stockout_reports")
+}
+
+// Sale prescriptions - Attach prescription images to sales for compliance
+model SalePrescription {
+  id          String    @id @default(cuid())
+  saleId      String    @map("sale_id")
+  imageData   String    @map("image_data") @db.Text  // Base64 encoded image (compressed)
+  imageType   String    @map("image_type")           // image/jpeg | image/png
+  capturedAt  DateTime  @map("captured_at")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_prescriptions")
+}
+
+// Product substitutes - Link replacement products for stockouts
+model ProductSubstitute {
+  id              String    @id @default(cuid())
+  productId       String    @map("product_id")       // Primary product (FK to products)
+  substituteId    String    @map("substitute_id")    // Alternative product (FK to products)
+  equivalenceType String    @map("equivalence_type") // DCI | THERAPEUTIC_CLASS | MANUAL
+  notes           String?                            // e.g., "Same active ingredient - paracetamol"
+  priority        Int       @default(1)              // Lower = better match (1 = best)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  product         Product   @relation("ProductToSubstitutes", fields: [productId], references: [id], onDelete: Cascade)
+  substituteProduct Product @relation("SubstituteProducts", fields: [substituteId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, substituteId])
+  @@index([productId])
+  @@index([substituteId])
+  @@map("product_substitutes")
+}
+
+// ============================================================================
 // Sync Infrastructure Models
 // ============================================================================
 
-// 🆕 Idempotency key tracking - prevents duplicate transactions on retry
+// Idempotency key tracking - prevents duplicate transactions on retry
 model SyncIdempotencyKey {
   id             String   @id @default(cuid())
   idempotencyKey String   @unique @map("idempotency_key")
   entityType     String   @map("entity_type") // SALE | EXPENSE | PRODUCT | STOCK_MOVEMENT | etc.
-  entityId       Int      @map("entity_id") // Server ID of created/updated entity
+  entityId       String   @map("entity_id") // UUID of created/updated entity
   createdAt      DateTime @default(now()) @map("created_at")
   expiresAt      DateTime @map("expires_at") // Auto-cleanup after 24 hours
 

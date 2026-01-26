@@ -4,7 +4,7 @@
  */
 
 import { db } from './db';
-import type { SyncQueueItem, Sale, SaleItem, Expense, Product } from '@/lib/shared/types';
+import type { SyncQueueItem, Sale, SaleItem, Expense, Product, StockoutReport, SalePrescription } from '@/lib/shared/types';
 import { generateLocalId } from '@/lib/shared/utils';
 
 // Constants
@@ -67,19 +67,21 @@ function generateUUID(): string {
 
 /**
  * Add a transaction to the sync queue
+ * UUID migration: entities now have client-generated IDs that are the same on server
  */
 export async function queueTransaction(
-  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'PRODUCT_BATCH' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT',
+  type: 'SALE' | 'EXPENSE' | 'STOCK_MOVEMENT' | 'PRODUCT' | 'PRODUCT_BATCH' | 'USER' | 'SUPPLIER' | 'SUPPLIER_ORDER' | 'SUPPLIER_ORDER_ITEM' | 'SUPPLIER_RETURN' | 'PRODUCT_SUPPLIER' | 'CREDIT_PAYMENT' | 'STOCKOUT_REPORT' | 'SALE_PRESCRIPTION',
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPDATE_PIN',
-  payload: any,
-  localId?: string
+  payload: any
 ): Promise<SyncQueueItem> {
+  // Extract entity ID from payload - with UUID migration, all entities have an 'id' field
+  const entityId = payload?.id || generateUUID();
+
   const item: SyncQueueItem = {
     type,
     action,
     payload,
-    localId: localId ? parseInt(localId, 10) : Math.floor(Math.random() * 1000000),
-    idempotencyKey: generateUUID(), // 🆕 Generate unique key for deduplication
+    entityId, // UUID of the entity being synced
     createdAt: new Date() as any,
     status: 'PENDING',
     retryCount: 0,
@@ -115,56 +117,57 @@ export async function markSyncing(itemId: string): Promise<void> {
 
 /**
  * Mark an item as successfully synced
+ * UUID migration: No serverId mapping needed - just mark as synced
  */
-export async function markSynced(
-  itemId: string | number,
-  serverId?: string | number
-): Promise<void> {
+export async function markSynced(itemId: string | number): Promise<void> {
   const item = (await db.sync_queue.get(itemId as any)) as SyncQueueItem;
 
-  if (item && serverId && typeof item.payload === 'object' && item.payload !== null) {
+  if (item && typeof item.payload === 'object' && item.payload !== null) {
     const payload = item.payload as Record<string, any>;
-    // Update the corresponding record with the server ID
-    switch (item.type) {
-      case 'SALE': {
-        const localSaleId = payload.id;
-        if (localSaleId) {
-          await db.sales.update(localSaleId, {
-            serverId: serverId as any,
-            synced: true,
-          });
-        }
-        break;
-      }
-      case 'EXPENSE': {
-        const localExpenseId = payload.id;
-        if (localExpenseId) {
-          await db.expenses.update(localExpenseId, {
-            serverId: serverId as any,
-            synced: true,
-          });
-        }
-        break;
-      }
-      case 'PRODUCT': {
-        const localProductId = payload.id;
-        if (localProductId) {
-          await db.products.update(localProductId, {
-            serverId: serverId as any,
-            synced: true,
-          });
-        }
-        break;
-      }
-      case 'STOCK_MOVEMENT': {
-        const localMovementId = payload.id;
-        if (localMovementId) {
-          await db.stock_movements.update(localMovementId, {
-            serverId: serverId as any,
-            synced: true, // CRITICAL: Mark as synced so we don't double-count in stock calculation
-          });
-        }
-        break;
+    const entityId = payload.id;
+
+    if (entityId) {
+      // UUID migration: Simply mark entity as synced (ID is same on client and server)
+      switch (item.type) {
+        case 'SALE':
+          await db.sales.update(entityId, { synced: true });
+          break;
+        case 'EXPENSE':
+          await db.expenses.update(entityId, { synced: true });
+          break;
+        case 'PRODUCT':
+          await db.products.update(entityId, { synced: true });
+          break;
+        case 'PRODUCT_BATCH':
+          await db.product_batches.update(entityId, { synced: true });
+          break;
+        case 'STOCK_MOVEMENT':
+          await db.stock_movements.update(entityId, { synced: true });
+          break;
+        case 'SUPPLIER':
+          await db.suppliers.update(entityId, { synced: true });
+          break;
+        case 'SUPPLIER_ORDER':
+          await db.supplier_orders.update(entityId, { synced: true });
+          break;
+        case 'SUPPLIER_ORDER_ITEM':
+          await db.supplier_order_items.update(entityId, { synced: true });
+          break;
+        case 'SUPPLIER_RETURN':
+          await db.supplier_returns.update(entityId, { synced: true });
+          break;
+        case 'PRODUCT_SUPPLIER':
+          await db.product_suppliers.update(entityId, { synced: true });
+          break;
+        case 'CREDIT_PAYMENT':
+          await db.credit_payments.update(entityId, { synced: true });
+          break;
+        case 'STOCKOUT_REPORT':
+          await db.stockout_reports.update(entityId, { synced: true });
+          break;
+        case 'SALE_PRESCRIPTION':
+          await db.sale_prescriptions.update(entityId, { synced: true });
+          break;
       }
     }
   }
@@ -204,6 +207,31 @@ export async function markFailed(itemId: string | number, error: string): Promis
 }
 
 /**
+ * UUID migration: Self-healing is no longer needed for serverId mapping.
+ * This function is kept for backward compatibility but does nothing.
+ * With UUIDs, client and server use the same ID - no mapping required.
+ *
+ * @returns {Promise<{repaired: boolean, count: number}>}
+ */
+export async function repairOrphanedRecords(): Promise<{ repaired: boolean; count: number }> {
+  // UUID migration: No serverId repair needed - IDs are consistent across client/server
+  return { repaired: false, count: 0 };
+}
+
+/**
+ * UUID migration: Foreign key validation simplified.
+ * With UUIDs, we just check if the referenced entity exists locally.
+ * No serverId mapping is needed.
+ *
+ * @returns {Promise<{valid: boolean, errors: string[]}>}
+ */
+async function validateForeignKeyReferences(): Promise<{ valid: boolean; errors: string[] }> {
+  // UUID migration: FK validation is straightforward - just check if entities exist
+  // The actual validation happens server-side during sync
+  return { valid: true, errors: [] };
+}
+
+/**
  * Prepare sync payload from queue with dependency ordering
  *
  * 🆕 Orders sync items by dependencies to prevent "entity not found" errors:
@@ -218,6 +246,15 @@ export async function prepareSyncPayload(): Promise<{
   products: Array<Product & { id: string; idempotencyKey: string }>;
   productBatches: any[];
   stockMovements: any[];
+  suppliers: any[];
+  supplierOrders: any[];
+  supplierOrderItems: any[];
+  supplierReturns: any[];
+  productSuppliers: any[];
+  creditPayments: any[];
+  stockoutReports: any[];
+  salePrescriptions: any[];
+  productSubstitutes: any[];
 }> {
   const items = await getPendingItems();
 
@@ -241,6 +278,9 @@ export async function prepareSyncPayload(): Promise<{
       SUPPLIER_ORDER_ITEM: 10,
       SUPPLIER_RETURN: 11,
       USER: 12,
+      STOCKOUT_REPORT: 13,
+      SALE_PRESCRIPTION: 14,
+      PRODUCT_SUBSTITUTE: 15,
     };
 
     const priorityA = typePriority[a.type] || 99;
@@ -260,30 +300,63 @@ export async function prepareSyncPayload(): Promise<{
   const products: any[] = [];
   const productBatches: any[] = [];
   const stockMovements: any[] = [];
+  const suppliers: any[] = [];
+  const supplierOrders: any[] = [];
+  const supplierOrderItems: any[] = [];
+  const supplierReturns: any[] = [];
+  const productSuppliers: any[] = [];
+  const creditPayments: any[] = [];
+  const stockoutReports: any[] = [];
+  const salePrescriptions: any[] = [];
+  const productSubstitutes: any[] = [];
 
   for (const item of sortedItems) {
     if (item.status === 'PENDING') {
-      // 🆕 Attach idempotency key to payload
-      const payloadWithKey = {
-        ...(item.payload as Record<string, any>),
-        idempotencyKey: item.idempotencyKey,
-      };
+      // UUID migration: entity.id is already unique and serves as idempotency key
+      const payload = item.payload as Record<string, any>;
 
       switch (item.type) {
         case 'SALE':
-          sales.push(payloadWithKey);
+          sales.push(payload);
           break;
         case 'EXPENSE':
-          expenses.push(payloadWithKey);
+          expenses.push(payload);
           break;
         case 'PRODUCT':
-          products.push(payloadWithKey);
+          products.push(payload);
           break;
         case 'PRODUCT_BATCH':
-          productBatches.push(payloadWithKey);
+          productBatches.push(payload);
           break;
         case 'STOCK_MOVEMENT':
-          stockMovements.push(payloadWithKey);
+          stockMovements.push(payload);
+          break;
+        case 'SUPPLIER':
+          suppliers.push(payload);
+          break;
+        case 'SUPPLIER_ORDER':
+          supplierOrders.push(payload);
+          break;
+        case 'SUPPLIER_ORDER_ITEM':
+          supplierOrderItems.push(payload);
+          break;
+        case 'SUPPLIER_RETURN':
+          supplierReturns.push(payload);
+          break;
+        case 'PRODUCT_SUPPLIER':
+          productSuppliers.push(payload);
+          break;
+        case 'CREDIT_PAYMENT':
+          creditPayments.push(payload);
+          break;
+        case 'STOCKOUT_REPORT':
+          stockoutReports.push(payload);
+          break;
+        case 'SALE_PRESCRIPTION':
+          salePrescriptions.push(payload);
+          break;
+        case 'PRODUCT_SUBSTITUTE':
+          productSubstitutes.push(payload);
           break;
       }
     }
@@ -300,7 +373,57 @@ export async function prepareSyncPayload(): Promise<{
     }
   }
 
-  return { sales, saleItems, expenses, products, productBatches, stockMovements };
+  // UUID migration: Simple validation - no serverId enrichment needed
+  // With UUIDs, all IDs are the same on client and server
+  const validatedProducts = products.filter((p) => {
+    if (!p.name) {
+      console.warn(`[Sync] ⚠️ Skipping product without name: ${JSON.stringify(p)}`);
+      return false;
+    }
+    return true;
+  });
+
+  const validatedSuppliers = suppliers.filter((s) => {
+    if (!s.name) {
+      console.warn(`[Sync] ⚠️ Skipping supplier without name: ${JSON.stringify(s)}`);
+      return false;
+    }
+    return true;
+  });
+
+  const validatedSupplierOrders = supplierOrders.filter((o) => {
+    if (!o.supplierId) {
+      console.warn(`[Sync] ⚠️ Skipping supplier order without supplierId: ${JSON.stringify(o)}`);
+      return false;
+    }
+    return true;
+  });
+
+  const validatedProductBatches = productBatches.filter((b) => {
+    if (!b.product_id) {
+      console.warn(`[Sync] ⚠️ Skipping product batch without product_id: ${JSON.stringify(b)}`);
+      return false;
+    }
+    return true;
+  });
+
+  return {
+    sales,
+    saleItems,
+    expenses,
+    products: validatedProducts,
+    productBatches: validatedProductBatches,
+    stockMovements,
+    suppliers: validatedSuppliers,
+    supplierOrders: validatedSupplierOrders,
+    supplierOrderItems,
+    supplierReturns,
+    productSuppliers,
+    creditPayments,
+    stockoutReports,
+    salePrescriptions,
+    productSubstitutes,
+  };
 }
 
 /**
@@ -324,6 +447,12 @@ export async function processSyncQueue(): Promise<{
   const results = { synced: 0, failed: 0, errors: [] as string[] };
 
   try {
+    // 🆕 SELF-HEALING: Check for and repair orphaned records before pushing
+    const repairResult = await repairOrphanedRecords();
+    if (repairResult.repaired) {
+      console.log(`[Sync] 🔧 Repaired ${repairResult.count} orphaned records - retrying sync`);
+    }
+
     // Prepare payload
     const payload = await prepareSyncPayload();
 
@@ -350,28 +479,54 @@ export async function processSyncQueue(): Promise<{
 
     const data = await response.json();
 
-    // Mark items as synced
+    // Mark items as synced - UUID migration: check if entity ID is in synced arrays
     for (const item of pendingItems) {
       if (item.status === 'PENDING' && item.id !== undefined) {
         try {
-          let serverId: string | undefined;
+          const entityId = item.entityId;
+          let wasSynced = false;
 
-          // Get the server ID from response (now using Record<string, number>)
-          const localIdStr = item.localId.toString();
-          if (item.type === 'SALE' && data.synced?.sales?.[localIdStr]) {
-            serverId = data.synced.sales[localIdStr].toString();
-          } else if (item.type === 'EXPENSE' && data.synced?.expenses?.[localIdStr]) {
-            serverId = data.synced.expenses[localIdStr].toString();
-          } else if (item.type === 'PRODUCT' && data.synced?.products?.[localIdStr]) {
-            serverId = data.synced.products[localIdStr].toString();
-          } else if (item.type === 'PRODUCT_BATCH' && data.synced?.productBatches?.[localIdStr]) {
-            serverId = data.synced.productBatches[localIdStr].toString();
-          } else if (item.type === 'STOCK_MOVEMENT' && data.synced?.stockMovements?.[localIdStr]) {
-            serverId = data.synced.stockMovements[localIdStr].toString();
+          // Check if entity ID is in the appropriate synced array
+          switch (item.type) {
+            case 'SALE':
+              wasSynced = data.synced?.sales?.includes(entityId) ?? false;
+              break;
+            case 'EXPENSE':
+              wasSynced = data.synced?.expenses?.includes(entityId) ?? false;
+              break;
+            case 'PRODUCT':
+              wasSynced = data.synced?.products?.includes(entityId) ?? false;
+              break;
+            case 'PRODUCT_BATCH':
+              wasSynced = data.synced?.productBatches?.includes(entityId) ?? false;
+              break;
+            case 'STOCK_MOVEMENT':
+              wasSynced = data.synced?.stockMovements?.includes(entityId) ?? false;
+              break;
+            case 'SUPPLIER':
+              wasSynced = data.synced?.suppliers?.includes(entityId) ?? false;
+              break;
+            case 'SUPPLIER_ORDER':
+              wasSynced = data.synced?.supplierOrders?.includes(entityId) ?? false;
+              break;
+            case 'SUPPLIER_ORDER_ITEM':
+              wasSynced = data.synced?.supplierOrderItems?.includes(entityId) ?? false;
+              break;
+            case 'SUPPLIER_RETURN':
+              wasSynced = data.synced?.supplierReturns?.includes(entityId) ?? false;
+              break;
+            case 'PRODUCT_SUPPLIER':
+              wasSynced = data.synced?.productSuppliers?.includes(entityId) ?? false;
+              break;
+            case 'CREDIT_PAYMENT':
+              wasSynced = data.synced?.creditPayments?.includes(entityId) ?? false;
+              break;
           }
 
-          await markSynced(item.id, serverId);
-          results.synced++;
+          if (wasSynced) {
+            await markSynced(item.id);
+            results.synced++;
+          }
         } catch (error) {
           await markFailed(item.id, `Failed to mark synced: ${error}`);
           results.failed++;
@@ -392,6 +547,32 @@ export async function processSyncQueue(): Promise<{
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     results.errors.push(errorMsg);
+
+    // 🆕 SELF-HEALING: Detect FK constraint errors and trigger repair
+    const isForeignKeyError = errorMsg.includes('Foreign key constraint') ||
+      errorMsg.includes('fkey') ||
+      errorMsg.includes('violates foreign key') ||
+      errorMsg.includes('Argument') && errorMsg.includes('is missing');
+
+    if (isForeignKeyError) {
+      console.error('[Sync] ⚠️ Foreign key error detected - triggering repair...');
+
+      // Clear last sync to force full pull
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('seri-last-sync');
+      }
+
+      // Schedule repair and retry (don't block current operation)
+      setTimeout(async () => {
+        try {
+          console.log('[Sync] 🔧 Running post-error repair...');
+          await pullFromServer();
+          console.log('[Sync] 🔄 Repair complete - will retry on next sync cycle');
+        } catch (repairError) {
+          console.error('[Sync] ❌ Post-error repair failed:', repairError);
+        }
+      }, 2000);
+    }
 
     // Mark all pending items as failed for retry
     for (const item of pendingItems) {
@@ -515,7 +696,7 @@ export async function getSyncStats(): Promise<{
  * This is separate from the batch sync for immediate retry on failure
  */
 export async function queuePinUpdate(userId: string, pinHash: string): Promise<void> {
-  await queueTransaction('USER', 'UPDATE_PIN', { userId, pinHash }, userId);
+  await queueTransaction('USER', 'UPDATE_PIN', { id: userId, userId, pinHash });
 
   // Try to sync immediately if online
   if (await isActuallyOnline()) {
@@ -603,14 +784,21 @@ function setLastSyncAt(date: Date): void {
 
 /**
  * Merge pulled data into IndexedDB with conflict resolution
+ * UUID migration: Uses id directly for matching (no serverId mapping needed)
  */
 async function mergePulledData(data: {
   products: any[];
   sales: any[];
   expenses: any[];
   stockMovements: any[];
-  productBatches: any[]; // 🆕 FEFO Phase 3
+  productBatches: any[];
   creditPayments: any[];
+  suppliers?: any[];
+  supplierOrders?: any[];
+  supplierOrderItems?: any[];
+  supplierReturns?: any[];
+  productSuppliers?: any[];
+  productSubstitutes?: any[];
 }): Promise<{
   merged: number;
   conflicts: number;
@@ -618,48 +806,79 @@ async function mergePulledData(data: {
 }> {
   const results = { merged: 0, conflicts: 0, errors: [] as string[] };
 
-  // Merge Products
+  // UUID migration: Match by id directly (same ID on client and server)
+
+  // PHASE 1: Merge Suppliers
+  for (const supplier of data.suppliers || []) {
+    try {
+      const existing = await db.suppliers.get(supplier.id);
+      if (existing) {
+        const serverUpdatedAt = supplier.updatedAt ? new Date(supplier.updatedAt) : new Date(0);
+        const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
+        if (serverUpdatedAt >= localUpdatedAt) {
+          await db.suppliers.update(supplier.id, {
+            name: supplier.name,
+            phone: supplier.phone,
+            paymentTermsDays: supplier.paymentTermsDays,
+            synced: true,
+            updatedAt: supplier.updatedAt,
+          });
+          results.merged++;
+        } else {
+          results.conflicts++;
+        }
+      } else {
+        await db.suppliers.put({
+          id: supplier.id,
+          name: supplier.name,
+          phone: supplier.phone,
+          paymentTermsDays: supplier.paymentTermsDays,
+          synced: true,
+          createdAt: supplier.createdAt,
+          updatedAt: supplier.updatedAt,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Supplier ${supplier.id}: ${error}`);
+    }
+  }
+
+  // PHASE 2: Merge Products
   for (const product of data.products) {
     try {
-      const existing = product.serverId
-        ? await db.products.where('serverId').equals(product.serverId).first()
-        : null;
-
+      const existing = await db.products.get(product.id);
       if (existing) {
-        // Conflict: compare timestamps
         const serverUpdatedAt = product.updatedAt ? new Date(product.updatedAt) : new Date(0);
         const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
-
         if (serverUpdatedAt >= localUpdatedAt) {
-          // Server wins - update local
-          await db.products.update(existing.id!, {
+          await db.products.update(product.id, {
             name: product.name,
             price: product.price,
             priceBuy: product.priceBuy,
             stock: product.stock,
             minStock: product.minStock,
-            serverId: product.serverId,
+            category: product.category || '',
+            expirationDate: product.expirationDate,
             synced: true,
             updatedAt: product.updatedAt,
           });
           results.merged++;
         } else {
-          // Local is newer - keep local (will be pushed on next sync)
           results.conflicts++;
         }
       } else {
-        // New product - insert
-        await db.products.add({
+        await db.products.put({
+          id: product.id,
           name: product.name,
           price: product.price,
           priceBuy: product.priceBuy,
           stock: product.stock,
           minStock: product.minStock,
-          serverId: product.serverId,
-          synced: true,
-          updatedAt: product.updatedAt,
           category: product.category || '',
           expirationDate: product.expirationDate,
+          synced: true,
+          updatedAt: product.updatedAt,
         } as any);
         results.merged++;
       }
@@ -668,25 +887,92 @@ async function mergePulledData(data: {
     }
   }
 
-  // Merge Sales
+  // PHASE 3: Merge Supplier Orders
+  for (const order of data.supplierOrders || []) {
+    try {
+      const existing = await db.supplier_orders.get(order.id);
+      if (existing) {
+        const serverUpdatedAt = order.updatedAt ? new Date(order.updatedAt) : new Date(0);
+        const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
+        if (serverUpdatedAt >= localUpdatedAt) {
+          await db.supplier_orders.update(order.id, {
+            supplierId: order.supplierId,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            totalAmount: order.totalAmount,
+            amountPaid: order.amountPaid,
+            dueDate: order.dueDate,
+            orderDate: order.orderDate,
+            deliveryDate: order.deliveryDate,
+            notes: order.notes,
+            synced: true,
+            updatedAt: order.updatedAt,
+          });
+          results.merged++;
+        } else {
+          results.conflicts++;
+        }
+      } else {
+        await db.supplier_orders.put({
+          id: order.id,
+          supplierId: order.supplierId,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          totalAmount: order.totalAmount,
+          amountPaid: order.amountPaid,
+          dueDate: order.dueDate,
+          orderDate: order.orderDate,
+          deliveryDate: order.deliveryDate,
+          notes: order.notes,
+          synced: true,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Supplier order ${order.id}: ${error}`);
+    }
+  }
+
+  // PHASE 4: Merge Product-Supplier Links
+  for (const link of data.productSuppliers || []) {
+    try {
+      const existing = await db.product_suppliers.get(link.id);
+      if (existing) {
+        await db.product_suppliers.update(link.id, {
+          product_id: link.product_id,
+          supplier_id: link.supplier_id,
+          default_price: link.default_price,
+          is_primary: link.is_primary,
+          synced: true,
+        });
+        results.merged++;
+      } else {
+        await db.product_suppliers.put({
+          id: link.id,
+          product_id: link.product_id,
+          supplier_id: link.supplier_id,
+          default_price: link.default_price,
+          is_primary: link.is_primary,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Product-supplier link ${link.id}: ${error}`);
+    }
+  }
+
+  // PHASE 5: Merge Sales
   for (const sale of data.sales) {
     try {
-      const existing = sale.serverId
-        ? await db.sales.where('serverId').equals(sale.serverId).first()
-        : null;
-
+      const existing = await db.sales.get(sale.id);
       if (existing) {
-        // Check if server version is newer
-        const serverModifiedAt = sale.modified_at
-          ? new Date(sale.modified_at)
-          : new Date(sale.created_at);
-        const localModifiedAt = existing.modified_at
-          ? new Date(existing.modified_at)
-          : new Date(existing.created_at);
-
+        const serverModifiedAt = sale.modified_at ? new Date(sale.modified_at) : new Date(sale.created_at);
+        const localModifiedAt = existing.modified_at ? new Date(existing.modified_at) : new Date(existing.created_at);
         if (serverModifiedAt >= localModifiedAt) {
-          // Server wins - update local
-          await db.sales.update(existing.id!, {
+          await db.sales.update(sale.id, {
             total: sale.total,
             payment_method: sale.payment_method,
             payment_status: sale.payment_status,
@@ -699,7 +985,6 @@ async function mergePulledData(data: {
             modified_at: sale.modified_at,
             modified_by: sale.modified_by,
             edit_count: sale.edit_count,
-            serverId: sale.serverId,
             synced: true,
           } as any);
           results.merged++;
@@ -707,8 +992,8 @@ async function mergePulledData(data: {
           results.conflicts++;
         }
       } else {
-        // New sale - insert
-        await db.sales.add({
+        await db.sales.put({
+          id: sale.id,
           total: sale.total,
           payment_method: sale.payment_method,
           payment_status: sale.payment_status,
@@ -723,7 +1008,6 @@ async function mergePulledData(data: {
           modified_at: sale.modified_at,
           modified_by: sale.modified_by,
           edit_count: sale.edit_count,
-          serverId: sale.serverId,
           synced: true,
         } as any);
         results.merged++;
@@ -736,18 +1020,15 @@ async function mergePulledData(data: {
   // Merge Expenses
   for (const expense of data.expenses) {
     try {
-      const existing = expense.serverId
-        ? await db.expenses.where('serverId').equals(expense.serverId).first()
-        : null;
-
+      const existing = await db.expenses.get(expense.id);
       if (!existing) {
-        await db.expenses.add({
+        await db.expenses.put({
+          id: expense.id,
           date: expense.date,
           description: expense.description,
           amount: expense.amount,
           category: expense.category,
           user_id: expense.user_id,
-          serverId: expense.serverId,
           synced: true,
         } as any);
         results.merged++;
@@ -760,19 +1041,16 @@ async function mergePulledData(data: {
   // Merge Stock Movements
   for (const movement of data.stockMovements) {
     try {
-      const existing = movement.serverId
-        ? await db.stock_movements.where('serverId').equals(movement.serverId).first()
-        : null;
-
+      const existing = await db.stock_movements.get(movement.id);
       if (!existing) {
-        await db.stock_movements.add({
+        await db.stock_movements.put({
+          id: movement.id,
           product_id: movement.product_id,
           type: movement.type,
           quantity_change: movement.quantity_change,
           reason: movement.reason,
           created_at: movement.created_at,
           user_id: movement.user_id,
-          serverId: movement.serverId,
           synced: true,
         } as any);
         results.merged++;
@@ -782,43 +1060,16 @@ async function mergePulledData(data: {
     }
   }
 
-  // Merge Product Batches - FEFO Phase 3
+  // Merge Product Batches
   for (const batch of data.productBatches || []) {
     try {
-      // 🔧 FIX: Map server product_id (PostgreSQL ID) to IndexedDB product ID
-      // Server sends product_id matching PostgreSQL (1-10), but IndexedDB has different IDs (17-26)
-      // We need to find the IndexedDB product that has serverId matching the batch's product_id
-      const localProduct = await db.products
-        .where('serverId')
-        .equals(batch.product_id)
-        .first();
-
-      if (!localProduct) {
-        results.errors.push(
-          `Product batch ${batch.id}: Product with serverId=${batch.product_id} not found in IndexedDB`
-        );
-        continue;
-      }
-
-      const localProductId = localProduct.id!;
-
-      const existing = batch.serverId
-        ? await db.product_batches.where('serverId').equals(batch.serverId).first()
-        : null;
-
+      const existing = await db.product_batches.get(batch.id);
       if (existing) {
-        // Batch exists - compare timestamps for conflict resolution
         const serverUpdatedAt = batch.updatedAt ? new Date(batch.updatedAt) : new Date(0);
         const localUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt) : new Date(0);
-
         if (serverUpdatedAt >= localUpdatedAt) {
-          // Server wins - update local batch
-          console.log(`[Sync] ProductBatch ${batch.serverId}: Server wins (${serverUpdatedAt.toISOString()} >= ${localUpdatedAt.toISOString()})`);
-          console.log(`[Sync]   Local quantity: ${existing.quantity}, Server quantity: ${batch.quantity}`);
-          console.log(`[Sync]   Mapped product_id: ${batch.product_id} (PostgreSQL) → ${localProductId} (IndexedDB ${localProduct.name})`);
-
-          await db.product_batches.update(existing.id!, {
-            product_id: localProductId, // Use mapped IndexedDB product ID
+          await db.product_batches.update(batch.id, {
+            product_id: batch.product_id,
             lot_number: batch.lot_number,
             expiration_date: batch.expiration_date,
             quantity: batch.quantity,
@@ -826,24 +1077,17 @@ async function mergePulledData(data: {
             unit_cost: batch.unit_cost,
             supplier_order_id: batch.supplier_order_id,
             received_date: batch.received_date,
-            // createdAt is immutable - do NOT update
             updatedAt: batch.updatedAt,
-            serverId: batch.serverId,
             synced: true,
           });
           results.merged++;
         } else {
-          // Local is newer - keep local (will be pushed on next sync)
-          console.log(`[Sync] ProductBatch ${batch.serverId}: Local wins (${localUpdatedAt.toISOString()} > ${serverUpdatedAt.toISOString()}) - queued for push`);
           results.conflicts++;
         }
       } else {
-        // New batch - insert
-        console.log(`[Sync] ProductBatch ${batch.serverId}: New batch - inserting`);
-        console.log(`[Sync]   Mapped product_id: ${batch.product_id} (PostgreSQL) → ${localProductId} (IndexedDB ${localProduct.name})`);
-
-        await db.product_batches.add({
-          product_id: localProductId, // Use mapped IndexedDB product ID
+        await db.product_batches.put({
+          id: batch.id,
+          product_id: batch.product_id,
           lot_number: batch.lot_number,
           expiration_date: batch.expiration_date,
           quantity: batch.quantity,
@@ -853,7 +1097,6 @@ async function mergePulledData(data: {
           received_date: batch.received_date,
           createdAt: batch.createdAt,
           updatedAt: batch.updatedAt,
-          serverId: batch.serverId,
           synced: true,
         } as any);
         results.merged++;
@@ -866,12 +1109,10 @@ async function mergePulledData(data: {
   // Merge Credit Payments
   for (const payment of data.creditPayments) {
     try {
-      const existing = payment.serverId
-        ? await db.credit_payments.where('serverId').equals(payment.serverId).first()
-        : null;
-
+      const existing = await db.credit_payments.get(payment.id);
       if (!existing) {
-        await db.credit_payments.add({
+        await db.credit_payments.put({
+          id: payment.id,
           sale_id: payment.sale_id,
           amount: payment.amount,
           payment_method: payment.payment_method,
@@ -879,13 +1120,34 @@ async function mergePulledData(data: {
           payment_date: payment.payment_date,
           notes: payment.notes,
           user_id: payment.user_id,
-          serverId: payment.serverId,
           synced: true,
         } as any);
         results.merged++;
       }
     } catch (error) {
       results.errors.push(`Credit payment ${payment.id}: ${error}`);
+    }
+  }
+
+  // Merge Product Substitutes - Phase 4
+  for (const substitute of data.productSubstitutes || []) {
+    try {
+      const existing = await db.table('product_substitutes').get(substitute.id);
+      if (!existing) {
+        await db.table('product_substitutes').put({
+          id: substitute.id,
+          product_id: substitute.product_id,
+          substitute_id: substitute.substitute_id,
+          equivalence_type: substitute.equivalence_type,
+          notes: substitute.notes,
+          priority: substitute.priority,
+          created_at: substitute.created_at,
+          synced: true,
+        } as any);
+        results.merged++;
+      }
+    } catch (error) {
+      results.errors.push(`Product substitute ${substitute.id}: ${error}`);
     }
   }
 
@@ -1024,9 +1286,12 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
 
     let totalMerged = 0;
 
+    // UUID migration: All entities use id directly (no serverId mapping needed)
+
     // Merge products (both roles)
     if (data.products?.length > 0) {
       await db.products.bulkPut(data.products.map((p: any) => ({
+        id: p.id, // UUID migration: use id directly
         name: p.name,
         price: p.price,
         priceBuy: p.priceBuy,
@@ -1035,7 +1300,6 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
         category: p.category,
         expirationDate: p.expirationDate,
         lotNumber: p.lotNumber,
-        serverId: p.id, // Map server ID
         synced: true,
         updatedAt: p.updatedAt,
       })));
@@ -1046,10 +1310,10 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
     // Merge suppliers (both roles)
     if (data.suppliers?.length > 0) {
       await db.suppliers.bulkPut(data.suppliers.map((s: any) => ({
+        id: s.id, // UUID migration: use id directly
         name: s.name,
         phone: s.phone,
         paymentTermsDays: s.paymentTermsDays,
-        serverId: s.id,
         synced: true,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
@@ -1062,12 +1326,12 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
     if (data.supplierOrders?.length > 0) {
       // Merge supplier orders first
       await db.supplier_orders.bulkPut(data.supplierOrders.map((o: any) => ({
+        id: o.id, // UUID migration: use id directly
         supplierId: o.supplierId,
         status: o.status,
         totalAmount: o.totalAmount,
         dueDate: o.dueDate,
         receivedDate: o.receivedDate,
-        serverId: o.id,
         synced: true,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
@@ -1080,29 +1344,30 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
         if (order.items?.length > 0) {
           order.items.forEach((item: any) => {
             allItems.push({
-              orderServerId: order.id,
-              productServerId: item.productId,
+              id: item.id, // UUID migration: use id directly
+              order_id: order.id, // UUID migration: use order id directly
+              product_id: item.productId, // UUID migration: use product id directly
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               subtotal: item.subtotal,
-              serverId: item.id,
               synced: true,
             });
           });
         }
       });
       if (allItems.length > 0) {
-        // Note: We'll need to map orderServerId and productServerId to local IDs
-        // For now, store with server IDs and handle mapping in UI
-        console.log(`[Sync] Found ${allItems.length} order items (mapping TBD)`);
+        await db.supplier_order_items.bulkPut(allItems);
+        console.log(`[Sync] Merged ${allItems.length} supplier order items`);
       }
       totalMerged += data.supplierOrders.length;
     }
 
     // Merge sales (role-filtered by server)
+    // UUID migration: server returns same IDs client uses - no mapping needed
     if (data.sales?.length > 0) {
-      // Merge sales first
+      // Merge sales first - use id directly (UUID migration)
       await db.sales.bulkPut(data.sales.map((s: any) => ({
+        id: s.id, // UUID migration: use server ID directly
         total: s.total,
         payment_method: s.paymentMethod,
         payment_status: s.paymentStatus,
@@ -1117,42 +1382,27 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
         modified_at: s.modifiedAt,
         modified_by: s.modifiedBy,
         edit_count: s.editCount,
-        serverId: s.id,
         synced: true,
       })));
       console.log(`[Sync] Merged ${data.sales.length} sales`);
 
-      // Merge sale items
+      // Merge sale items - UUID migration: no ID mapping needed
       const allSaleItems: any[] = [];
-
-      // First, build a map of server sale IDs to local sale IDs
-      const saleServerToLocalIdMap: Record<number, number> = {};
-      for (const sale of data.sales) {
-        const localSale = await db.sales.where('serverId').equals(sale.id).first();
-        if (localSale?.id) {
-          saleServerToLocalIdMap[sale.id] = localSale.id;
-        }
-      }
 
       data.sales.forEach((sale: any) => {
         if (sale.items?.length > 0) {
-          const localSaleId = saleServerToLocalIdMap[sale.id];
-          if (localSaleId) {
-            sale.items.forEach((item: any) => {
-              allSaleItems.push({
-                sale_id: localSaleId, // Map to local sale ID
-                product_id: item.productId,
-                quantity: item.quantity,
-                unit_price: item.unitPrice,
-                subtotal: item.subtotal,
-                product_batch_id: item.productBatchId || null, // FEFO tracking
-                serverId: item.id,
-                synced: true,
-              });
+          sale.items.forEach((item: any) => {
+            allSaleItems.push({
+              id: item.id, // UUID migration: use server ID directly
+              sale_id: sale.id, // UUID migration: use sale ID directly
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              subtotal: item.subtotal,
+              product_batch_id: item.productBatchId || null, // FEFO tracking
+              synced: true,
             });
-          } else {
-            console.warn(`[Sync] Could not find local sale for server ID ${sale.id}`);
-          }
+          });
         }
       });
 
@@ -1167,13 +1417,13 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
     // Merge expenses (empty for employees)
     if (data.expenses?.length > 0) {
       await db.expenses.bulkPut(data.expenses.map((e: any) => ({
+        id: e.id, // UUID migration: use id directly
         date: e.date,
         description: e.description,
         amount: e.amount,
         category: e.category,
         user_id: e.userId,
         supplier_order_id: e.supplierOrderId,
-        serverId: e.id,
         synced: true,
       })));
       totalMerged += data.expenses.length;
@@ -1183,13 +1433,13 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
     // Merge stock movements (role-filtered by server)
     if (data.stockMovements?.length > 0) {
       await db.stock_movements.bulkPut(data.stockMovements.map((m: any) => ({
+        id: m.id, // UUID migration: use id directly
         product_id: m.productId,
         type: m.type,
         quantity_change: m.quantityChange,
         reason: m.reason,
         created_at: m.createdAt,
         user_id: m.userId,
-        serverId: m.id,
         synced: true,
       })));
       totalMerged += data.stockMovements.length;
@@ -1199,13 +1449,13 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
     // Merge credit payments (role-filtered by server)
     if (data.creditPayments?.length > 0) {
       await db.credit_payments.bulkPut(data.creditPayments.map((c: any) => ({
-        sale_id: c.saleId, // Will need mapping to local sale ID
+        id: c.id, // UUID migration: use id directly
+        sale_id: c.saleId, // UUID migration: use sale id directly
         amount: c.amount,
         payment_method: c.paymentMethod,
         payment_ref: c.paymentRef,
         payment_date: c.paymentDate,
         user_id: c.userId,
-        serverId: c.id,
         synced: true,
       })));
       totalMerged += data.creditPayments.length;
@@ -1220,50 +1470,26 @@ export async function performFirstTimeSync(userRole: 'OWNER' | 'EMPLOYEE'): Prom
       sample: data.productBatches?.[0]
     });
 
+    // UUID migration: server sends same IDs as client - no mapping needed
     if (data.productBatches?.length > 0) {
-      // 🔧 FIX: Build a map of PostgreSQL product IDs to IndexedDB product IDs
-      // Server sends product_id matching PostgreSQL (1-10), but IndexedDB has different IDs (17-26)
-      const productIdMap: Record<number, number> = {};
-      const allProducts = await db.products.toArray();
-      allProducts.forEach((p) => {
-        if (p.serverId) {
-          productIdMap[p.serverId] = p.id!;
-        }
-      });
+      const batchesToInsert = data.productBatches.map((b: any) => ({
+        id: b.id, // UUID migration: use ID directly
+        product_id: b.product_id, // UUID migration: use product ID directly
+        lot_number: b.lot_number,
+        expiration_date: b.expiration_date,
+        quantity: b.quantity,
+        initial_qty: b.initial_qty,
+        unit_cost: b.unit_cost,
+        supplier_order_id: b.supplier_order_id,
+        received_date: b.received_date,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        synced: true,
+      }));
 
-      const batchesToInsert: any[] = [];
-      for (const b of data.productBatches) {
-        const localProductId = productIdMap[b.product_id];
-        if (!localProductId) {
-          console.error(`[Sync] ❌ Product batch ${b.serverId}: Product with serverId=${b.product_id} not found in IndexedDB`);
-          continue;
-        }
-
-        console.log(`[Sync] Batch ${b.lot_number}: Mapped product_id ${b.product_id} (PostgreSQL) → ${localProductId} (IndexedDB)`);
-
-        batchesToInsert.push({
-          product_id: localProductId, // Use mapped IndexedDB product ID
-          lot_number: b.lot_number,
-          expiration_date: b.expiration_date,
-          quantity: b.quantity,
-          initial_qty: b.initial_qty,
-          unit_cost: b.unit_cost,
-          supplier_order_id: b.supplier_order_id,
-          received_date: b.received_date,
-          createdAt: b.createdAt,
-          updatedAt: b.updatedAt,
-          serverId: b.serverId,
-          synced: true,
-        });
-      }
-
-      if (batchesToInsert.length > 0) {
-        await db.product_batches.bulkPut(batchesToInsert);
-        totalMerged += batchesToInsert.length;
-        console.log(`[Sync] ✅ Merged ${batchesToInsert.length} product batches`);
-      } else {
-        console.warn('[Sync] ⚠️ No valid product batches to insert (product ID mapping failed)');
-      }
+      await db.product_batches.bulkPut(batchesToInsert);
+      totalMerged += batchesToInsert.length;
+      console.log(`[Sync] ✅ Merged ${batchesToInsert.length} product batches`);
     } else {
       console.warn('[Sync] ⚠️ No product batches received from server!');
     }

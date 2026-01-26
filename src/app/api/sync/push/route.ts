@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body with basic validation
     const body: SyncPushRequest = await request.json();
-    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments } = body;
+    const { sales, saleItems, expenses, stockMovements, products, productBatches, suppliers, supplierOrders, supplierOrderItems, supplierReturns, productSuppliers, creditPayments, stockoutReports, salePrescriptions, productSubstitutes } = body;
 
     // Basic validation: ensure arrays are actually arrays
     const validationErrors: string[] = [];
@@ -33,6 +33,9 @@ export async function POST(request: NextRequest) {
     if (supplierReturns && !Array.isArray(supplierReturns)) validationErrors.push('supplierReturns must be an array');
     if (productSuppliers && !Array.isArray(productSuppliers)) validationErrors.push('productSuppliers must be an array');
     if (creditPayments && !Array.isArray(creditPayments)) validationErrors.push('creditPayments must be an array');
+    if (stockoutReports && !Array.isArray(stockoutReports)) validationErrors.push('stockoutReports must be an array');
+    if (salePrescriptions && !Array.isArray(salePrescriptions)) validationErrors.push('salePrescriptions must be an array');
+    if (productSubstitutes && !Array.isArray(productSubstitutes)) validationErrors.push('productSubstitutes must be an array');
 
     if (validationErrors.length > 0) {
       console.error('[API] Sync push validation errors:', validationErrors);
@@ -41,18 +44,21 @@ export async function POST(request: NextRequest) {
           success: false,
           errors: validationErrors,
           synced: {
-            sales: {},
-            saleItems: {},
-            expenses: {},
-            stockMovements: {},
-            products: {},
-            productBatches: {},
-            suppliers: {},
-            supplierOrders: {},
-            supplierOrderItems: {},
-            supplierReturns: {},
-            productSuppliers: {},
-            creditPayments: {},
+            sales: [],
+            saleItems: [],
+            expenses: [],
+            stockMovements: [],
+            products: [],
+            productBatches: [],
+            suppliers: [],
+            supplierOrders: [],
+            supplierOrderItems: [],
+            supplierReturns: [],
+            productSuppliers: [],
+            creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
+            productSubstitutes: [],
           },
         },
         { status: 400 }
@@ -75,18 +81,22 @@ export async function POST(request: NextRequest) {
     });
 
     // Phase 2: Implement server-side sync
-    const syncedSales: Record<string, number> = {}; // Map localId -> serverId
-    const syncedSaleItems: Record<string, number> = {};
-    const syncedExpenses: Record<string, number> = {};
-    const syncedStockMovements: Record<string, number> = {};
-    const syncedProducts: Record<string, number> = {};
-    const syncedProductBatches: Record<string, number> = {};
-    const syncedSuppliers: Record<string, number> = {};
-    const syncedSupplierOrders: Record<string, number> = {};
-    const syncedSupplierOrderItems: Record<string, number> = {};
-    const syncedSupplierReturns: Record<string, number> = {};
-    const syncedProductSuppliers: Record<string, number> = {};
-    const syncedCreditPayments: Record<string, number> = {};
+    // UUID migration: Track synced IDs (same ID on client and server)
+    const syncedSales: string[] = [];
+    const syncedSaleItems: string[] = [];
+    const syncedExpenses: string[] = [];
+    const syncedStockMovements: string[] = [];
+    const syncedProducts: string[] = [];
+    const syncedProductBatches: string[] = [];
+    const syncedSuppliers: string[] = [];
+    const syncedSupplierOrders: string[] = [];
+    const syncedSupplierOrderItems: string[] = [];
+    const syncedSupplierReturns: string[] = [];
+    const syncedProductSuppliers: string[] = [];
+    const syncedCreditPayments: string[] = [];
+    const syncedStockoutReports: string[] = [];
+    const syncedSalePrescriptions: string[] = [];
+    const syncedProductSubstitutes: string[] = [];
     const errors: string[] = [];
 
     // Sync Sales (with nested sale items)
@@ -100,20 +110,18 @@ export async function POST(request: NextRequest) {
             });
 
             if (existingKey) {
-              // Already processed - return existing server ID
-              syncedSales[sale.id?.toString() || ''] = existingKey.entityId;
+              // Already processed - return existing ID
+              syncedSales.push(sale.id);
               console.log(`[API] Sale ${sale.id} already synced (idempotency key: ${sale.idempotencyKey})`);
               continue; // Skip creation
             }
           }
 
-          // Check if sale already exists (by serverId if provided)
-          let existingSale = null;
-          if (sale.serverId) {
-            existingSale = await prisma.sale.findUnique({
-              where: { id: sale.serverId },
-            });
-          }
+          // UUID migration: Check if sale already exists by its ID
+          // (same ID on client and server)
+          let existingSale = await prisma.sale.findUnique({
+            where: { id: sale.id },
+          });
 
           if (existingSale) {
             // Conflict: check if server version is newer
@@ -139,15 +147,16 @@ export async function POST(request: NextRequest) {
                   editCount: sale.edit_count || 0,
                 },
               });
-              syncedSales[sale.id?.toString() || ''] = updatedSale.id;
+              syncedSales.push(sale.id);
             } else {
               // Server wins - use existing ID
-              syncedSales[sale.id?.toString() || ''] = existingSale.id;
+              syncedSales.push(sale.id);
             }
           } else {
-            // New sale - create with nested items
+            // New sale - create with client-generated UUID
             const newSale = await prisma.sale.create({
               data: {
+                id: sale.id, // UUID migration: use client-generated ID
                 total: sale.total,
                 paymentMethod: sale.payment_method,
                 paymentStatus: sale.payment_status,
@@ -165,7 +174,7 @@ export async function POST(request: NextRequest) {
                 // Note: Sale items will be synced separately if provided
               },
             });
-            syncedSales[sale.id?.toString() || ''] = newSale.id;
+            syncedSales.push(sale.id);
 
             // 🆕 Store idempotency key (24h TTL)
             if (sale.idempotencyKey) {
@@ -200,23 +209,34 @@ export async function POST(request: NextRequest) {
           }
 
           if (!existingItem) {
-            // Get the server sale ID (map from local sale_id to server ID)
-            const serverSaleId = syncedSales[item.sale_id?.toString() || ''] || item.sale_id;
+            // Verify the referenced product exists
+            const productExists = await prisma.product.findUnique({
+              where: { id: item.product_id },
+              select: { id: true },
+            });
 
-            // Create new sale item
+            if (!productExists) {
+              console.error(`[API] Product ${item.product_id} not found for sale item ${item.id}`);
+              errors.push(`Product ${item.product_id} not found for sale item ${item.id}`);
+              continue; // Skip this sale item
+            }
+
+            // UUID migration: sale_id is already the correct ID
+            // Create new sale item with client-generated UUID
             const newItem = await prisma.saleItem.create({
               data: {
-                saleId: serverSaleId,
+                id: item.id, // UUID migration: use client-generated ID
+                saleId: item.sale_id,
                 productId: item.product_id,
                 quantity: item.quantity,
                 unitPrice: item.unit_price,
                 subtotal: item.subtotal,
               },
             });
-            syncedSaleItems[item.id?.toString() || ''] = newItem.id;
+            syncedSaleItems.push(item.id);
           } else {
             // Item already exists
-            syncedSaleItems[item.id?.toString() || ''] = existingItem.id;
+            syncedSaleItems.push(item.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -237,27 +257,25 @@ export async function POST(request: NextRequest) {
             });
 
             if (existingKey) {
-              syncedExpenses[expense.id?.toString() || ''] = existingKey.entityId;
+              syncedExpenses.push(expense.id);
               console.log(`[API] Expense ${expense.id} already synced (idempotency key: ${expense.idempotencyKey})`);
               continue;
             }
           }
 
-          let existingExpense = null;
-          if (expense.serverId) {
-            existingExpense = await prisma.expense.findUnique({
-              where: { id: expense.serverId },
-            });
-          }
+          // UUID migration: Check if expense already exists by its ID
+          let existingExpense = await prisma.expense.findUnique({
+            where: { id: expense.id },
+          });
 
           if (existingExpense) {
             // Conflict resolution: last write wins
             const serverDate = existingExpense.date;
             const localDate = new Date(expense.date);
-            
+
             if (localDate > serverDate) {
-              const updated = await prisma.expense.update({
-                where: { id: existingExpense.id },
+              await prisma.expense.update({
+                where: { id: expense.id },
                 data: {
                   amount: expense.amount,
                   category: expense.category,
@@ -265,13 +283,12 @@ export async function POST(request: NextRequest) {
                   date: localDate,
                 },
               });
-              syncedExpenses[expense.id?.toString() || ''] = updated.id;
-            } else {
-              syncedExpenses[expense.id?.toString() || ''] = existingExpense.id;
             }
+            syncedExpenses.push(expense.id);
           } else {
-            const newExpense = await prisma.expense.create({
+            await prisma.expense.create({
               data: {
+                id: expense.id, // UUID migration: use client-generated ID
                 amount: expense.amount,
                 category: expense.category,
                 description: expense.description,
@@ -279,7 +296,7 @@ export async function POST(request: NextRequest) {
                 userId: user.userId,
               },
             });
-            syncedExpenses[expense.id?.toString() || ''] = newExpense.id;
+            syncedExpenses.push(expense.id);
 
             // 🆕 Store idempotency key
             if (expense.idempotencyKey) {
@@ -287,7 +304,7 @@ export async function POST(request: NextRequest) {
                 data: {
                   idempotencyKey: expense.idempotencyKey,
                   entityType: 'EXPENSE',
-                  entityId: newExpense.id,
+                  entityId: expense.id, // UUID migration: use client-generated ID
                   expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                 },
               });
@@ -312,28 +329,29 @@ export async function POST(request: NextRequest) {
             });
 
             if (existingKey) {
-              syncedStockMovements[movement.id?.toString() || ''] = existingKey.entityId;
+              syncedStockMovements.push(movement.id);
               console.log(`[API] Stock movement ${movement.id} already synced (idempotency key: ${movement.idempotencyKey})`);
               continue;
             }
           }
 
-          let existingMovement = null;
-          if (movement.serverId) {
-            existingMovement = await prisma.stockMovement.findUnique({
-              where: { id: movement.serverId },
-            });
-          }
+          // UUID migration: Check if movement already exists by its ID
+          let existingMovement = await prisma.stockMovement.findUnique({
+            where: { id: movement.id },
+          });
 
           if (!existingMovement) {
+            // UUID migration: product_id is already the correct ID
+            const productId = movement.product_id;
+
             // 🆕 CRITICAL: Validate stock before applying movement
             if (movement.type === 'SALE' && movement.quantity_change < 0) {
               const product = await prisma.product.findUnique({
-                where: { id: movement.product_id },
+                where: { id: productId },
               });
 
               if (!product) {
-                errors.push(`Produit ${movement.product_id} introuvable`);
+                errors.push(`Produit ${productId} introuvable`);
                 continue;
               }
 
@@ -352,15 +370,16 @@ export async function POST(request: NextRequest) {
 
               // Stock OK - update product stock atomically
               await prisma.product.update({
-                where: { id: movement.product_id },
+                where: { id: productId },
                 data: { stock: newStock },
               });
             }
 
-            // Create stock movement record
-            const newMovement = await prisma.stockMovement.create({
+            // Create stock movement record with client-generated ID
+            await prisma.stockMovement.create({
               data: {
-                productId: movement.product_id,
+                id: movement.id, // UUID migration: use client-generated ID
+                productId: productId,
                 type: movement.type,
                 quantityChange: movement.quantity_change,
                 reason: movement.reason || null,
@@ -368,7 +387,7 @@ export async function POST(request: NextRequest) {
                 userId: user.userId,
               },
             });
-            syncedStockMovements[movement.id?.toString() || ''] = newMovement.id;
+            syncedStockMovements.push(movement.id);
 
             // 🆕 Store idempotency key
             if (movement.idempotencyKey) {
@@ -376,13 +395,13 @@ export async function POST(request: NextRequest) {
                 data: {
                   idempotencyKey: movement.idempotencyKey,
                   entityType: 'STOCK_MOVEMENT',
-                  entityId: newMovement.id,
+                  entityId: movement.id,
                   expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                 },
               });
             }
           } else {
-            syncedStockMovements[movement.id?.toString() || ''] = existingMovement.id;
+            syncedStockMovements.push(movement.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -392,28 +411,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Products (upsert by name or serverId)
+    // Sync Products - UUID migration: use client-generated ID
     if (products && products.length > 0) {
       for (const product of products) {
         try {
-          let existingProduct = null;
-          
-          // Try to find by serverId first
-          if (product.serverId) {
-            existingProduct = await prisma.product.findUnique({
-              where: { id: product.serverId },
-            });
-          }
-          
-          // If not found, try to find by name
-          if (!existingProduct && product.name) {
-            const productsByName = await prisma.product.findMany({
-              where: { name: product.name },
-              orderBy: { updatedAt: 'desc' },
-              take: 1,
-            });
-            existingProduct = productsByName[0] || null;
-          }
+          // UUID migration: Check if product exists by its ID
+          let existingProduct = await prisma.product.findUnique({
+            where: { id: product.id },
+          });
 
           if (existingProduct) {
             // Conflict: check timestamps
@@ -422,8 +427,8 @@ export async function POST(request: NextRequest) {
 
             if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
               // Local is newer - update
-              const updated = await prisma.product.update({
-                where: { id: existingProduct.id },
+              await prisma.product.update({
+                where: { id: product.id },
                 data: {
                   name: product.name,
                   price: product.price,
@@ -435,14 +440,13 @@ export async function POST(request: NextRequest) {
                   lotNumber: product.lotNumber || null,
                 },
               });
-              syncedProducts[product.id?.toString() || ''] = updated.id;
-            } else {
-              syncedProducts[product.id?.toString() || ''] = existingProduct.id;
             }
+            syncedProducts.push(product.id);
           } else {
-            // New product
-            const newProduct = await prisma.product.create({
+            // New product - use client-generated ID
+            await prisma.product.create({
               data: {
+                id: product.id, // UUID migration: use client-generated ID
                 name: product.name,
                 price: product.price,
                 priceBuy: product.priceBuy || null,
@@ -453,7 +457,7 @@ export async function POST(request: NextRequest) {
                 lotNumber: product.lotNumber || null,
               },
             });
-            syncedProducts[product.id?.toString() || ''] = newProduct.id;
+            syncedProducts.push(product.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -463,34 +467,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync ProductBatches (FEFO tracking - Phase 3)
+    // Sync ProductBatches (FEFO tracking - Phase 3) - UUID migration
     if (productBatches && productBatches.length > 0) {
       for (const batch of productBatches) {
         try {
-          let existingBatch = null;
-
-          // Try to find by serverId first
-          if (batch.serverId) {
-            existingBatch = await prisma.productBatch.findUnique({
-              where: { id: batch.serverId },
-            });
-          }
-
-          // If not found, try to find by lotNumber + productId
-          if (!existingBatch && batch.lot_number && batch.product_id) {
-            // Map local product_id to server productId if necessary
-            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
-
-            const batchesByLot = await prisma.productBatch.findMany({
-              where: {
-                lotNumber: batch.lot_number,
-                productId: serverProductId,
-              },
-              orderBy: { updatedAt: 'desc' },
-              take: 1,
-            });
-            existingBatch = batchesByLot[0] || null;
-          }
+          // UUID migration: Check if batch exists by its ID
+          let existingBatch = await prisma.productBatch.findUnique({
+            where: { id: batch.id },
+          });
 
           if (existingBatch) {
             // Conflict: check timestamps (Last Write Wins)
@@ -499,15 +483,11 @@ export async function POST(request: NextRequest) {
 
             if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
               // Local is newer - update
-              console.log(`[API] ProductBatch ${batch.serverId}: Local wins (${localUpdatedAt.toISOString()} > ${serverUpdatedAt.toISOString()})`);
-              console.log(`[API]   Server quantity: ${existingBatch.quantity}, Local quantity: ${batch.quantity}`);
-
-              const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
-
-              const updated = await prisma.productBatch.update({
-                where: { id: existingBatch.id },
+              console.log(`[API] ProductBatch ${batch.id}: Local wins`);
+              await prisma.productBatch.update({
+                where: { id: batch.id },
                 data: {
-                  productId: serverProductId,
+                  productId: batch.product_id, // UUID migration: product_id is correct
                   lotNumber: batch.lot_number,
                   expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : existingBatch.expirationDate,
                   quantity: batch.quantity,
@@ -515,22 +495,28 @@ export async function POST(request: NextRequest) {
                   unitCost: batch.unit_cost || null,
                   supplierOrderId: batch.supplier_order_id || null,
                   receivedDate: batch.received_date ? new Date(batch.received_date) : existingBatch.receivedDate,
-                  // Note: createdAt is NOT updated (immutable)
                 },
               });
-              syncedProductBatches[batch.id?.toString() || ''] = updated.id;
-            } else {
-              // Server is newer or same - skip update
-              console.log(`[API] ProductBatch ${batch.serverId}: Server wins (${serverUpdatedAt.toISOString()} >= ${localUpdatedAt?.toISOString()})`);
-              syncedProductBatches[batch.id?.toString() || ''] = existingBatch.id;
             }
+            syncedProductBatches.push(batch.id);
           } else {
-            // New batch
-            const serverProductId = syncedProducts[batch.product_id?.toString() || ''] || batch.product_id;
+            // Verify the referenced product exists
+            const productExists = await prisma.product.findUnique({
+              where: { id: batch.product_id },
+              select: { id: true },
+            });
 
-            const newBatch = await prisma.productBatch.create({
+            if (!productExists) {
+              console.error(`[API] Product ${batch.product_id} not found for batch ${batch.id}`);
+              errors.push(`Product ${batch.product_id} not found for batch ${batch.id}`);
+              continue; // Skip this batch
+            }
+
+            // New batch - use client-generated ID
+            await prisma.productBatch.create({
               data: {
-                productId: serverProductId,
+                id: batch.id, // UUID migration: use client-generated ID
+                productId: batch.product_id, // UUID migration: product_id is correct
                 lotNumber: batch.lot_number,
                 expirationDate: batch.expiration_date ? new Date(batch.expiration_date) : new Date(),
                 quantity: batch.quantity,
@@ -540,8 +526,8 @@ export async function POST(request: NextRequest) {
                 receivedDate: batch.received_date ? new Date(batch.received_date) : new Date(),
               },
             });
-            syncedProductBatches[batch.id?.toString() || ''] = newBatch.id;
-            console.log(`[API] Created new ProductBatch: ${newBatch.id} (lot: ${batch.lot_number})`);
+            syncedProductBatches.push(batch.id);
+            console.log(`[API] Created new ProductBatch: ${batch.id} (lot: ${batch.lot_number})`);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -551,28 +537,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Suppliers
+    // Sync Suppliers - UUID migration
     if (suppliers && suppliers.length > 0) {
       for (const supplier of suppliers) {
         try {
-          let existingSupplier = null;
-
-          // Try to find by serverId first
-          if (supplier.serverId) {
-            existingSupplier = await prisma.supplier.findUnique({
-              where: { id: supplier.serverId },
-            });
-          }
-
-          // If not found, try to find by name
-          if (!existingSupplier && supplier.name) {
-            const suppliersByName = await prisma.supplier.findMany({
-              where: { name: supplier.name },
-              orderBy: { updatedAt: 'desc' },
-              take: 1,
-            });
-            existingSupplier = suppliersByName[0] || null;
-          }
+          // UUID migration: Check if supplier exists by its ID
+          let existingSupplier = await prisma.supplier.findUnique({
+            where: { id: supplier.id },
+          });
 
           if (existingSupplier) {
             // Conflict: check timestamps
@@ -581,28 +553,27 @@ export async function POST(request: NextRequest) {
 
             if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
               // Local is newer - update
-              const updated = await prisma.supplier.update({
-                where: { id: existingSupplier.id },
+              await prisma.supplier.update({
+                where: { id: supplier.id },
                 data: {
                   name: supplier.name,
                   phone: supplier.phone || null,
                   paymentTermsDays: supplier.paymentTermsDays,
                 },
               });
-              syncedSuppliers[supplier.id?.toString() || ''] = updated.id;
-            } else {
-              syncedSuppliers[supplier.id?.toString() || ''] = existingSupplier.id;
             }
+            syncedSuppliers.push(supplier.id);
           } else {
-            // New supplier
-            const newSupplier = await prisma.supplier.create({
+            // New supplier - use client-generated ID
+            await prisma.supplier.create({
               data: {
+                id: supplier.id, // UUID migration: use client-generated ID
                 name: supplier.name,
                 phone: supplier.phone || null,
                 paymentTermsDays: supplier.paymentTermsDays,
               },
             });
-            syncedSuppliers[supplier.id?.toString() || ''] = newSupplier.id;
+            syncedSuppliers.push(supplier.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -612,19 +583,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Supplier Orders
+    // Sync Supplier Orders - UUID migration
     if (supplierOrders && supplierOrders.length > 0) {
       for (const order of supplierOrders) {
         try {
-          // Find the supplier serverId (should already be synced)
-          const supplierServerId = syncedSuppliers[order.supplierId?.toString() || ''] || order.supplierId;
-
-          let existingOrder = null;
-          if (order.serverId) {
-            existingOrder = await prisma.supplierOrder.findUnique({
-              where: { id: order.serverId },
-            });
-          }
+          // UUID migration: Check if order exists by its ID
+          let existingOrder = await prisma.supplierOrder.findUnique({
+            where: { id: order.id },
+          });
 
           if (existingOrder) {
             // Conflict: check timestamps
@@ -633,10 +599,10 @@ export async function POST(request: NextRequest) {
 
             if (localUpdatedAt && localUpdatedAt > serverUpdatedAt) {
               // Local is newer - update
-              const updated = await prisma.supplierOrder.update({
-                where: { id: existingOrder.id },
+              await prisma.supplierOrder.update({
+                where: { id: order.id },
                 data: {
-                  supplierId: supplierServerId,
+                  supplierId: order.supplierId, // UUID migration: supplierId is correct
                   orderDate: order.orderDate ? new Date(order.orderDate) : undefined,
                   deliveryDate: order.deliveryDate ? new Date(order.deliveryDate) : null,
                   totalAmount: order.totalAmount,
@@ -647,15 +613,14 @@ export async function POST(request: NextRequest) {
                   notes: order.notes || null,
                 },
               });
-              syncedSupplierOrders[order.id?.toString() || ''] = updated.id;
-            } else {
-              syncedSupplierOrders[order.id?.toString() || ''] = existingOrder.id;
             }
+            syncedSupplierOrders.push(order.id);
           } else {
-            // New order
-            const newOrder = await prisma.supplierOrder.create({
+            // New order - use client-generated ID
+            await prisma.supplierOrder.create({
               data: {
-                supplierId: supplierServerId,
+                id: order.id, // UUID migration: use client-generated ID
+                supplierId: order.supplierId, // UUID migration: supplierId is correct
                 orderDate: order.orderDate ? new Date(order.orderDate) : new Date(),
                 deliveryDate: order.deliveryDate ? new Date(order.deliveryDate) : null,
                 totalAmount: order.totalAmount,
@@ -666,7 +631,7 @@ export async function POST(request: NextRequest) {
                 notes: order.notes || null,
               },
             });
-            syncedSupplierOrders[order.id?.toString() || ''] = newOrder.id;
+            syncedSupplierOrders.push(order.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -676,25 +641,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Supplier Order Items
+    // Sync Supplier Order Items - UUID migration
     if (supplierOrderItems && supplierOrderItems.length > 0) {
       for (const item of supplierOrderItems) {
         try {
-          // Find the order serverId (should already be synced)
-          const orderServerId = syncedSupplierOrders[item.order_id?.toString() || ''] || item.order_id;
-
-          let existingItem = null;
-          if (item.serverId) {
-            existingItem = await prisma.supplierOrderItem.findUnique({
-              where: { id: item.serverId },
-            });
-          }
+          // UUID migration: Check if item exists by its ID
+          let existingItem = await prisma.supplierOrderItem.findUnique({
+            where: { id: item.id },
+          });
 
           if (!existingItem) {
-            // New order item
-            const newItem = await prisma.supplierOrderItem.create({
+            // New order item - use client-generated ID
+            await prisma.supplierOrderItem.create({
               data: {
-                orderId: orderServerId,
+                id: item.id, // UUID migration: use client-generated ID
+                orderId: item.order_id, // UUID migration: order_id is correct
                 productId: item.product_id || null,
                 productName: item.product_name,
                 category: item.category || null,
@@ -704,9 +665,9 @@ export async function POST(request: NextRequest) {
                 notes: item.notes || null,
               },
             });
-            syncedSupplierOrderItems[item.id?.toString() || ''] = newItem.id;
+            syncedSupplierOrderItems.push(item.id);
           } else {
-            syncedSupplierOrderItems[item.id?.toString() || ''] = existingItem.id;
+            syncedSupplierOrderItems.push(item.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -716,28 +677,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Supplier Returns
+    // Sync Supplier Returns - UUID migration
     if (supplierReturns && supplierReturns.length > 0) {
       for (const returnItem of supplierReturns) {
         try {
-          // Find the supplier serverId
-          const supplierServerId = syncedSuppliers[returnItem.supplierId?.toString() || ''] || returnItem.supplierId;
-          const appliedToOrderServerId = returnItem.appliedToOrderId
-            ? (syncedSupplierOrders[returnItem.appliedToOrderId.toString()] || returnItem.appliedToOrderId)
-            : null;
-
-          let existingReturn = null;
-          if (returnItem.serverId) {
-            existingReturn = await prisma.supplierReturn.findUnique({
-              where: { id: returnItem.serverId },
-            });
-          }
+          // UUID migration: Check if return exists by its ID
+          let existingReturn = await prisma.supplierReturn.findUnique({
+            where: { id: returnItem.id },
+          });
 
           if (!existingReturn) {
-            // New return
-            const newReturn = await prisma.supplierReturn.create({
+            // New return - use client-generated ID
+            await prisma.supplierReturn.create({
               data: {
-                supplierId: supplierServerId,
+                id: returnItem.id, // UUID migration: use client-generated ID
+                supplierId: returnItem.supplierId, // UUID migration: supplierId is correct
                 supplierOrderId: returnItem.supplierOrderId || null,
                 productId: returnItem.productId,
                 quantity: returnItem.quantity,
@@ -745,20 +699,20 @@ export async function POST(request: NextRequest) {
                 creditAmount: returnItem.creditAmount,
                 returnDate: returnItem.returnDate ? new Date(returnItem.returnDate) : new Date(),
                 applied: returnItem.applied,
-                appliedToOrderId: appliedToOrderServerId,
+                appliedToOrderId: returnItem.appliedToOrderId || null,
               },
             });
-            syncedSupplierReturns[returnItem.id?.toString() || ''] = newReturn.id;
+            syncedSupplierReturns.push(returnItem.id);
           } else {
             // Update existing if local is newer
-            const updated = await prisma.supplierReturn.update({
-              where: { id: existingReturn.id },
+            await prisma.supplierReturn.update({
+              where: { id: returnItem.id },
               data: {
                 applied: returnItem.applied,
-                appliedToOrderId: appliedToOrderServerId,
+                appliedToOrderId: returnItem.appliedToOrderId || null,
               },
             });
-            syncedSupplierReturns[returnItem.id?.toString() || ''] = updated.id;
+            syncedSupplierReturns.push(returnItem.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -768,39 +722,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Product-Supplier Links
+    // Sync Product-Supplier Links - UUID migration
     if (productSuppliers && productSuppliers.length > 0) {
       for (const link of productSuppliers) {
         try {
-          // Find the product and supplier serverIds
-          const productServerId = syncedProducts[link.product_id?.toString() || ''] || link.product_id;
-          const supplierServerId = syncedSuppliers[link.supplier_id?.toString() || ''] || link.supplier_id;
-
-          let existingLink = null;
-          if (link.serverId) {
-            existingLink = await prisma.productSupplier.findUnique({
-              where: { id: link.serverId },
-            });
-          }
+          // UUID migration: Check if link exists by its ID
+          let existingLink = await prisma.productSupplier.findUnique({
+            where: { id: link.id },
+          });
 
           // Also check by unique constraint (productId + supplierId)
           if (!existingLink) {
             existingLink = await prisma.productSupplier.findUnique({
               where: {
                 productId_supplierId: {
-                  productId: productServerId,
-                  supplierId: supplierServerId,
+                  productId: link.product_id, // UUID migration: product_id is correct
+                  supplierId: link.supplier_id, // UUID migration: supplier_id is correct
                 },
               },
             });
           }
 
           if (!existingLink) {
-            // New link
-            const newLink = await prisma.productSupplier.create({
+            // New link - use client-generated ID
+            await prisma.productSupplier.create({
               data: {
-                productId: productServerId,
-                supplierId: supplierServerId,
+                id: link.id, // UUID migration: use client-generated ID
+                productId: link.product_id, // UUID migration: product_id is correct
+                supplierId: link.supplier_id, // UUID migration: supplier_id is correct
                 supplierProductCode: link.supplier_product_code || null,
                 supplierProductName: link.supplier_product_name || null,
                 defaultPrice: link.default_price || null,
@@ -808,10 +757,10 @@ export async function POST(request: NextRequest) {
                 lastOrderedDate: link.last_ordered_date ? new Date(link.last_ordered_date) : null,
               },
             });
-            syncedProductSuppliers[link.id?.toString() || ''] = newLink.id;
+            syncedProductSuppliers.push(link.id);
           } else {
             // Update existing
-            const updated = await prisma.productSupplier.update({
+            await prisma.productSupplier.update({
               where: { id: existingLink.id },
               data: {
                 supplierProductCode: link.supplier_product_code || null,
@@ -821,7 +770,7 @@ export async function POST(request: NextRequest) {
                 lastOrderedDate: link.last_ordered_date ? new Date(link.last_ordered_date) : null,
               },
             });
-            syncedProductSuppliers[link.id?.toString() || ''] = updated.id;
+            syncedProductSuppliers.push(link.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -831,28 +780,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sync Credit Payments
+    // Sync Credit Payments - UUID migration
     if (creditPayments && creditPayments.length > 0) {
       for (const payment of creditPayments) {
         try {
-          // Find sale by serverId (should already be synced)
-          const saleServerId = syncedSales[payment.sale_id?.toString() || ''];
-          if (!saleServerId) {
-            errors.push(`Credit payment ${payment.id} references unsynced sale ${payment.sale_id}`);
-            continue;
-          }
-
-          let existingPayment = null;
-          if (payment.serverId) {
-            existingPayment = await prisma.creditPayment.findUnique({
-              where: { id: payment.serverId },
-            });
-          }
+          // UUID migration: Check if payment exists by its ID
+          let existingPayment = await prisma.creditPayment.findUnique({
+            where: { id: payment.id },
+          });
 
           if (!existingPayment) {
-            const newPayment = await prisma.creditPayment.create({
+            // New payment - use client-generated ID
+            await prisma.creditPayment.create({
               data: {
-                saleId: saleServerId,
+                id: payment.id, // UUID migration: use client-generated ID
+                saleId: payment.sale_id, // UUID migration: sale_id is correct
                 amount: payment.amount,
                 method: payment.payment_method,
                 reference: payment.payment_ref || null,
@@ -861,14 +803,134 @@ export async function POST(request: NextRequest) {
                 recordedBy: user.userId,
               },
             });
-            syncedCreditPayments[payment.id?.toString() || ''] = newPayment.id;
+            syncedCreditPayments.push(payment.id);
           } else {
-            syncedCreditPayments[payment.id?.toString() || ''] = existingPayment.id;
+            syncedCreditPayments.push(payment.id);
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           errors.push(`Failed to sync credit payment ${payment.id}: ${errorMsg}`);
           console.error('[API] Credit payment sync error:', error);
+        }
+      }
+    }
+
+    // Sync Stockout Reports - Phase 4
+    if (stockoutReports && stockoutReports.length > 0) {
+      for (const report of stockoutReports) {
+        try {
+          // Check if report exists by its ID
+          const existingReport = await prisma.stockoutReport.findUnique({
+            where: { id: report.id },
+          });
+
+          if (!existingReport) {
+            // New report - use client-generated ID
+            await prisma.stockoutReport.create({
+              data: {
+                id: report.id,
+                productName: report.product_name,
+                productId: report.product_id || null,
+                requestedQty: report.requested_qty,
+                customerName: report.customer_name || null,
+                customerPhone: report.customer_phone || null,
+                notes: report.notes || null,
+                reportedBy: report.reported_by || user.userId,
+                createdAt: report.created_at ? new Date(report.created_at) : new Date(),
+              },
+            });
+            syncedStockoutReports.push(report.id);
+          } else {
+            // Already exists
+            syncedStockoutReports.push(report.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync stockout report ${report.id}: ${errorMsg}`);
+          console.error('[API] Stockout report sync error:', error);
+        }
+      }
+    }
+
+    // Sync Sale Prescriptions - Phase 4
+    if (salePrescriptions && salePrescriptions.length > 0) {
+      for (const prescription of salePrescriptions) {
+        try {
+          // Check if prescription exists by its ID
+          const existingPrescription = await prisma.salePrescription.findUnique({
+            where: { id: prescription.id },
+          });
+
+          if (!existingPrescription) {
+            // New prescription - use client-generated ID
+            await prisma.salePrescription.create({
+              data: {
+                id: prescription.id,
+                saleId: prescription.sale_id,
+                imageData: prescription.image_data,
+                imageType: prescription.image_type,
+                capturedAt: prescription.captured_at ? new Date(prescription.captured_at) : new Date(),
+                notes: prescription.notes || null,
+              },
+            });
+            syncedSalePrescriptions.push(prescription.id);
+          } else {
+            // Already exists
+            syncedSalePrescriptions.push(prescription.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync sale prescription ${prescription.id}: ${errorMsg}`);
+          console.error('[API] Sale prescription sync error:', error);
+        }
+      }
+    }
+
+    // Sync Product Substitutes - Phase 4
+    if (productSubstitutes && productSubstitutes.length > 0) {
+      for (const substitute of productSubstitutes) {
+        try {
+          // Check if substitute link exists by its ID
+          const existingSubstitute = await prisma.productSubstitute.findUnique({
+            where: { id: substitute.id },
+          });
+
+          if (!existingSubstitute) {
+            // Check if this product-substitute pair already exists
+            const existingPair = await prisma.productSubstitute.findUnique({
+              where: {
+                productId_substituteId: {
+                  productId: substitute.product_id,
+                  substituteId: substitute.substitute_id,
+                },
+              },
+            });
+
+            if (!existingPair) {
+              // New substitute link - use client-generated ID
+              await prisma.productSubstitute.create({
+                data: {
+                  id: substitute.id,
+                  productId: substitute.product_id,
+                  substituteId: substitute.substitute_id,
+                  equivalenceType: substitute.equivalence_type,
+                  notes: substitute.notes || null,
+                  priority: substitute.priority || 1,
+                },
+              });
+              syncedProductSubstitutes.push(substitute.id);
+            } else {
+              // Pair already exists with different ID
+              syncedProductSubstitutes.push(substitute.id);
+            }
+          } else {
+            // Already exists
+            syncedProductSubstitutes.push(substitute.id);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`Failed to sync product substitute ${substitute.id}: ${errorMsg}`);
+          console.error('[API] Product substitute sync error:', error);
         }
       }
     }
@@ -888,6 +950,9 @@ export async function POST(request: NextRequest) {
         supplierReturns: syncedSupplierReturns,
         productSuppliers: syncedProductSuppliers,
         creditPayments: syncedCreditPayments,
+        stockoutReports: syncedStockoutReports,
+        salePrescriptions: syncedSalePrescriptions,
+        productSubstitutes: syncedProductSubstitutes,
       },
       errors: errors.length > 0 ? errors : undefined,
     });
@@ -1016,18 +1081,21 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           synced: {
-            sales: {},
-            saleItems: {},
-            expenses: {},
-            stockMovements: {},
-            products: {},
-            productBatches: {},
-            suppliers: {},
-            supplierOrders: {},
-            supplierOrderItems: {},
-            supplierReturns: {},
-            productSuppliers: {},
-            creditPayments: {},
+            sales: [],
+            saleItems: [],
+            expenses: [],
+            stockMovements: [],
+            products: [],
+            productBatches: [],
+            suppliers: [],
+            supplierOrders: [],
+            supplierOrderItems: [],
+            supplierReturns: [],
+            productSuppliers: [],
+            creditPayments: [],
+            stockoutReports: [],
+            salePrescriptions: [],
+            productSubstitutes: [],
           },
           errors: ['Non autorisé'],
         },
@@ -1039,18 +1107,21 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         synced: {
-          sales: {},
-          saleItems: {},
-          expenses: {},
-          stockMovements: {},
-          products: {},
-          productBatches: {},
-          suppliers: {},
-          supplierOrders: {},
-          supplierOrderItems: {},
-          supplierReturns: {},
-          productSuppliers: {},
-          creditPayments: {},
+          sales: [],
+          saleItems: [],
+          expenses: [],
+          stockMovements: [],
+          products: [],
+          productBatches: [],
+          suppliers: [],
+          supplierOrders: [],
+          supplierOrderItems: [],
+          supplierReturns: [],
+          productSuppliers: [],
+          creditPayments: [],
+          stockoutReports: [],
+          salePrescriptions: [],
+          productSubstitutes: [],
         },
         errors: ['Erreur serveur'],
       },

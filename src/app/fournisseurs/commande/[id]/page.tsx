@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 import { QuantitySelector } from '@/components/ui/QuantitySelector';
 import { cn } from '@/lib/client/utils';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -32,8 +32,8 @@ import type { SupplierOrder, SupplierOrderItem, Product, ProductSupplier, StockM
 import { OrderDetailSkeleton } from '@/components/ui/Skeleton';
 
 interface DeliveryItem {
-  orderItemId: number;
-  productId?: number;
+  orderItemId: string; // UUID migration: string ID
+  productId?: string; // UUID migration: string ID
   productName: string;
   category?: string; // Category for new products (from order item)
   orderedQuantity: number;
@@ -60,7 +60,7 @@ export default function OrderDetailPage() {
   const params = useParams();
   const { data: session, status } = useSession();
   const { isAuthenticated, currentUser } = useAuthStore();
-  const orderId = parseInt(params.id as string);
+  const orderId = params.id as string;
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
@@ -252,16 +252,18 @@ export default function OrderDetailPage() {
       // Wrap all database operations in a transaction for atomicity
       await db.transaction(
         'rw',
-        [db.products, db.supplier_order_items, db.product_suppliers, db.stock_movements, db.supplier_orders, db.sync_queue],
+        [db.products, db.supplier_order_items, db.product_suppliers, db.stock_movements, db.supplier_orders, db.product_batches, db.sync_queue],
         async () => {
           // Process each delivery item
           for (const deliveryItem of deliveryItems) {
             let productId = deliveryItem.productId;
 
-            // If new product, create it
+            // If new product, create it (UUID migration: generate ID client-side)
             if (deliveryItem.isNewProduct || !productId) {
               const productCategory = deliveryItem.category || 'Autre'; // Use stored category or default
-              const newProduct = await db.products.add({
+              const newProductId = generateId();
+              const newProduct = {
+                id: newProductId,
                 name: deliveryItem.productName,
                 category: productCategory,
                 price: deliveryItem.unitPrice * 1.5, // Default markup
@@ -270,9 +272,13 @@ export default function OrderDetailPage() {
                 minStock: 10,
                 synced: false,
                 updatedAt: new Date(),
-              });
+              };
+              await db.products.add(newProduct);
 
-              productId = newProduct;
+              // Queue product creation for sync
+              await queueTransaction('PRODUCT', 'CREATE', newProduct);
+
+              productId = newProductId;
 
               // Update order item with product ID and received quantity
               await db.supplier_order_items.update(deliveryItem.orderItemId, {
@@ -288,7 +294,9 @@ export default function OrderDetailPage() {
               );
 
               if (!existingLink) {
+                const productSupplierId = generateId();
                 await db.product_suppliers.add({
+                  id: productSupplierId, // UUID migration
                   product_id: productId!,
                   supplier_id: supplier.id!,
                   default_price: deliveryItem.unitPrice,
@@ -296,9 +304,18 @@ export default function OrderDetailPage() {
                   last_ordered_date: new Date(),
                   synced: false,
                 });
+
+                await queueTransaction('PRODUCT_SUPPLIER', 'CREATE', {
+                  id: productSupplierId,
+                  product_id: productId,
+                  supplier_id: supplier.id!,
+                  default_price: deliveryItem.unitPrice,
+                  is_primary: false,
+                  last_ordered_date: new Date(),
+                });
               }
 
-              // Queue product and link for sync
+              // Queue product for sync
               await queueTransaction('PRODUCT', 'CREATE', {
                 id: productId,
                 name: deliveryItem.productName,
@@ -309,12 +326,38 @@ export default function OrderDetailPage() {
                 minStock: 10,
               });
 
-              await queueTransaction('PRODUCT_SUPPLIER', 'CREATE', {
-                product_id: productId,
-                supplier_id: supplier.id!,
-                default_price: deliveryItem.unitPrice,
-                is_primary: false,
-                last_ordered_date: new Date(),
+              // 🆕 CREATE PRODUCT BATCH for new product (FEFO Phase 3) - UUID migration
+              const newProductBatchId = generateId();
+              await db.product_batches.add({
+                id: newProductBatchId,
+                product_id: productId!,
+                lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId!}`,
+                expiration_date: deliveryItem.expirationDate
+                  ? new Date(deliveryItem.expirationDate)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default: 1 year from now
+                quantity: deliveryItem.receivedQuantity,
+                initial_qty: deliveryItem.receivedQuantity,
+                unit_cost: deliveryItem.unitPrice,
+                supplier_order_id: order.id,
+                received_date: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                synced: false,
+              });
+
+              // Queue batch for sync
+              await queueTransaction('PRODUCT_BATCH', 'CREATE', {
+                id: newProductBatchId,
+                product_id: productId!,
+                lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId!}`,
+                expiration_date: deliveryItem.expirationDate
+                  ? new Date(deliveryItem.expirationDate)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                quantity: deliveryItem.receivedQuantity,
+                initial_qty: deliveryItem.receivedQuantity,
+                unit_cost: deliveryItem.unitPrice,
+                supplier_order_id: order.id,
+                received_date: new Date(),
               });
             } else {
               // Existing product - update stock
@@ -340,6 +383,40 @@ export default function OrderDetailPage() {
 
                 await db.products.update(productId, productUpdates);
 
+                // 🆕 CREATE PRODUCT BATCH (FEFO Phase 3) - UUID migration
+                const newBatchId = generateId();
+                await db.product_batches.add({
+                  id: newBatchId,
+                  product_id: productId,
+                  lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId}`,
+                  expiration_date: deliveryItem.expirationDate
+                    ? new Date(deliveryItem.expirationDate)
+                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default: 1 year from now
+                  quantity: deliveryItem.receivedQuantity,
+                  initial_qty: deliveryItem.receivedQuantity,
+                  unit_cost: deliveryItem.unitPrice,
+                  supplier_order_id: order.id,
+                  received_date: new Date(),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  synced: false,
+                });
+
+                // Queue batch for sync
+                await queueTransaction('PRODUCT_BATCH', 'CREATE', {
+                  id: newBatchId,
+                  product_id: productId,
+                  lot_number: deliveryItem.lotNumber || `LOT-${Date.now()}-${productId}`,
+                  expiration_date: deliveryItem.expirationDate
+                    ? new Date(deliveryItem.expirationDate)
+                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                  quantity: deliveryItem.receivedQuantity,
+                  initial_qty: deliveryItem.receivedQuantity,
+                  unit_cost: deliveryItem.unitPrice,
+                  supplier_order_id: order.id,
+                  received_date: new Date(),
+                });
+
                 // Queue product update for sync
                 await queueTransaction('PRODUCT', 'UPDATE', {
                   id: productId,
@@ -360,7 +437,9 @@ export default function OrderDetailPage() {
                   });
                 } else {
                   // Create link if doesn't exist
+                  const psId = generateId();
                   await db.product_suppliers.add({
+                    id: psId,
                     product_id: productId,
                     supplier_id: supplier.id!,
                     default_price: deliveryItem.unitPrice,
@@ -370,6 +449,7 @@ export default function OrderDetailPage() {
                   });
 
                   await queueTransaction('PRODUCT_SUPPLIER', 'CREATE', {
+                    id: psId,
                     product_id: productId,
                     supplier_id: supplier.id!,
                     default_price: deliveryItem.unitPrice,
@@ -382,24 +462,23 @@ export default function OrderDetailPage() {
 
             // Create stock movement (only if we have a product ID)
             if (productId) {
+              const movementId = generateId();
               const movement: StockMovement = {
+                id: movementId,
                 product_id: productId,
                 type: 'RECEIPT',
                 quantity_change: deliveryItem.receivedQuantity,
-                reason: `Réception commande #${order.id} - ${supplier.name}`,
+                reason: `Réception commande ${order.orderNumber || '#' + order.id?.slice(0, 8)} - ${supplier.name}`,
                 created_at: new Date(),
                 user_id: currentUser.id,
                 supplier_order_id: order.id,
                 synced: false,
               };
 
-              const movementId = await db.stock_movements.add(movement);
+              await db.stock_movements.add(movement);
 
               // Queue stock movement for sync
-              await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
-                ...movement,
-                id: movementId,
-              });
+              await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
             }
           }
 
@@ -567,7 +646,7 @@ export default function OrderDetailPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate">Commande #{order.id}</h1>
+            <h1 className="text-xl font-bold truncate">Commande {order.orderNumber || `#${order.id?.slice(0, 8)}`}</h1>
             <p className="text-sm text-slate-400 truncate">{supplier.name}</p>
           </div>
         </div>

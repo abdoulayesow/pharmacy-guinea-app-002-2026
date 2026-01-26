@@ -62,8 +62,7 @@ export const SupplierOrderPaymentStatusSchema = z.enum(['PENDING', 'PAID', 'UNPA
 // ============================================================================
 
 export const ProductSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
+  id: z.string().optional(), // UUID migration: string ID
   name: z.string().min(1, 'Le nom du produit est requis').max(200),
   category: z.string().max(100).optional(),
   price: z.number().int().min(0, 'Le prix de vente doit être positif'),
@@ -84,17 +83,16 @@ export type ProductOutput = z.output<typeof ProductSchema>;
 // ============================================================================
 
 export const SaleItemSchema = z.object({
-  id: z.number().optional(),
-  sale_id: z.number().optional(),
-  product_id: z.number().min(1, 'ID du produit requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  sale_id: z.string().optional(), // UUID migration: string FK
+  product_id: z.string().min(1, 'ID du produit requis'), // UUID migration: string FK
   quantity: z.number().int().min(1, 'La quantité doit être au moins 1'),
   unit_price: z.number().int().min(0, 'Le prix unitaire doit être positif'),
   subtotal: z.number().int().min(0, 'Le sous-total doit être positif'),
 });
 
 export const SaleSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
+  id: z.string().optional(), // UUID migration: string ID
   total: z.number().int().min(0, 'Le total doit être positif'),
   payment_method: PaymentMethodSchema,
   payment_status: PaymentStatusSchema.default('PAID'),
@@ -121,14 +119,13 @@ export type SaleInput = z.input<typeof SaleSchema>;
 // ============================================================================
 
 export const ExpenseSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
+  id: z.string().optional(), // UUID migration: string ID
   amount: z.number().int().min(0, 'Le montant doit être positif'),
   category: ExpenseCategorySchema,
   description: z.string().min(1, 'La description est requise').max(500),
   date: z.date().default(() => new Date()),
   created_at: z.date().default(() => new Date()),
-  supplier_order_id: z.number().optional(),
+  supplier_order_id: z.string().optional(), // UUID migration: string FK
   user_id: z.string().min(1, 'ID utilisateur requis'),
   synced: z.boolean().default(false),
   updatedAt: z.date().optional(),
@@ -141,14 +138,13 @@ export type ExpenseInput = z.input<typeof ExpenseSchema>;
 // ============================================================================
 
 export const StockMovementSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  product_id: z.number().min(1, 'ID du produit requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  product_id: z.string().min(1, 'ID du produit requis'), // UUID migration: string FK
   type: StockMovementTypeSchema,
   quantity_change: z.number().int(), // Can be negative
   reason: z.string().max(500).optional(),
   created_at: z.date().default(() => new Date()),
-  supplier_order_id: z.number().optional(),
+  supplier_order_id: z.string().optional(), // UUID migration: string FK
   user_id: z.string().min(1, 'ID utilisateur requis'),
   synced: z.boolean().default(false),
   updatedAt: z.date().optional(),
@@ -161,8 +157,7 @@ export type StockMovementInput = z.input<typeof StockMovementSchema>;
 // ============================================================================
 
 export const SupplierSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
+  id: z.string().optional(), // UUID migration: string ID
   name: z.string().min(1, 'Le nom du fournisseur est requis').max(200),
   phone: z.string().max(20).optional(),
   paymentTermsDays: z.number().int().min(0).default(30),
@@ -172,9 +167,8 @@ export const SupplierSchema = z.object({
 });
 
 export const SupplierOrderSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  supplierId: z.number().min(1, 'ID du fournisseur requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  supplierId: z.string().min(1, 'ID du fournisseur requis'), // UUID migration: string FK
   type: z.enum(['ORDER', 'RETURN']).default('ORDER'),
   orderDate: z.date().default(() => new Date()),
   deliveryDate: z.date().optional(),
@@ -187,17 +181,16 @@ export const SupplierOrderSchema = z.object({
   cancelledAt: z.date().optional(),
   notes: z.string().max(1000).optional(),
   returnReason: ReturnReasonSchema.optional(),
-  returnProductId: z.number().optional(),
+  returnProductId: z.string().optional(), // UUID migration: string FK
   createdAt: z.date().default(() => new Date()),
   updatedAt: z.date().optional(),
   synced: z.boolean().default(false),
 });
 
 export const SupplierOrderItemSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  order_id: z.number().min(1, 'ID de commande requis'),
-  product_id: z.number().optional(), // Null if new product not yet created
+  id: z.string().optional(), // UUID migration: string ID
+  order_id: z.string().min(1, 'ID de commande requis'), // UUID migration: string FK
+  product_id: z.string().optional(), // UUID migration: string FK, null if new product not yet created
   product_name: z.string().min(1, 'Le nom du produit est requis').max(200),
   category: z.string().max(100).optional(),
   quantity: z.number().int().min(1, 'La quantité doit être au moins 1'),
@@ -211,10 +204,9 @@ export const SupplierOrderItemSchema = z.object({
 });
 
 export const ProductSupplierSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  product_id: z.number().min(1, 'ID du produit requis'),
-  supplier_id: z.number().min(1, 'ID du fournisseur requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  product_id: z.string().min(1, 'ID du produit requis'), // UUID migration: string FK
+  supplier_id: z.string().min(1, 'ID du fournisseur requis'), // UUID migration: string FK
   supplier_product_code: z.string().max(100).optional(),
   supplier_product_name: z.string().max(200).optional(),
   default_price: z.number().int().min(0).optional(),
@@ -226,17 +218,16 @@ export const ProductSupplierSchema = z.object({
 });
 
 export const SupplierReturnSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  supplierId: z.number().min(1, 'ID du fournisseur requis'),
-  supplierOrderId: z.number().optional(),
-  productId: z.number().min(1, 'ID du produit requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  supplierId: z.string().min(1, 'ID du fournisseur requis'), // UUID migration: string FK
+  supplierOrderId: z.string().optional(), // UUID migration: string FK
+  productId: z.string().min(1, 'ID du produit requis'), // UUID migration: string FK
   quantity: z.number().int().min(1, 'La quantité doit être au moins 1'),
   reason: ReturnReasonSchema,
   creditAmount: z.number().int().min(0, 'Le montant du crédit doit être positif'),
   returnDate: z.date().default(() => new Date()),
   applied: z.boolean().default(false),
-  appliedToOrderId: z.number().optional(),
+  appliedToOrderId: z.string().optional(), // UUID migration: string FK
   createdAt: z.date().default(() => new Date()),
   synced: z.boolean().default(false),
   updatedAt: z.date().optional(),
@@ -247,9 +238,8 @@ export const SupplierReturnSchema = z.object({
 // ============================================================================
 
 export const CreditPaymentSchema = z.object({
-  id: z.number().optional(),
-  serverId: z.number().optional(),
-  sale_id: z.number().min(1, 'ID de vente requis'),
+  id: z.string().optional(), // UUID migration: string ID
+  sale_id: z.string().min(1, 'ID de vente requis'), // UUID migration: string FK
   amount: z.number().int().min(1, 'Le montant doit être positif'),
   method: z.enum(['CASH', 'ORANGE_MONEY']),
   reference: z.string().max(200).optional(),

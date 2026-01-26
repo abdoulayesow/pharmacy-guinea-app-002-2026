@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession, signOut } from 'next-auth/react';
 import { toast } from 'sonner';
 import {
   User,
+  Users,
   Database,
   Trash2,
   Key,
@@ -26,6 +28,7 @@ import {
   Clock,
   RefreshCw,
   Search,
+  ChevronRight,
 } from 'lucide-react';
 import { db, clearDatabase, getDatabaseStats, seedInitialData } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
@@ -818,6 +821,27 @@ export default function ParametresPage() {
             )}
           </div>
         </div>
+
+        {/* User Management - Owner Only */}
+        {isOwner && (
+          <Link
+            href="/parametres/utilisateurs"
+            className="block bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700 hover:border-emerald-500/30 transition-all duration-200 active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20">
+                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-white font-semibold text-base sm:text-lg">Gestion des utilisateurs</h3>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  {users.length} utilisateur{users.length > 1 ? 's' : ''} • Ajouter, modifier, supprimer
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-400" />
+            </div>
+          </Link>
+        )}
 
         {/* Session & Timeouts */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-700">

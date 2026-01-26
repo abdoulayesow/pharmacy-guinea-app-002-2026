@@ -79,19 +79,21 @@ export function CustomerAutocomplete({
       if (existing) {
         existing.purchaseCount += 1;
         existing.totalSpent += sale.total;
-        if (sale.created_at > existing.lastPurchaseDate) {
-          existing.lastPurchaseDate = sale.created_at;
+        const saleDate = sale.created_at instanceof Date ? sale.created_at : new Date(sale.created_at);
+        if (saleDate > existing.lastPurchaseDate) {
+          existing.lastPurchaseDate = saleDate;
           // Update phone if more recent sale has phone info
           if (sale.customer_phone) {
             existing.phone = sale.customer_phone;
           }
         }
       } else {
+        const saleDate = sale.created_at instanceof Date ? sale.created_at : new Date(sale.created_at);
         customerMap.set(sale.customer_name.toLowerCase(), {
           name: sale.customer_name,
           phone: sale.customer_phone,
           purchaseCount: 1,
-          lastPurchaseDate: sale.created_at,
+          lastPurchaseDate: saleDate,
           totalSpent: sale.total,
         });
       }

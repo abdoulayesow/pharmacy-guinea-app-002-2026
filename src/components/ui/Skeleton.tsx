@@ -184,3 +184,80 @@ export function ProductListSkeleton({ count = 6 }: { count?: number }) {
     </div>
   );
 }
+
+/**
+ * Skeleton for a sale card in the list (dark mode optimized)
+ */
+export function SaleCardSkeleton() {
+  return (
+    <div className="bg-slate-900 rounded-xl p-4 border border-slate-700">
+      <div className="flex items-start gap-3 mb-3">
+        {/* Icon placeholder */}
+        <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+        <div className="flex-1 min-w-0">
+          <Skeleton className="h-5 w-28 mb-2" />
+          <Skeleton className="h-4 w-24 mb-1" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+        {/* Status badge */}
+        <Skeleton className="h-7 w-20 rounded-lg shrink-0" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for the sales list page
+ */
+export function SalesListSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <SaleCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton for an expense card in the list (dark mode optimized)
+ */
+export function ExpenseCardSkeleton() {
+  return (
+    <div className="bg-slate-900 rounded-xl p-4 border border-slate-700">
+      <div className="flex items-start gap-3">
+        {/* Icon placeholder */}
+        <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <Skeleton className="h-5 w-36 mb-2" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <Skeleton className="h-6 w-28" />
+          </div>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-700">
+            <Skeleton className="h-4 w-24" />
+            <div className="flex gap-1">
+              <Skeleton className="w-8 h-8 rounded-lg" />
+              <Skeleton className="w-8 h-8 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for the expense list page
+ */
+export function ExpenseListSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <ExpenseCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}

@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/client/db';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import {
   ArrowLeft, Printer, Share2, Banknote, Smartphone, FileText, CheckCircle,
   Clock, AlertCircle, Plus, Receipt, Edit2, Info, X, Minus, Package
@@ -510,6 +510,7 @@ function PaymentFormModal({ sale, onClose }: { sale: any; onClose: () => void })
       }
 
       const payment: CreditPayment = {
+        id: generateId(),
         sale_id: sale.id!,
         amount: paymentAmount,
         payment_method: paymentMethod,
@@ -532,7 +533,7 @@ function PaymentFormModal({ sale, onClose }: { sale: any; onClose: () => void })
         payment_status: newStatus,
       });
 
-      await queueTransaction('CREDIT_PAYMENT', 'CREATE', payment, String(sale.id!));
+      await queueTransaction('CREDIT_PAYMENT', 'CREATE', payment);
 
       toast.success('Paiement enregistré');
       onClose();

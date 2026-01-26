@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, FormEvent, useMemo } from 'react';
+import { useState, FormEvent, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from 'next-auth/react';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/lib/client/db';
 import { queueTransaction } from '@/lib/client/sync';
@@ -12,7 +13,7 @@ import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 import { MobileSearchBar } from '@/components/ui/MobileSearchBar';
 import { QuantitySelector } from '@/components/ui/QuantitySelector';
 import { cn } from '@/lib/client/utils';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -28,7 +29,7 @@ import type { Product, SupplierOrderItem, ProductSupplier } from '@/lib/shared/t
 
 interface OrderItem {
   id?: string; // Temporary ID for items not yet saved
-  product_id?: number;
+  product_id?: string; // UUID migration: string ID
   product_name: string;
   category?: string; // Category for new products (stored for creation during delivery)
   quantity: number;
@@ -49,10 +50,27 @@ const CATEGORIES = [
   'Autre',
 ];
 
-export default function NewOrderPage() {
+// Helper to generate readable order number
+function generateOrderNumber(): string {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `CMD-${dateStr}-${random}`;
+}
+
+function NewOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const { currentUser } = useAuthStore();
+
+  // Use currentUser from store, fallback to session user
+  const activeUser = currentUser || (session?.user ? {
+    id: session.user.id,
+    name: session.user.name || 'Utilisateur',
+    role: session.user.role || 'EMPLOYEE'
+  } : null);
+
   const preselectedSupplierId = searchParams.get('supplierId');
 
   const [supplierId, setSupplierId] = useState(preselectedSupplierId || '');
@@ -82,7 +100,7 @@ export default function NewOrderPage() {
   const suppliers = useLiveQuery(() => db.suppliers.toArray()) ?? [];
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
   const productSuppliers = useLiveQuery(() => db.product_suppliers.toArray()) ?? [];
-  const selectedSupplier = suppliers.find(s => s.id === parseInt(supplierId));
+  const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
   // Get products linked to selected supplier
   // If no products are linked yet, show all products (allows ordering before links are set up)
@@ -139,7 +157,7 @@ export default function NewOrderPage() {
     setSelectedProduct(product);
     // Get last price from supplier if available
     const productSupplier = productSuppliers.find(
-      ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
+      ps => ps.product_id === product.id && ps.supplier_id === supplierId
     );
     setUnitPrice(productSupplier?.default_price || product.priceBuy || product.price);
     setQuantity(1);
@@ -296,17 +314,17 @@ export default function NewOrderPage() {
     console.log('Validation check:', {
       supplierId,
       orderDate,
-      currentUser,
+      activeUser,
       dueDate,
       selectedSupplier
     });
 
-    if (!supplierId || !orderDate || !currentUser) {
+    if (!supplierId || !orderDate || !activeUser) {
       if (!supplierId) {
         toast.error('Veuillez sélectionner un fournisseur');
       } else if (!orderDate) {
         toast.error('Veuillez sélectionner une date de commande');
-      } else if (!currentUser) {
+      } else if (!activeUser) {
         toast.error('Session utilisateur non valide');
       }
       return;
@@ -320,9 +338,13 @@ export default function NewOrderPage() {
     setIsSubmitting(true);
 
     try {
-      // Create order
-      const orderId = await db.supplier_orders.add({
-        supplierId: parseInt(supplierId),
+      // Create order with UUID and readable order number
+      const orderId = generateId();
+      const orderNumber = generateOrderNumber();
+      await db.supplier_orders.add({
+        id: orderId,
+        orderNumber: orderNumber,
+        supplierId: supplierId,
         type: 'ORDER',
         orderDate: new Date(orderDate),
         deliveryDate: undefined,
@@ -340,7 +362,9 @@ export default function NewOrderPage() {
 
       // Create order items
       for (const item of orderItems) {
+        const itemId = generateId();
         await db.supplier_order_items.add({
+          id: itemId,
           order_id: orderId,
           product_id: item.product_id,
           product_name: item.product_name,
@@ -356,7 +380,7 @@ export default function NewOrderPage() {
       // Queue for sync
       await queueTransaction('SUPPLIER_ORDER', 'CREATE', {
         id: orderId,
-        supplierId: parseInt(supplierId),
+        supplierId: supplierId,
         orderDate: new Date(orderDate),
         deliveryDate: undefined,
         totalAmount: calculatedTotal,
@@ -367,7 +391,7 @@ export default function NewOrderPage() {
         notes: notes.trim() || undefined,
       });
 
-      toast.success('Commande créée avec succès');
+      toast.success(`Commande ${orderNumber} créée avec succès`);
       router.push(`/fournisseurs/${supplierId}`);
     } catch (error) {
       console.error('Error creating order:', error);
@@ -739,7 +763,7 @@ export default function NewOrderPage() {
                 </p>
                 {filteredProducts.map((product) => {
                   const productSupplier = productSuppliers.find(
-                    ps => ps.product_id === product.id && ps.supplier_id === parseInt(supplierId)
+                    ps => ps.product_id === product.id && ps.supplier_id === supplierId
                   );
                   const lastPrice = productSupplier?.default_price;
 
@@ -945,5 +969,18 @@ export default function NewOrderPage() {
         </div>
       </MobileBottomSheet>
     </div>
+  );
+}
+
+// Wrapper with Suspense for useSearchParams
+export default function NewOrderPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <div className="text-white">Chargement...</div>
+      </div>
+    }>
+      <NewOrderPageContent />
+    </Suspense>
   );
 }

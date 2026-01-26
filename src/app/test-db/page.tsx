@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { db, selectBatchForSale } from '@/lib/client/db';
 
 interface BatchInfo {
-  id?: number;
+  id?: string;
   lot_number: string;
   quantity: number;
   initial_qty: number;
@@ -12,7 +12,7 @@ interface BatchInfo {
 }
 
 interface ProductInfo {
-  id?: number;
+  id?: string;
   name: string;
   stock: number;
 }
@@ -22,7 +22,7 @@ interface TestResult {
   totalProducts: number;
   allProducts: ProductInfo[];
   paracetamolName?: string;
-  paracetamolId?: number;
+  paracetamolId?: string;
   paracetamolStock?: number;
   batches: BatchInfo[];
   totalBatchQty: number;

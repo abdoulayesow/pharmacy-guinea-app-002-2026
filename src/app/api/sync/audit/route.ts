@@ -35,25 +35,25 @@ import { prisma } from '@/lib/server/prisma';
 import type { UserRole } from '@/lib/shared/types';
 
 interface ProductSnapshot {
-  id: number | string; // Can be number or string from IndexedDB
+  id: string;
   stock: number;
   updatedAt: string;
 }
 
 interface SaleSnapshot {
-  id: number | string; // Can be number or string from IndexedDB
+  id: string;
   total: number;
   createdAt: string;
 }
 
 interface StockMovementSnapshot {
-  id: number | string; // Can be number or string from IndexedDB
-  productId: number | string; // Can be number or string from IndexedDB
+  id: string;
+  productId: string;
   quantityChange: number;
 }
 
 interface ExpenseSnapshot {
-  id: number | string; // Can be number or string from IndexedDB
+  id: string;
   amount: number;
 }
 
@@ -155,11 +155,8 @@ async function auditProducts(localProducts: ProductSnapshot[]) {
   let matches = 0;
 
   for (const local of localProducts) {
-    // Convert id to number if it's a string
-    const productId = typeof local.id === 'string' ? parseInt(local.id, 10) : local.id;
-
     const server = await prisma.product.findUnique({
-      where: { id: productId },
+      where: { id: local.id },
       select: { id: true, stock: true, updatedAt: true, name: true },
     });
 
@@ -199,11 +196,8 @@ async function auditSales(localSales: SaleSnapshot[]) {
   let matches = 0;
 
   for (const local of localSales) {
-    // Convert id to number if it's a string
-    const saleId = typeof local.id === 'string' ? parseInt(local.id, 10) : local.id;
-
     const server = await prisma.sale.findUnique({
-      where: { id: saleId },
+      where: { id: local.id },
       select: { id: true, total: true, createdAt: true },
     });
 
@@ -242,11 +236,8 @@ async function auditStockMovements(localMovements: StockMovementSnapshot[]) {
   let matches = 0;
 
   for (const local of localMovements) {
-    // Convert id to number if it's a string
-    const movementId = typeof local.id === 'string' ? parseInt(local.id, 10) : local.id;
-
     const server = await prisma.stockMovement.findUnique({
-      where: { id: movementId },
+      where: { id: local.id },
       select: {
         id: true,
         productId: true,
@@ -294,11 +285,8 @@ async function auditExpenses(localExpenses: ExpenseSnapshot[]) {
   let matches = 0;
 
   for (const local of localExpenses) {
-    // Convert id to number if it's a string
-    const expenseId = typeof local.id === 'string' ? parseInt(local.id, 10) : local.id;
-
     const server = await prisma.expense.findUnique({
-      where: { id: expenseId },
+      where: { id: local.id },
       select: {
         id: true,
         amount: true,

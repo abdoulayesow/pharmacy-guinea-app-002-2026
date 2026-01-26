@@ -91,7 +91,7 @@ async function checkPostgresData() {
       console.log(`  Found ${batches.length} batches:\n`);
 
       // Group by product
-      const batchesByProduct: Record<number, any[]> = {};
+      const batchesByProduct: Record<string, any[]> = {};
       for (const batch of batches) {
         if (!batchesByProduct[batch.productId]) {
           batchesByProduct[batch.productId] = [];

@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, Suspense } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { db } from '@/lib/client/db';
 import { useAuthStore } from '@/stores/auth';
 import { useSyncStore } from '@/stores/sync';
-import { useRouter } from 'next/navigation';
-import { formatCurrency, formatDate } from '@/lib/shared/utils';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { formatCurrency, formatDate, generateId } from '@/lib/shared/utils';
 import { queueTransaction } from '@/lib/client/sync';
 import { cn } from '@/lib/client/utils';
 import { Header } from '@/components/Header';
@@ -29,10 +30,12 @@ import {
   Hash,
   ChevronDown,
   ChevronUp,
+  History,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
-import { getExpirationStatus, getExpirationSummary, sortByExpirationDate } from '@/lib/client/expiration';
+import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
 import { getExpirationAlertLevel } from '@/lib/client/db';
+import { SubstituteLinkingSection } from '@/components/features/SubstituteLinkingSection';
 
 const CATEGORIES = [
   'Antidouleur',
@@ -53,8 +56,9 @@ const MOVEMENT_TYPES: { value: StockMovementType; label: string }[] = [
   { value: 'EXPIRED', label: 'Périmé' },
 ];
 
-export default function StocksPage() {
+function StocksPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
   const { isAuthenticated, currentUser, isInactive, lastActivityAt } = useAuthStore();
   const { updatePendingCount } = useSyncStore();
@@ -64,21 +68,26 @@ export default function StocksPage() {
   const isRecentlyActive = hasGoogleSession && lastActivityAt && !isInactive();
   const isFullyAuthenticated = isAuthenticated || isRecentlyActive;
   const [selectedCategory, setSelectedCategory] = useState('Tous');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>('all'); // 🆕
+
+  // Read initial filter from URL params (e.g., /stocks?filter=expiring)
+  const urlFilter = searchParams.get('filter') as 'all' | 'alerts' | 'expiring' | null;
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'alerts' | 'expiring'>(
+    urlFilter === 'expiring' || urlFilter === 'alerts' ? urlFilter : 'all'
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // 🆕 Batch receipt modal states
   const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchProductId, setBatchProductId] = useState<number | null>(null);
+  const [batchProductId, setBatchProductId] = useState<string | null>(null);
   const [batchLotNumber, setBatchLotNumber] = useState('');
   const [batchExpirationDate, setBatchExpirationDate] = useState('');
   const [batchQuantity, setBatchQuantity] = useState('');
   const [batchUnitCost, setBatchUnitCost] = useState('');
 
   // 🆕 Expanded batches state (track which products show batch details)
-  const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
 
   // Stock adjustment modal states
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -151,6 +160,11 @@ export default function StocksPage() {
   // 🆕 Get batches for all products
   const allBatches = useLiveQuery(() => db.product_batches.toArray()) ?? [];
 
+  // Build set of product IDs with expiring batches for filter
+  const productsWithExpiringBatches = new Set(
+    getAlertBatchesWithProducts(allBatches, products).map(b => b.product_id)
+  );
+
   // Filter products
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -161,22 +175,25 @@ export default function StocksPage() {
       selectedCategory === 'Tous' ||
       product.category === selectedCategory;
 
-    // 🆕 Apply filter by type (all, alerts, expiring)
+    // Apply filter by type (all, alerts, expiring)
     let matchesFilter = true;
     if (selectedFilter === 'alerts') {
       matchesFilter = product.stock <= product.minStock;
     } else if (selectedFilter === 'expiring') {
-      if (!product.expirationDate) return false;
-      const expInfo = getExpirationStatus(product.expirationDate);
-      matchesFilter = expInfo.status === 'warning' || expInfo.status === 'critical' || expInfo.status === 'expired';
+      // Check both product-level expiration AND batch-level expiration
+      const hasExpiringProduct = product.expirationDate &&
+        ['warning', 'critical', 'expired'].includes(getExpirationStatus(product.expirationDate).status);
+      const hasExpiringBatch = productsWithExpiringBatches.has(product.id!);
+      matchesFilter = hasExpiringProduct || hasExpiringBatch;
     }
 
     return matchesSearch && matchesCategory && matchesFilter;
   });
 
-  // Calculate stats
+  // Calculate stats - use batch-level if available, fallback to product-level
   const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length;
-  const expirationSummary = getExpirationSummary(products); // 🆕
+  const batchExpirationSummary = getBatchExpirationSummary(allBatches);
+  const expirationSummary = allBatches.length > 0 ? batchExpirationSummary : getExpirationSummary(products);
 
   // Stock level indicator - red (zero), gray (low), emerald (good)
   const getStockLevel = (product: Product) => {
@@ -247,14 +264,13 @@ export default function StocksPage() {
         id: editingProduct.id,
       });
     } else {
-      // Add new product
-      const id = await db.products.add(productData);
+      // Add new product with UUID
+      const productId = generateId();
+      const newProduct = { ...productData, id: productId };
+      await db.products.add(newProduct);
 
       // Queue product creation for sync
-      await queueTransaction('PRODUCT', 'CREATE', {
-        ...productData,
-        id,
-      });
+      await queueTransaction('PRODUCT', 'CREATE', newProduct);
     }
 
     await updatePendingCount();
@@ -282,7 +298,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Open batch receipt modal
-  const handleOpenBatchReceipt = (productId: number) => {
+  const handleOpenBatchReceipt = (productId: string) => {
     setBatchProductId(productId);
     setBatchLotNumber('');
     setBatchExpirationDate('');
@@ -322,8 +338,10 @@ export default function StocksPage() {
       return;
     }
 
-    // 1. Create ProductBatch record
+    // 1. Create ProductBatch record with UUID
+    const batchId = generateId();
     const batch = {
+      id: batchId,
       product_id: batchProductId,
       lot_number: batchLotNumber.trim(),
       expiration_date: expirationDate,
@@ -336,10 +354,12 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const batchId = await db.product_batches.add(batch);
+    await db.product_batches.add(batch);
 
-    // 2. Create stock movement for receipt
+    // 2. Create stock movement for receipt with UUID
+    const movementId = generateId();
     const movement = {
+      id: movementId,
       product_id: batchProductId,
       type: 'RECEIPT' as StockMovementType,
       quantity_change: quantity,
@@ -349,7 +369,7 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const movementId = await db.stock_movements.add(movement);
+    await db.stock_movements.add(movement);
 
     // 3. Update product stock
     const product = products.find(p => p.id === batchProductId);
@@ -362,15 +382,9 @@ export default function StocksPage() {
       });
 
       // 4. Queue for sync
-      await queueTransaction('PRODUCT_BATCH', 'CREATE', {
-        ...batch,
-        id: batchId,
-      });
+      await queueTransaction('PRODUCT_BATCH', 'CREATE', batch);
 
-      await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
-        ...movement,
-        id: movementId,
-      });
+      await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
 
       await queueTransaction('PRODUCT', 'UPDATE', {
         id: batchProductId,
@@ -387,7 +401,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Toggle batch expansion
-  const toggleBatchExpansion = (productId: number) => {
+  const toggleBatchExpansion = (productId: string) => {
     setExpandedBatches(prev => {
       const next = new Set(prev);
       if (next.has(productId)) {
@@ -400,7 +414,7 @@ export default function StocksPage() {
   };
 
   // 🆕 Get batches for a product
-  const getBatchesForProduct = (productId: number): ProductBatch[] => {
+  const getBatchesForProduct = (productId: string): ProductBatch[] => {
     return allBatches
       .filter(b => b.product_id === productId && b.quantity > 0)
       .sort((a, b) => {
@@ -429,8 +443,10 @@ export default function StocksPage() {
       return;
     }
 
-    // 1. Create stock movement record
+    // 1. Create stock movement record with UUID
+    const movementId = generateId();
     const movement = {
+      id: movementId,
       product_id: adjustingProduct.id!,
       type: adjustmentType,
       quantity_change: quantityChange,
@@ -440,7 +456,7 @@ export default function StocksPage() {
       synced: false,
     };
 
-    const movementId = await db.stock_movements.add(movement);
+    await db.stock_movements.add(movement);
 
     // 2. Update product stock
     await db.products.update(adjustingProduct.id!, {
@@ -450,10 +466,7 @@ export default function StocksPage() {
     });
 
     // 3. Queue stock movement for sync
-    await queueTransaction('STOCK_MOVEMENT', 'CREATE', {
-      ...movement,
-      id: movementId,
-    });
+    await queueTransaction('STOCK_MOVEMENT', 'CREATE', movement);
 
     // 4. Queue product update for sync
     await queueTransaction('PRODUCT', 'UPDATE', {
@@ -484,15 +497,13 @@ export default function StocksPage() {
                 <h2 className="text-white text-lg font-bold">Stock</h2>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleOpenAdd}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg h-10 px-3 font-semibold text-xs"
-              >
-                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
-                Nouveau produit
-              </Button>
-            </div>
+            <Link
+              href="/stocks/historique"
+              className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 rounded-lg transition-all duration-200 ring-1 ring-purple-500/30 active:scale-95"
+            >
+              <History className="w-4 h-4" />
+              <span className="text-sm font-medium">Historique</span>
+            </Link>
           </div>
 
           {/* Search Bar - Dark Theme */}
@@ -901,9 +912,17 @@ export default function StocksPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
-                  💡 La date d&apos;expiration permettra de suivre les produits périmés et d&apos;envoyer des alertes
+                  La date d&apos;expiration permettra de suivre les produits périmés et d&apos;envoyer des alertes
                 </p>
               </div>
+
+              {/* Substitute Linking Section - Only show when editing */}
+              {editingProduct && editingProduct.id && (
+                <SubstituteLinkingSection
+                  productId={editingProduct.id}
+                  productName={editingProduct.name}
+                />
+              )}
 
               {/* Submit Buttons */}
               <div className="flex gap-3 pt-4">
@@ -1212,7 +1231,29 @@ export default function StocksPage() {
         </div>
       )}
 
+      {/* FAB - Add Product */}
+      <button
+        onClick={handleOpenAdd}
+        className="fixed right-4 bottom-24 w-14 h-14 bg-purple-600 hover:bg-purple-500 text-white rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 ring-4 ring-purple-500/20 hover:ring-8"
+        aria-label="Ajouter un produit"
+      >
+        <Plus className="w-7 h-7" />
+      </button>
+
       <Navigation />
     </div>
+  );
+}
+
+// Wrapper with Suspense for useSearchParams
+export default function StocksPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <div className="text-white">Chargement...</div>
+      </div>
+    }>
+      <StocksPageContent />
+    </Suspense>
   );
 }

@@ -159,10 +159,17 @@ type SyncStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
 // Tables
 Users: id, name, pin_hash, role, created_at
 Products: id, name, price_sell, price_buy, stock_quantity, stock_min, created_at, updated_at, synced
+ProductBatches: id, product_id, lot_number, expiration_date, quantity, initial_qty, unit_cost, supplier_order_id, received_date, synced
 Sales: id, created_at, total, payment_method, payment_ref, user_id, synced
-SaleItems: id, sale_id, product_id, quantity, unit_price, subtotal
+SaleItems: id, sale_id, product_id, product_batch_id, quantity, unit_price, subtotal
 Expenses: id, amount, category, description, date, created_at, synced, user_id
 StockMovements: id, product_id, type, quantity_change, reason, created_at, user_id, synced
+Suppliers: id, name, phone, payment_terms_days, created_at, updated_at, synced
+SupplierOrders: id, supplier_id, type, order_date, delivery_date, total_amount, status, payment_status, synced
+SupplierOrderItems: id, order_id, product_id, product_name, quantity, unit_price, subtotal, synced
+SupplierReturns: id, supplier_id, product_id, quantity, reason, credit_amount, applied, synced
+ProductSuppliers: id, product_id, supplier_id, default_price, is_primary, synced
+CreditPayments: id, sale_id, amount, payment_method, payment_date, synced
 SyncQueue: id, type, payload, status, created_at, retry_count, last_error
 ```
 
@@ -188,13 +195,14 @@ Connection is a bonus.
 ```javascript
 {
   id: "uuid-v4",
-  type: "SALE" | "STOCK_ADJUSTMENT" | "EXPENSE" | "PRODUCT" | "STOCK_MOVEMENT" | "USER",
+  type: "SALE" | "EXPENSE" | "PRODUCT" | "PRODUCT_BATCH" | "STOCK_MOVEMENT" | "SUPPLIER" | "SUPPLIER_ORDER" | "SUPPLIER_ORDER_ITEM" | "SUPPLIER_RETURN" | "PRODUCT_SUPPLIER" | "CREDIT_PAYMENT" | "USER",
   action: "CREATE" | "UPDATE" | "DELETE" | "UPDATE_PIN",
   payload: { /* transaction data */ },
   created_at: "2026-01-15T10:30:00Z",
   status: "PENDING" | "SYNCING" | "SYNCED" | "FAILED",
   retry_count: 0,
-  last_error: null
+  last_error: null,
+  idempotencyKey: "uuid-v4" // Prevents duplicate transactions on retry
 }
 ```
 
@@ -206,6 +214,56 @@ Connection is a bonus.
 - **Background Sync**: Automatic pull every 5 minutes when online
 - **Initial Sync**: Full data pull on first login
 - **Sync Status**: UI shows last push/pull times and pending count
+- **Idempotency**: Uses UUID keys to prevent duplicate transactions on retry
+
+### FEFO Batch Tracking (Phase 3 - Completed)
+
+**Status:** ✅ Fully implemented
+
+**Overview:**
+- Track product batches with expiration dates (First Expired, First Out)
+- Link batches to supplier orders for full traceability
+- Auto-deduct from oldest batches during sales
+- Alert users about expiring products
+
+**Architecture:**
+
+```
+Supplier Order Delivery
+    ↓
+ProductBatch Created (lot, expiry, qty, supplier_order_id)
+    ↓
+FEFO Selection Algorithm (sort by expiry ASC)
+    ↓
+Batch Quantity Deducted on Sale
+    ↓
+SaleItem tracks product_batch_id
+    ↓
+Sync to PostgreSQL (bidirectional)
+```
+
+**Implemented Features:**
+
+1. **✅ Batch Creation** - `src/app/fournisseurs/commande/[id]/page.tsx:329-418`
+   - Delivery confirmation creates ProductBatch records for both new and existing products
+   - Includes lot number, expiration date, quantity, supplier order linkage
+
+2. **✅ FEFO Sales Deduction** - `src/app/ventes/nouvelle/page.tsx:247-318`
+   - Uses `selectBatchForSale()` to allocate from earliest-expiring batches
+   - Sale items track `product_batch_id` for traceability
+   - Batch quantities decremented atomically with rollback on failure
+
+3. **✅ Sync Queue Completion** - `src/lib/client/sync.ts:318-360`
+   - All entity types handled: SUPPLIER_ORDER_ITEM, SUPPLIER_RETURN, PRODUCT_SUPPLIER, CREDIT_PAYMENT, STOCKOUT_REPORT, SALE_PRESCRIPTION, PRODUCT_SUBSTITUTE
+
+**Key Design Decisions:**
+
+- **One Product, Many Batches**: Each delivery creates a new batch with unique lot number and expiration
+- **Batch Quantity Tracking**: `quantity` (current) vs `initialQty` (original) for waste calculation
+- **Optional Batch Tracking**: `sale_items.product_batch_id` is optional for backwards compatibility
+- **UUID Migration**: Client and server share the same UUIDs (no ID mapping needed)
+
+**Documentation:** See [docs/SUPPLIER_STOCK_INTEGRATION_ARCHITECTURE.md](docs/SUPPLIER_STOCK_INTEGRATION_ARCHITECTURE.md) for complete architecture.
 
 ---
 

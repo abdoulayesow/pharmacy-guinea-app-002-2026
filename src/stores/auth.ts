@@ -58,7 +58,11 @@ export const useAuthStore = create<AuthState>()(
         set({
           currentUser: null,
           isAuthenticated: false,
-          lastActivityAt: null,
+          // NOTE: Do NOT clear lastActivityAt here!
+          // After inactivity logout, we need isInactive() to return true
+          // so the login page shows PIN entry instead of auto-redirecting.
+          // If lastActivityAt is null, login page treats it as "first login"
+          // and bypasses PIN verification - that's a security bug.
         }),
 
       updateActivity: () => {

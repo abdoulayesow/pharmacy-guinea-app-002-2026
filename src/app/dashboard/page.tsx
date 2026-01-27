@@ -254,9 +254,9 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3">
             {/* New Sale */}
             <Link href="/ventes/nouvelle">
-              <div className="group bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer active:scale-[0.98]">
                 <div className="flex items-center justify-center mb-3">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-2 ring-emerald-500/20">
                     <ShoppingCart className="w-6 h-6 text-emerald-400" />
                   </div>
                 </div>
@@ -269,9 +269,9 @@ export default function DashboardPage() {
 
             {/* Sales History */}
             <Link href="/ventes/historique">
-              <div className="group bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer active:scale-[0.98]">
                 <div className="flex items-center justify-center mb-3">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center ring-2 ring-blue-500/20 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center ring-2 ring-blue-500/20">
                     <History className="w-6 h-6 text-blue-400" />
                   </div>
                 </div>
@@ -289,9 +289,9 @@ export default function DashboardPage() {
           <div>
             <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">Dépenses</h3>
             <Link href="/depenses">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer group">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl hover:shadow-2xl transition-all cursor-pointer active:scale-[0.98]">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center ring-2 ring-orange-500/20">
                     <Wallet className="w-6 h-6 text-orange-400" />
                   </div>
                   <div className="flex-1">
@@ -346,10 +346,10 @@ export default function DashboardPage() {
 
             {/* Reports Link */}
             <Link href="/rapports" className="block mt-3">
-              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl p-4 border border-blue-500/20 hover:border-blue-500/40 transition-all group">
+              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl p-4 border border-blue-500/20 hover:border-blue-500/40 transition-all active:scale-[0.98]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center ring-1 ring-blue-500/30 group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center ring-1 ring-blue-500/30">
                       <BarChart3 className="w-5 h-5 text-blue-400" />
                     </div>
                     <div>
@@ -357,7 +357,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-slate-400">Ventes, dépenses, bénéfices</p>
                     </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" />
+                  <ChevronRight className="w-5 h-5 text-blue-400" />
                 </div>
               </div>
             </Link>

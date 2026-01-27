@@ -31,6 +31,10 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  AlertOctagon,
+  CircleDollarSign,
+  BarChart3,
+  Snail,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
@@ -503,6 +507,38 @@ function StocksPageContent() {
             >
               <History className="w-4 h-4" />
               <span className="text-sm font-medium">Historique</span>
+            </Link>
+          </div>
+
+          {/* Quick Access Reports Bar */}
+          <div className="flex gap-2 overflow-x-auto pb-3 mb-3 scrollbar-hide border-b border-slate-700/50">
+            <Link
+              href="/stocks/pertes"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-300 rounded-lg transition-all duration-200 ring-1 ring-red-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <AlertOctagon className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Pertes</span>
+            </Link>
+            <Link
+              href="/stocks/valorisation"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 rounded-lg transition-all duration-200 ring-1 ring-emerald-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <CircleDollarSign className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Valorisation</span>
+            </Link>
+            <Link
+              href="/stocks/analyse-abc"
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 rounded-lg transition-all duration-200 ring-1 ring-blue-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Analyse ABC</span>
+            </Link>
+            <Link
+              href="/stocks/stock-dormant"
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-lg transition-all duration-200 ring-1 ring-amber-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Snail className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Stock dormant</span>
             </Link>
           </div>
 

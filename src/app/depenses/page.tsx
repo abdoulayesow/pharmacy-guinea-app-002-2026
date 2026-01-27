@@ -429,8 +429,9 @@ export default function DepensesPage() {
             <button
               key={key}
               onClick={() => setActiveTab(key)}
+              aria-pressed={activeTab === key}
               className={cn(
-                'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+                'px-4 py-2 min-h-12 rounded-full text-sm font-medium whitespace-nowrap transition-all active:scale-95',
                 activeTab === key
                   ? 'bg-orange-600 text-white'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -568,6 +569,7 @@ export default function DepensesPage() {
       {/* Floating Action Button */}
       <button
         onClick={handleOpenAdd}
+        aria-label="Ajouter une dépense"
         className="fixed bottom-24 right-4 w-14 h-14 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center hover:from-orange-600 hover:to-orange-700 active:scale-95 transition-all z-30"
       >
         <Plus className="w-6 h-6 text-white" />
@@ -595,7 +597,7 @@ export default function DepensesPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[calc(85vh-130px)]">
+            <form id="expense-form" onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[calc(85vh-130px)]">
               {/* Category */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">
@@ -675,7 +677,6 @@ export default function DepensesPage() {
               <button
                 type="submit"
                 form="expense-form"
-                onClick={handleSubmit}
                 className="flex-1 h-10 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium shadow-lg shadow-orange-600/20 active:scale-[0.98] transition-all"
               >
                 {selectedExpense ? 'Modifier' : 'Enregistrer'}

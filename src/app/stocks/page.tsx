@@ -522,8 +522,9 @@ function StocksPageContent() {
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             <button
               onClick={() => setSelectedCategory('Tous')}
+              aria-pressed={selectedCategory === 'Tous'}
               className={cn(
-                'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[44px]',
+                'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-12 active:scale-95',
                 selectedCategory === 'Tous'
                   ? 'bg-slate-700 text-white'
                   : 'bg-transparent text-slate-400 hover:bg-slate-950'
@@ -535,8 +536,9 @@ function StocksPageContent() {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
+                aria-pressed={selectedCategory === cat}
                 className={cn(
-                  'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-[44px]',
+                  'px-4 py-2.5 rounded-lg text-sm whitespace-nowrap transition-all font-medium min-h-12 active:scale-95',
                   selectedCategory === cat
                     ? 'bg-slate-700 text-white'
                     : 'bg-transparent text-slate-400 hover:bg-slate-950'
@@ -784,7 +786,7 @@ function StocksPageContent() {
 
       {/* Add/Edit Product Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-end z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end z-50">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -951,7 +953,7 @@ function StocksPageContent() {
 
       {/* Stock Adjustment Modal */}
       {showAdjustModal && adjustingProduct && (
-        <div className="fixed inset-0 bg-black/80 flex items-end z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end z-50">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -1098,7 +1100,7 @@ function StocksPageContent() {
 
       {/* 🆕 Batch Receipt Modal */}
       {showBatchModal && batchProductId && (
-        <div className="fixed inset-0 bg-black/80 flex items-end z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end z-50">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-t-2xl w-full p-6 max-h-[90vh] overflow-y-auto border-t border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div>

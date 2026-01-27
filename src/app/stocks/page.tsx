@@ -35,6 +35,7 @@ import {
   CircleDollarSign,
   BarChart3,
   Snail,
+  Sparkles,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
@@ -539,6 +540,13 @@ function StocksPageContent() {
             >
               <Snail className="w-3.5 h-3.5" />
               <span className="text-xs font-medium">Stock dormant</span>
+            </Link>
+            <Link
+              href="/stocks/reapprovisionnement"
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 rounded-lg transition-all duration-200 ring-1 ring-purple-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Réappro</span>
             </Link>
           </div>
 

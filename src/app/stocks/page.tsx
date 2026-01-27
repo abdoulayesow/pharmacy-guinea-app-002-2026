@@ -111,24 +111,10 @@ function StocksPageContent() {
   const [expirationDate, setExpirationDate] = useState(''); // 🆕
   const [lotNumber, setLotNumber] = useState(''); // 🆕
 
-  // Redirect if not authenticated
-  useEffect(() => {
-    // Wait for session to load before checking auth
-    if (sessionStatus === 'loading') return;
-
-    if (!isFullyAuthenticated) {
-      router.push(`/login?callbackUrl=${encodeURIComponent('/stocks')}`);
-    }
-  }, [isFullyAuthenticated, sessionStatus, router]);
-
-  // Show nothing while loading or redirecting
-  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
-    return null;
-  }
-
   // Get products from IndexedDB with calculated stock
   // Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
   // Synced movements are already reflected in product.stock from the server
+  // NOTE: Hooks must be called unconditionally before any early returns
   const products = useLiveQuery(async () => {
     const allProducts = await db.products.toArray();
 
@@ -165,6 +151,21 @@ function StocksPageContent() {
   // 🆕 Get batches for all products
   const allBatches = useLiveQuery(() => db.product_batches.toArray()) ?? [];
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
+
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/stocks')}`);
+    }
+  }, [isFullyAuthenticated, sessionStatus, router]);
+
+  // Show nothing while loading or redirecting
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
+    return null;
+  }
+
   // Build set of product IDs with expiring batches for filter
   const productsWithExpiringBatches = new Set(
     getAlertBatchesWithProducts(allBatches, products).map(b => b.product_id)
@@ -196,7 +197,7 @@ function StocksPageContent() {
   });
 
   // Calculate stats - use batch-level if available, fallback to product-level
-  const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length;
+  const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
   const batchExpirationSummary = getBatchExpirationSummary(allBatches);
   const expirationSummary = allBatches.length > 0 ? batchExpirationSummary : getExpirationSummary(products);
 

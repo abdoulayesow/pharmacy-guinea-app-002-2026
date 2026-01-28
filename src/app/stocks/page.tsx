@@ -36,6 +36,9 @@ import {
   BarChart3,
   Snail,
   Sparkles,
+  RefreshCw,
+  ClipboardCheck,
+  Sun,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
@@ -548,6 +551,27 @@ function StocksPageContent() {
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span className="text-xs font-medium">Réappro</span>
+            </Link>
+            <Link
+              href="/stocks/rotation"
+              className="flex items-center gap-1.5 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 rounded-lg transition-all duration-200 ring-1 ring-cyan-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Rotation</span>
+            </Link>
+            <Link
+              href="/stocks/inventaire-physique"
+              className="flex items-center gap-1.5 px-3 py-2 bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 rounded-lg transition-all duration-200 ring-1 ring-teal-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Inventaire</span>
+            </Link>
+            <Link
+              href="/stocks/saisonnier"
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-lg transition-all duration-200 ring-1 ring-amber-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Saisonnier</span>
             </Link>
           </div>
 

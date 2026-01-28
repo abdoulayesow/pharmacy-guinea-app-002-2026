@@ -31,6 +31,14 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  AlertOctagon,
+  CircleDollarSign,
+  BarChart3,
+  Snail,
+  Sparkles,
+  RefreshCw,
+  ClipboardCheck,
+  Sun,
 } from 'lucide-react';
 import type { Product, StockMovementType, ProductBatch } from '@/lib/shared/types';
 import { getExpirationStatus, getExpirationSummary, sortByExpirationDate, getBatchExpirationSummary, getAlertBatchesWithProducts } from '@/lib/client/expiration';
@@ -106,24 +114,10 @@ function StocksPageContent() {
   const [expirationDate, setExpirationDate] = useState(''); // 🆕
   const [lotNumber, setLotNumber] = useState(''); // 🆕
 
-  // Redirect if not authenticated
-  useEffect(() => {
-    // Wait for session to load before checking auth
-    if (sessionStatus === 'loading') return;
-
-    if (!isFullyAuthenticated) {
-      router.push(`/login?callbackUrl=${encodeURIComponent('/stocks')}`);
-    }
-  }, [isFullyAuthenticated, sessionStatus, router]);
-
-  // Show nothing while loading or redirecting
-  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
-    return null;
-  }
-
   // Get products from IndexedDB with calculated stock
   // Stock is calculated from UNSYNCED movements only to prevent concurrent update conflicts
   // Synced movements are already reflected in product.stock from the server
+  // NOTE: Hooks must be called unconditionally before any early returns
   const products = useLiveQuery(async () => {
     const allProducts = await db.products.toArray();
 
@@ -160,6 +154,21 @@ function StocksPageContent() {
   // 🆕 Get batches for all products
   const allBatches = useLiveQuery(() => db.product_batches.toArray()) ?? [];
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    // Wait for session to load before checking auth
+    if (sessionStatus === 'loading') return;
+
+    if (!isFullyAuthenticated) {
+      router.push(`/login?callbackUrl=${encodeURIComponent('/stocks')}`);
+    }
+  }, [isFullyAuthenticated, sessionStatus, router]);
+
+  // Show nothing while loading or redirecting
+  if (sessionStatus === 'loading' || !isFullyAuthenticated) {
+    return null;
+  }
+
   // Build set of product IDs with expiring batches for filter
   const productsWithExpiringBatches = new Set(
     getAlertBatchesWithProducts(allBatches, products).map(b => b.product_id)
@@ -191,7 +200,7 @@ function StocksPageContent() {
   });
 
   // Calculate stats - use batch-level if available, fallback to product-level
-  const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length;
+  const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
   const batchExpirationSummary = getBatchExpirationSummary(allBatches);
   const expirationSummary = allBatches.length > 0 ? batchExpirationSummary : getExpirationSummary(products);
 
@@ -503,6 +512,66 @@ function StocksPageContent() {
             >
               <History className="w-4 h-4" />
               <span className="text-sm font-medium">Historique</span>
+            </Link>
+          </div>
+
+          {/* Quick Access Reports Bar */}
+          <div className="flex gap-2 overflow-x-auto pb-3 mb-3 scrollbar-hide border-b border-slate-700/50">
+            <Link
+              href="/stocks/pertes"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-300 rounded-lg transition-all duration-200 ring-1 ring-red-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <AlertOctagon className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Pertes</span>
+            </Link>
+            <Link
+              href="/stocks/valorisation"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 rounded-lg transition-all duration-200 ring-1 ring-emerald-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <CircleDollarSign className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Valorisation</span>
+            </Link>
+            <Link
+              href="/stocks/analyse-abc"
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 rounded-lg transition-all duration-200 ring-1 ring-blue-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Analyse ABC</span>
+            </Link>
+            <Link
+              href="/stocks/stock-dormant"
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-lg transition-all duration-200 ring-1 ring-amber-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Snail className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Stock dormant</span>
+            </Link>
+            <Link
+              href="/stocks/reapprovisionnement"
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 rounded-lg transition-all duration-200 ring-1 ring-purple-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Réappro</span>
+            </Link>
+            <Link
+              href="/stocks/rotation"
+              className="flex items-center gap-1.5 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 rounded-lg transition-all duration-200 ring-1 ring-cyan-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Rotation</span>
+            </Link>
+            <Link
+              href="/stocks/inventaire-physique"
+              className="flex items-center gap-1.5 px-3 py-2 bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 rounded-lg transition-all duration-200 ring-1 ring-teal-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Inventaire</span>
+            </Link>
+            <Link
+              href="/stocks/saisonnier"
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-lg transition-all duration-200 ring-1 ring-amber-500/30 active:scale-95 whitespace-nowrap"
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Saisonnier</span>
             </Link>
           </div>
 

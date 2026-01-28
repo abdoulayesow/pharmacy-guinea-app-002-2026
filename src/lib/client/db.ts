@@ -314,11 +314,12 @@ export async function getExpiringBatches(daysThreshold: number): Promise<Product
  * @returns 'critical' | 'warning' | 'notice' | 'ok'
  */
 export function getExpirationAlertLevel(
-  expirationDate: Date
+  expirationDate: Date | string
 ): 'critical' | 'warning' | 'notice' | 'ok' {
   const now = new Date();
+  const expDate = expirationDate instanceof Date ? expirationDate : new Date(expirationDate);
   const daysUntilExpiry = Math.floor(
-    (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    (expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   if (daysUntilExpiry < 0) return 'critical'; // Already expired
